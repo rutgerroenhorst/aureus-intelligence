@@ -11,8 +11,9 @@ export async function GET() {
     const qualified = active.filter((v) => v.status === "FUNDAMENTAL_WATCH" || v.status === "SETUP_FORMING" || v.status === "ENTRY_READY");
 
     const now = Date.now();
-    const details = qualified.map((c) => {
-      const ageMs = now - c.discoveredAt.getTime();
+    const details = qualified.map((c: any) => {
+      const discoveredAtDate = typeof c.discoveredAt === "string" ? new Date(c.discoveredAt) : (c.discoveredAt || new Date());
+      const ageMs = now - discoveredAtDate.getTime();
       const ageHours = ageMs / (1000 * 60 * 60);
       const ageDays = ageHours / 24;
 
@@ -22,8 +23,8 @@ export async function GET() {
         status: c.status,
         marketCap: c.marketCapUsd,
         liquidity: c.liquidityUsd,
-        price: c.currentPrice,
-        discoveredAt: c.discoveredAt.toISOString(),
+        price: c.price || c.currentPrice,
+        discoveredAt: discoveredAtDate.toISOString(),
         ageHours: ageHours.toFixed(1),
         ageDays: ageDays.toFixed(1),
         potential: c.potential,

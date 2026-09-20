@@ -51,8 +51,8 @@ export async function GET() {
     });
     
     return NextResponse.json({ candidates: scored.sort((a: any, b: any) => {
-      const order = { MEGA: 0, HUGE: 1, BIG: 2, WARM: 3, COLD: 4 };
-      return (order[a.tier] - order[b.tier]) || (b.score - a.score);
+      const order: Record<string, number> = { MEGA: 0, HUGE: 1, BIG: 2, WARM: 3, COLD: 4 };
+      return ((order[a.tier] || 999) - (order[b.tier] || 999)) || (b.score - a.score);
     })}, { headers: { "Cache-Control": "no-store" } });
   } catch (err) {
     console.error("Explosive error:", err);

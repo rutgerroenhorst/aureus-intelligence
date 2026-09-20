@@ -81,10 +81,10 @@ export async function GET() {
       };
     });
     
-    return NextResponse.json({ 
+    return NextResponse.json({
       candidates: scored.sort((a: any, b: any) => {
-        const order = { ELITE: 0, HOT: 1, WARM: 2, COLD: 3 };
-        return (order[a.tier] - order[b.tier]) || (b.score - a.score);
+        const order: Record<string, number> = { ELITE: 0, HOT: 1, WARM: 2, COLD: 3 };
+        return ((order[a.tier] ?? 999) - (order[b.tier] ?? 999)) || (b.score - a.score);
       })
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (err) {
