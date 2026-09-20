@@ -2,35 +2,6 @@
 import { useEffect, useState } from "react";
 import ElitePageWrapper from "@/components/ElitePageWrapper";
 
-interface CandidateWithSignals {
-  id: string;
-  symbol: string;
-  mint: string;
-  minutes_old: number;
-  price_usd: number;
-  market_cap_usd: number;
-  liquidity_usd: number;
-  total_buys: number;
-  total_sells: number;
-  buys_5m: number;
-  buy_ratio: string;
-  score: number;
-  tier?: "ELITE" | "HOT" | "WARM" | "COLD";
-  mint_auth: boolean;
-  freeze_auth: boolean;
-  holder_top10_pct: number;
-  time_to_act?: number;
-  lp_stability?: string;
-  red_flags?: string[];
-  is_winner?: boolean;
-  live_signals?: {
-    holder_trend: string;
-    new_holders_1m: number;
-    avg_buy_size: string;
-    lp_status: string;
-  };
-}
-
 interface Candidate {
   id: string;
   symbol: string | null;
@@ -40,66 +11,53 @@ interface Candidate {
   discovered_at: string;
 }
 
-type Tab = "signals" | "positions" | "elite-s" | "early-opportunities" | "early-entry" | "qualified" | "stats";
+type Tab = "signals" | "positions" | "trends" | "momentum" | "performance" | "elite-s" | "early" | "entry" | "qualified" | "stats";
 
 export default function RadarPageElite() {
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [eliteCandidates, setEliteCandidates] = useState<any[]>([]);
-  const [ultraEarlyCandidates, setUltraEarlyCandidates] = useState<CandidateWithSignals[]>([]);
-  const [incubationCandidates, setIncubationCandidates] = useState<CandidateWithSignals[]>([]);
+  const [ultraEarlyCandidates, setUltraEarlyCandidates] = useState<any[]>([]);
+  const [incubationCandidates, setIncubationCandidates] = useState<any[]>([]);
   const [buySignals, setBuySignals] = useState<any[]>([]);
   const [sellSignals, setSellSignals] = useState<any[]>([]);
   const [positions, setPositions] = useState<any[]>([]);
+  const [trends, setTrends] = useState<any[]>([]);
+  const [momentum, setMomentum] = useState<any[]>([]);
+  const [performance, setPerformance] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<Tab>("signals");
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [expandedCoinId, setExpandedCoinId] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchAll = async () => {
       try {
         setIsRefreshing(true);
-        const [candRes, eliteRes, winnersRes, ultRes, incRes, signalsRes, posRes] = await Promise.all([
+        const [candRes, eliteRes, ultRes, incRes, signalsRes, posRes, trendsRes, momRes, perfRes] = await Promise.all([
           fetch("/api/candidates"),
           fetch("/api/elite-validator"),
-          fetch("/api/winners-only"),
           fetch("/api/ultra-early"),
           fetch("/api/incubation"),
           fetch("/api/signals"),
           fetch("/api/positions"),
+          fetch("/api/trends"),
+          fetch("/api/momentum"),
+          fetch("/api/performance"),
         ]);
-        
-        if (candRes.ok) {
-          const cand = await candRes.json();
-          setCandidates(cand.candidates || []);
-        }
 
-        if (eliteRes.ok) {
-          const elite = await eliteRes.json();
-          setEliteCandidates(elite.candidates || []);
-        }
-
-        if (ultRes.ok) {
-          const ult = await ultRes.json();
-          setUltraEarlyCandidates(ult.candidates || []);
-        }
-        
-        if (incRes.ok) {
-          const inc = await incRes.json();
-          setIncubationCandidates(inc.candidates || []);
-        }
-
+        if (candRes.ok) setCandidates(await candRes.json().then(d => d.candidates || []));
+        if (eliteRes.ok) setEliteCandidates(await eliteRes.json().then(d => d.candidates || []));
+        if (ultRes.ok) setUltraEarlyCandidates(await ultRes.json().then(d => d.candidates || []));
+        if (incRes.ok) setIncubationCandidates(await incRes.json().then(d => d.candidates || []));
         if (signalsRes.ok) {
           const sig = await signalsRes.json();
           setBuySignals(sig.buy_signals || []);
           setSellSignals(sig.sell_signals || []);
         }
+        if (posRes.ok) setPositions(await posRes.json().then(d => d.positions || []));
+        if (trendsRes.ok) setTrends(await trendsRes.json().then(d => d.candidates || []));
+        if (momRes.ok) setMomentum(await momRes.json().then(d => d.candidates || []));
+        if (perfRes.ok) setPerformance(await perfRes.json().then(d => d.metrics || {}));
 
-        if (posRes.ok) {
-          const pos = await posRes.json();
-          setPositions(pos.positions || []);
-        }
-        
         setLastUpdate(new Date());
       } catch (err) {
         console.error("Fetch error:", err);
@@ -138,7 +96,7 @@ export default function RadarPageElite() {
     </button>
   );
 
-  const CandidateRow = ({ c, color }: { c: CandidateWithSignals; color: string }) => (
+  const CoinRow = ({ c, color }: { c: any; color: string }) => (
     <div
       style={{
         background: "#0f1116",
@@ -151,8 +109,8 @@ export default function RadarPageElite() {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: "13px", fontWeight: 700, color: "#fff" }}>{c.symbol}</div>
-          <div style={{ fontSize: "10px", color: color }}>
-            {c.minutes_old}m old • {c.buy_ratio}% buys
+          <div style={{ fontSize: "10px", color: color, marginTop: "2px" }}>
+            {c.minutes_old}m old • {c.buy_ratio || (c.confidence || 0).toFixed(0)}% {c.signal || c.strength || c.phase || ""}
           </div>
         </div>
         <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
@@ -190,85 +148,19 @@ export default function RadarPageElite() {
           >
             Dex
           </button>
-          <div style={{ textAlign: "right", marginLeft: "12px" }}>
-            <div style={{ fontSize: "13px", fontWeight: 700, color: color }}>{c.tier || 'SCAN'}</div>
-            <div style={{ fontSize: "10px", color: "#aaa" }}>{Math.round(c.score)}pts</div>
+          <div style={{ textAlign: "right", marginLeft: "12px", whiteSpace: "nowrap" }}>
+            <div style={{ fontSize: "13px", fontWeight: 700, color: color }}>${(c.market_cap_usd || 0).toFixed(0)}</div>
           </div>
         </div>
       </div>
     </div>
   );
 
-  const SimpleCoinRow = ({ coin }: { coin: Candidate }) => {
-    if (!coin.marketCapUsd || coin.marketCapUsd < 5000) return null;
-    return (
-      <div
-        style={{
-          background: "#0f1116",
-          border: "1px solid #1a1a1f",
-          borderRadius: "8px",
-          padding: "12px",
-          marginBottom: "8px",
-        }}
-      >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: "13px", fontWeight: 700, color: "#fff" }}>{coin.symbol || coin.mint.slice(0, 8)}</div>
-            <div style={{ fontSize: "10px", color: "#8a8a8e", marginTop: "2px" }}>
-              MCap: ${((coin.marketCapUsd || 0) / 1000).toFixed(1)}k {coin.liquidityUsd && `• Liq: ${((coin.liquidityUsd || 0) / 1000).toFixed(1)}k`}
-            </div>
-          </div>
-          <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                window.open(`https://solscan.io/token/${coin.mint}`, "_blank");
-              }}
-              style={{
-                padding: "4px 8px",
-                fontSize: "10px",
-                background: "#1a1a1f",
-                border: "1px solid #2a2a2f",
-                borderRadius: "4px",
-                color: "#34c759",
-                cursor: "pointer",
-              }}
-            >
-              Solscan
-            </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                window.open(`https://dexscreener.com/solana/${coin.mint}`, "_blank");
-              }}
-              style={{
-                padding: "4px 8px",
-                fontSize: "10px",
-                background: "#1a1a1f",
-                border: "1px solid #2a2a2f",
-                borderRadius: "4px",
-                color: "#34c759",
-                cursor: "pointer",
-              }}
-            >
-              Dex
-            </button>
-            <div style={{ textAlign: "right", marginLeft: "12px", whiteSpace: "nowrap" }}>
-              <div style={{ fontSize: "12px", fontWeight: 700, color: "#fff" }}>
-                ${((coin.marketCapUsd || 0) / 1000).toFixed(1)}k
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
   return (
-    <ElitePageWrapper title="Radar" subtitle="Winners-focused early-stage discovery">
+    <ElitePageWrapper title="Radar" subtitle="Elite intelligence system">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", background: "#0f1116", borderRadius: "6px", marginBottom: "16px", border: "1px solid #1a1a1f" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "12px" }}>
-          <div style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#34c759", animation: "pulse 2s infinite" }} />
+          <div style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#34c759" }} />
           <span style={{ color: "#8a8a8e" }}>{isRefreshing ? "Scanning..." : "Live"}</span>
           {lastUpdate && <span style={{ color: "#6f6f73", fontSize: "11px" }}>{Math.round((Date.now() - lastUpdate.getTime()) / 1000)}s ago</span>}
         </div>
@@ -276,10 +168,13 @@ export default function RadarPageElite() {
 
       <div style={{ display: "flex", gap: "8px", marginBottom: "16px", flexWrap: "wrap" }}>
         <TabButton tab="signals" label="🎯 SIGNALS" count={buySignals.length} />
+        <TabButton tab="trends" label="📈 TRENDS" count={trends.length} />
+        <TabButton tab="momentum" label="⚡ MOMENTUM" count={momentum.length} />
         <TabButton tab="positions" label="💰 POSITIONS" count={positions.length} />
+        <TabButton tab="performance" label="🎖️ PERFORMANCE" />
         <TabButton tab="elite-s" label="💎 ELITE S" count={eliteCandidates.length} />
-        <TabButton tab="early-opportunities" label="🚀 EARLY" count={ultraEarlyCandidates.length + incubationCandidates.length} />
-        <TabButton tab="early-entry" label="🔥 ENTRY" count={earlyEntry.length} />
+        <TabButton tab="early" label="🚀 EARLY" count={ultraEarlyCandidates.length + incubationCandidates.length} />
+        <TabButton tab="entry" label="🔥 ENTRY" count={earlyEntry.length} />
         <TabButton tab="qualified" label="✓ QUALIFIED" count={qualified.length} />
         <TabButton tab="stats" label="📊 STATS" />
       </div>
@@ -287,9 +182,35 @@ export default function RadarPageElite() {
       {activeTab === "signals" && (
         <div>
           {buySignals.length > 0 ? (
-            <div style={{ color: "#34c759", fontSize: "10px" }}>🎯 BUY SIGNALS: {buySignals.length} active</div>
+            buySignals.map((s: any) => (
+              <CoinRow key={s.id} c={s} color="#34c759" />
+            ))
           ) : (
-            <div style={{ color: "#6f6f73", fontSize: "12px", padding: "20px" }}>No buy signals yet</div>
+            <div style={{ color: "#6f6f73", fontSize: "12px", padding: "20px" }}>No active buy signals</div>
+          )}
+        </div>
+      )}
+
+      {activeTab === "trends" && (
+        <div>
+          {trends.length > 0 ? (
+            trends.slice(0, 20).map((t: any) => (
+              <CoinRow key={t.id} c={t} color={t.signal === "STRONG_REVERSAL" ? "#ff00ff" : t.signal === "BULLISH" ? "#34c759" : "#ff9500"} />
+            ))
+          ) : (
+            <div style={{ color: "#6f6f73", fontSize: "12px", padding: "20px" }}>No trend data</div>
+          )}
+        </div>
+      )}
+
+      {activeTab === "momentum" && (
+        <div>
+          {momentum.length > 0 ? (
+            momentum.slice(0, 20).map((m: any) => (
+              <CoinRow key={m.id} c={m} color={m.strength === "elite" ? "#00ff00" : m.strength === "strong" ? "#34c759" : "#ff9500"} />
+            ))
+          ) : (
+            <div style={{ color: "#6f6f73", fontSize: "12px", padding: "20px" }}>No momentum data</div>
           )}
         </div>
       )}
@@ -297,18 +218,29 @@ export default function RadarPageElite() {
       {activeTab === "positions" && (
         <div>
           {positions.length > 0 ? (
-            <div style={{ color: "#34c759", fontSize: "10px" }}>💰 POSITIONS: {positions.length} open</div>
+            <div style={{ color: "#34c759", fontSize: "12px" }}>💰 OPEN POSITIONS: {positions.length}</div>
           ) : (
             <div style={{ color: "#6f6f73", fontSize: "12px", padding: "20px" }}>No open positions</div>
           )}
         </div>
       )}
 
+      {activeTab === "performance" && performance && (
+        <div style={{ fontSize: "11px", color: "#8a8a8e", padding: "16px", background: "#0f1116", borderRadius: "6px" }}>
+          <div>💰 Total P&L: ${performance.total_pnl || 0}</div>
+          <div>📈 Realized: ${performance.realized_pnl || 0}</div>
+          <div>📊 Win Rate: {performance.win_rate || 0}%</div>
+          <div>📋 Profit Factor: {performance.profit_factor || 0}</div>
+          <div style={{ marginTop: "8px" }}>🏆 Largest Winner: {performance.largest_winner?.symbol || "N/A"}</div>
+          <div>💣 Largest Loser: {performance.largest_loser?.symbol || "N/A"}</div>
+        </div>
+      )}
+
       {activeTab === "elite-s" && (
         <div>
           {eliteCandidates.length > 0 ? (
-            eliteCandidates.map((c) => (
-              <CandidateRow key={c.id} c={c} color="#34c759" />
+            eliteCandidates.map((c: any) => (
+              <CoinRow key={c.id} c={c} color="#34c759" />
             ))
           ) : (
             <div style={{ color: "#6f6f73", fontSize: "12px", padding: "20px" }}>No S-grade elite coins</div>
@@ -316,15 +248,15 @@ export default function RadarPageElite() {
         </div>
       )}
 
-      {activeTab === "early-opportunities" && (
+      {activeTab === "early" && (
         <div>
           {ultraEarlyCandidates.length > 0 || incubationCandidates.length > 0 ? (
             <div>
-              {ultraEarlyCandidates.map((c) => (
-                <CandidateRow key={c.id} c={c} color="#ff9500" />
+              {ultraEarlyCandidates.map((c: any) => (
+                <CoinRow key={c.id} c={c} color="#ff9500" />
               ))}
-              {incubationCandidates.map((c) => (
-                <CandidateRow key={c.id} c={c} color="#ff00ff" />
+              {incubationCandidates.map((c: any) => (
+                <CoinRow key={c.id} c={c} color="#ff00ff" />
               ))}
             </div>
           ) : (
@@ -333,11 +265,25 @@ export default function RadarPageElite() {
         </div>
       )}
 
-      {activeTab === "early-entry" && (
+      {activeTab === "entry" && (
         <div>
           {earlyEntry.length > 0 ? (
-            earlyEntry.map((coin) => (
-              <SimpleCoinRow key={coin.id} coin={coin} />
+            earlyEntry.map((coin: any) => (
+              <div key={coin.id} style={{ background: "#0f1116", border: "1px solid #1a1a1f", borderRadius: "8px", padding: "12px", marginBottom: "8px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <div>
+                    <div style={{ fontSize: "13px", fontWeight: 700, color: "#fff" }}>{coin.symbol || coin.mint.slice(0, 8)}</div>
+                    <div style={{ fontSize: "10px", color: "#8a8a8e", marginTop: "2px" }}>
+                      MCap: ${((coin.marketCapUsd || 0) / 1000).toFixed(1)}k
+                    </div>
+                  </div>
+                  <div style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                    <div style={{ fontSize: "12px", fontWeight: 700, color: "#fff" }}>
+                      ${((coin.marketCapUsd || 0) / 1000).toFixed(1)}k
+                    </div>
+                  </div>
+                </div>
+              </div>
             ))
           ) : (
             <div style={{ color: "#6f6f73", fontSize: "12px", padding: "20px" }}>No early entry candidates</div>
@@ -348,8 +294,22 @@ export default function RadarPageElite() {
       {activeTab === "qualified" && (
         <div>
           {qualified.length > 0 ? (
-            qualified.slice(0, 50).map((coin) => (
-              <SimpleCoinRow key={coin.id} coin={coin} />
+            qualified.slice(0, 50).map((coin: any) => (
+              <div key={coin.id} style={{ background: "#0f1116", border: "1px solid #1a1a1f", borderRadius: "8px", padding: "12px", marginBottom: "8px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <div>
+                    <div style={{ fontSize: "13px", fontWeight: 700, color: "#fff" }}>{coin.symbol || coin.mint.slice(0, 8)}</div>
+                    <div style={{ fontSize: "10px", color: "#8a8a8e", marginTop: "2px" }}>
+                      MCap: ${((coin.marketCapUsd || 0) / 1000).toFixed(1)}k
+                    </div>
+                  </div>
+                  <div style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                    <div style={{ fontSize: "12px", fontWeight: 700, color: "#fff" }}>
+                      ${((coin.marketCapUsd || 0) / 1000).toFixed(1)}k
+                    </div>
+                  </div>
+                </div>
+              </div>
             ))
           ) : (
             <div style={{ color: "#6f6f73", fontSize: "12px", padding: "20px" }}>No qualified candidates</div>
@@ -360,6 +320,8 @@ export default function RadarPageElite() {
       {activeTab === "stats" && (
         <div style={{ fontSize: "12px", color: "#8a8a8e", padding: "16px", background: "#0f1116", borderRadius: "6px" }}>
           <div style={{ marginBottom: "8px" }}>🎯 Signals: {buySignals.length}</div>
+          <div style={{ marginBottom: "8px" }}>📈 Trends: {trends.length}</div>
+          <div style={{ marginBottom: "8px" }}>⚡ Momentum: {momentum.length}</div>
           <div style={{ marginBottom: "8px" }}>💰 Positions: {positions.length}</div>
           <div style={{ marginBottom: "8px" }}>💎 Elite S: {eliteCandidates.length}</div>
           <div style={{ marginBottom: "8px" }}>🚀 Early: {ultraEarlyCandidates.length + incubationCandidates.length}</div>
