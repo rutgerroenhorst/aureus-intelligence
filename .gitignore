@@ -1,0 +1,29 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# build
+dist/
+*.tsbuildinfo
+
+# env & secrets — NEVER commit
+.env
+.env.local
+.env.*.local
+
+# legacy import drop zone (may contain user data)
+legacy/inbox/*
+!legacy/inbox/.gitkeep
+
+# reports / artifacts that contain imported data
+legacy/reports/*.json
+!legacy/reports/.gitkeep
+
+# os / editor
+.DS_Store
+*.log
+coverage/
+
+# pm2 logs
+logs/
+.next-build/

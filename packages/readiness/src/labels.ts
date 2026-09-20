@@ -1,0 +1,51 @@
+/** Human-readable labels — internal field names never surface to the analyst. */
+export const FEATURE_LABELS: Record<string, string> = {
+  liquidity_retention_15m: "Liquidity retention (15m)",
+  liquidity_retention_1h: "Liquidity retention (1h)",
+  liquidity_retention_6h: "Liquidity retention (6h)",
+  marketcap_liquidity_ratio: "Market-cap / liquidity ratio",
+  unique_buyer_growth: "Unique buyer growth",
+  unique_seller_growth: "Unique seller growth",
+  buyer_seller_ratio: "Buyer / seller ratio",
+  buyer_concentration: "Buyer concentration",
+  wallet_group_diversity: "Wallet-group diversity",
+  deployer_funding_risk: "Deployer funding analysis",
+  insider_concentration: "Insider concentration",
+  holder_concentration: "Holder concentration",
+  bundle_contamination: "Bundle contamination",
+  smart_wallet_count: "Smart-wallet participation",
+  smart_wallet_net_flow: "Smart-wallet net flow",
+  smart_wallet_hold_ratio: "Smart-wallet hold ratio",
+  lp_change_rate: "Liquidity change rate",
+  price_drawdown_from_local_high: "Drawdown from local high",
+  price_distance_from_range: "Price position in range",
+  attention_velocity: "Attention velocity",
+  boost_dependency: "Paid-boost dependency",
+  source_agreement: "Cross-source agreement",
+  data_completeness: "Data completeness",
+  data_freshness: "Data freshness",
+};
+
+export const RULE_LABELS: Record<string, string> = {
+  "SAFE-01-CRITICAL-DATA": "Critical on-chain data present",
+  "SAFE-02-BLACKLIST-FUNDING": "Blacklist / funding reputation",
+  "SAFE-03-INSIDER-CONCENTRATION": "Insider concentration limit",
+  "SAFE-04-BUNDLE-CONTAMINATION": "Launch-bundle contamination",
+  "SAFE-05-LIQUIDITY-DRAIN": "Liquidity stability",
+  "SAFE-06-AUTHORITY-SELLABILITY": "Mint/freeze authority & sellability",
+  "QUAL-01-INDEPENDENT-DEMAND": "Independent buyer demand",
+  "QUAL-02-CAPITAL-RETENTION": "Capital retention",
+  "QUAL-03-SMART-PARTICIPATION": "Reputable-wallet participation",
+  "QUAL-04-BOOST-DEPENDENCY": "Paid-boost dependency",
+  "ENTRY-01-STRUCTURE-RECLAIM": "Range structure & reclaim",
+  "ENTRY-02-NOT-OVEREXTENDED": "Not overextended",
+  "ENTRY-03-INVALIDATION": "Local invalidation available",
+  "ENTRY-04-EXECUTION": "Slippage & reward-to-risk",
+  "PRISK-01-LP-DRAIN": "Position liquidity drain",
+  "PRISK-02-SMART-EXIT": "Smart-wallet exit",
+  "DQ-01-FRESHNESS": "Data freshness",
+  "DQ-02-SOURCE-CONFLICT": "Source agreement",
+};
+
+export const featureLabel = (id: string): string => FEATURE_LABELS[id] ?? id;
+export const ruleLabel = (id: string): string => RULE_LABELS[id] ?? id;

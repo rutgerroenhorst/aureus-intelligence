@@ -1,0 +1,22 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/contracts" },
+    { "path": "packages/config" },
+    { "path": "packages/db" },
+    { "path": "packages/ingestion" },
+    { "path": "packages/legacy-import" },
+    { "path": "packages/feature-engine" },
+    { "path": "packages/rule-engine" },
+    { "path": "packages/snapshot-engine" },
+    { "path": "packages/outcome-engine" },
+    { "path": "packages/alert-engine" },
+    { "path": "packages/notifications" },
+    { "path": "packages/readiness" },
+    { "path": "packages/research" },
+    { "path": "packages/entry-engine" },
+    { "path": "packages/safety-engine" },
+    { "path": "packages/watch-engine" },
+    { "path": "packages/intelligence-v2" }
+  ]
+}

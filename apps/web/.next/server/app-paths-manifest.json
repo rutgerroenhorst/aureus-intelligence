@@ -1,0 +1,12 @@
+{
+  "/api/candidates/route": "app/api/candidates/route.js",
+  "/api/incubation/route": "app/api/incubation/route.js",
+  "/api/winners-only/route": "app/api/winners-only/route.js",
+  "/api/elite-validator/route": "app/api/elite-validator/route.js",
+  "/api/signals/route": "app/api/signals/route.js",
+  "/api/positions/route": "app/api/positions/route.js",
+  "/api/telemetry/route": "app/api/telemetry/route.js",
+  "/results/page": "app/results/page.js",
+  "/radar/page": "app/radar/page.js",
+  "/api/ultra-early/route": "app/api/ultra-early/route.js"
+}

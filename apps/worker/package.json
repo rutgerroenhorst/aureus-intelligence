@@ -1,0 +1,30 @@
+{
+  "name": "@aureus/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "once": "tsx src/run.ts once",
+    "watch": "tsx src/run.ts watch"
+  },
+  "dependencies": {
+    "@aureus/alert-engine": "workspace:*",
+    "@aureus/config": "workspace:*",
+    "@aureus/contracts": "workspace:*",
+    "@aureus/db": "workspace:*",
+    "@aureus/entry-engine": "workspace:*",
+    "@aureus/feature-engine": "workspace:*",
+    "@aureus/ingestion": "workspace:*",
+    "@aureus/intelligence-v2": "workspace:^",
+    "@aureus/notifications": "workspace:*",
+    "@aureus/outcome-engine": "workspace:*",
+    "@aureus/readiness": "workspace:*",
+    "@aureus/research": "workspace:*",
+    "@aureus/rule-engine": "workspace:*",
+    "@aureus/safety-engine": "workspace:*",
+    "@aureus/snapshot-engine": "workspace:*",
+    "@aureus/watch-engine": "workspace:*",
+    "ioredis": "^5.4.2",
+    "pg": "^8.13.1"
+  }
+}

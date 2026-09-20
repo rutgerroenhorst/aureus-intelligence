@@ -1,0 +1,159 @@
+"use client";
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import type { BoardView } from "../../lib/boardSections";
+import type { CandidateDecisionView } from "../../lib/candidateView";
+import { ago, usd, dexUrl } from "../../lib/format";
+import { formatConfidence } from "../../lib/confidenceFormatter";
+import { getV2Status, V2_STATUS_LABELS } from "../../lib/v2StatusType";
+
+const MCAP_CEILING = 150_000;
+
+function V2StatusBadge({ status }: { status: string | null }) {
+  const v2Status = getV2Status(status);
+  const config = V2_STATUS_LABELS[v2Status];
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "3px" }}>
+      <span style={{ fontSize: "12px", fontWeight: "600", color: config.color ? `var(${config.color})` : "var(--muted)" }}>
+        {config.label}
+      </span>
+      {config.secondary && <span style={{ fontSize: "12px", color: "var(--muted)" }}>{config.secondary}</span>}
+    </div>
+  );
+}
+
+function CandidateCard({ v }: { v: CandidateDecisionView }) {
+  const mcap = v.marketCapUsd;
+  const liq = v.liquidityUsd;
+  return (
+    <Link
+      href={`/candidate/${v.id}`}
+      className="dcard"
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: "12px",
+        textDecoration: "none",
+        color: "inherit",
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px" }}>
+        <div>
+          <h3 style={{ margin: "0 0 3px 0", fontSize: "14px", fontWeight: "600", color: "var(--text)" }}>
+            {v.symbol ?? "Unknown"}
+          </h3>
+          <p style={{ margin: 0, fontSize: "12px", color: "var(--muted)" }}>{v.code ?? v.id.slice(0, 8)}</p>
+        </div>
+        <V2StatusBadge status={v.v2StructuralStatus} />
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "12px", fontSize: "12px", paddingTop: "8px", borderTop: "1px solid var(--border)" }}>
+        <div>
+          <p style={{ margin: "0 0 6px 0", color: "var(--muted)", fontSize: "11px" }}>MCap</p>
+          <p style={{ margin: 0, color: "var(--text)" }}>{mcap != null ? usd(mcap) : "—"}</p>
+        </div>
+        <div>
+          <p style={{ margin: "0 0 6px 0", color: "var(--muted)", fontSize: "11px" }}>Liq</p>
+          <p style={{ margin: 0, color: "var(--text)" }}>{liq != null ? usd(liq) : "—"}</p>
+        </div>
+        <div>
+          <p style={{ margin: "0 0 6px 0", color: "var(--muted)", fontSize: "11px" }}>24h Vol</p>
+          <p style={{ margin: 0, color: "var(--text)" }}>{v.volumeUsd != null ? usd(v.volumeUsd) : "—"}</p>
+        </div>
+      </div>
+
+      {v.v2StructuralStatus === "INSUFFICIENT_DATA" ? (
+        <div style={{ fontSize: "12px", color: "var(--muted)" }}>
+          More data required
+        </div>
+      ) : v.v2StructuralConfidence != null ? (
+        <div style={{ fontSize: "12px", color: "var(--muted)" }}>
+          Confidence: {formatConfidence(v.v2StructuralConfidence)}
+        </div>
+      ) : null}
+
+      {v.v2MissingFields && v.v2MissingFields.length > 0 && (
+        <div style={{ fontSize: "12px", color: "var(--caution)" }}>
+          {v.v2MissingFields[0]}
+        </div>
+      )}
+
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: "8px", borderTop: "1px solid var(--border)", fontSize: "12px" }}>
+        <span style={{ color: "var(--muted)" }}>{v.discoveredAt ? ago(v.discoveredAt, Date.now()) : "—"}</span>
+        <a
+          href={dexUrl(v.mint, v.pool)}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ color: "var(--go)", textDecoration: "none" }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          chart ↗
+        </a>
+      </div>
+    </Link>
+  );
+}
+
+export function RadarLive({ initial }: { initial: BoardView }) {
+  const [board, setBoard] = useState<BoardView>(initial);
+  const [bandId, setBandId] = useState<string>("all");
+  const [now, setNow] = useState<number>(() => Date.parse(initial.generatedAt) || 0);
+
+  useEffect(() => {
+    const saved = window.localStorage.getItem("aureus:mcapBand");
+    if (saved) setBandId(saved);
+  }, []);
+
+  useEffect(() => {
+    const interval = setInterval(() => setNow(Date.now()), 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const filtered =
+    bandId === "all"
+      ? board.candidates
+      : board.candidates.filter(
+          (c) =>
+            c.marketCapUsd != null &&
+            c.marketCapUsd >= (bandId === "large" ? 50_000 : 5_000) &&
+            c.marketCapUsd <= (bandId === "large" ? 150_000 : 50_000)
+        );
+
+  return (
+    <div className="page">
+      <div className="page-head">
+        <div>
+          <h1 className="page-title">Radar</h1>
+          <p className="page-sub">Phase 1 structural qualification scan</p>
+        </div>
+      </div>
+
+      <div style={{ display: "flex", gap: "8px", margin: "16px 0", flexWrap: "wrap" }}>
+        {(["all", "small", "large"] as const).map((b) => (
+          <button
+            key={b}
+            className="pill"
+            onClick={() => {
+              setBandId(b);
+              window.localStorage.setItem("aureus:mcapBand", b);
+            }}
+            style={{
+              opacity: bandId === b ? 1 : 0.5,
+              cursor: "pointer",
+            }}
+          >
+            {b === "all" ? "All" : b === "small" ? "5k-50k" : "50k-150k"}
+          </button>
+        ))}
+      </div>
+
+      <div className="rest-rows">
+        {filtered.length === 0 ? (
+          <div style={{ padding: "24px", textAlign: "center", color: "var(--muted)" }}>No candidates in this band</div>
+        ) : (
+          filtered.map((v) => <CandidateCard key={v.id} v={v} />)
+        )}
+      </div>
+    </div>
+  );
+}
