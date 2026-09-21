@@ -96,7 +96,10 @@ export default function RadarPageElite() {
     </button>
   );
 
-  const CoinRow = ({ c, color }: { c: any; color: string }) => (
+  const CoinRow = ({ c, color }: { c: any; color: string }) => {
+    const mcap = Number(c.market_cap_usd || 0);
+    const conf = Number(c.confidence || c.buy_ratio || 0);
+    return (
     <div
       style={{
         background: "#0f1116",
@@ -110,7 +113,7 @@ export default function RadarPageElite() {
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: "13px", fontWeight: 700, color: "#fff" }}>{c.symbol}</div>
           <div style={{ fontSize: "10px", color: color, marginTop: "2px" }}>
-            {c.minutes_old}m old • {c.buy_ratio || (c.confidence || 0).toFixed(0)}% {c.signal || c.strength || c.phase || ""}
+            {c.minutes_old || 0}m old • {conf.toFixed(0)}% {c.signal || c.strength || c.phase || ""}
           </div>
         </div>
         <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
@@ -149,12 +152,13 @@ export default function RadarPageElite() {
             Dex
           </button>
           <div style={{ textAlign: "right", marginLeft: "12px", whiteSpace: "nowrap" }}>
-            <div style={{ fontSize: "13px", fontWeight: 700, color: color }}>${(c.market_cap_usd || 0).toFixed(0)}</div>
+            <div style={{ fontSize: "13px", fontWeight: 700, color: color }}>${mcap.toFixed(0)}</div>
           </div>
         </div>
       </div>
     </div>
-  );
+    );
+  };
 
   return (
     <ElitePageWrapper title="Radar" subtitle="Elite intelligence system">
@@ -270,16 +274,20 @@ export default function RadarPageElite() {
           {earlyEntry.length > 0 ? (
             earlyEntry.map((coin: any) => (
               <div key={coin.id} style={{ background: "#0f1116", border: "1px solid #1a1a1f", borderRadius: "8px", padding: "12px", marginBottom: "8px" }}>
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div style={{ flex: 1 }}>
                     <div style={{ fontSize: "13px", fontWeight: 700, color: "#fff" }}>{coin.symbol || coin.mint.slice(0, 8)}</div>
                     <div style={{ fontSize: "10px", color: "#8a8a8e", marginTop: "2px" }}>
                       MCap: ${((coin.marketCapUsd || 0) / 1000).toFixed(1)}k
                     </div>
                   </div>
-                  <div style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-                    <div style={{ fontSize: "12px", fontWeight: 700, color: "#fff" }}>
-                      ${((coin.marketCapUsd || 0) / 1000).toFixed(1)}k
+                  <div style={{ display: "flex", gap: "6px" }}>
+                    <button onClick={(e) => { e.stopPropagation(); window.open(`https://solscan.io/token/${coin.mint}`, "_blank"); }} style={{ padding: "4px 8px", fontSize: "10px", background: "#1a1a1f", border: "1px solid #2a2a2f", borderRadius: "4px", color: "#34c759", cursor: "pointer" }}>Solscan</button>
+                    <button onClick={(e) => { e.stopPropagation(); window.open(`https://dexscreener.com/solana/${coin.mint}`, "_blank"); }} style={{ padding: "4px 8px", fontSize: "10px", background: "#1a1a1f", border: "1px solid #2a2a2f", borderRadius: "4px", color: "#34c759", cursor: "pointer" }}>Dex</button>
+                    <div style={{ textAlign: "right", whiteSpace: "nowrap", marginLeft: "12px" }}>
+                      <div style={{ fontSize: "12px", fontWeight: 700, color: "#fff" }}>
+                        ${((coin.marketCapUsd || 0) / 1000).toFixed(1)}k
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -296,16 +304,20 @@ export default function RadarPageElite() {
           {qualified.length > 0 ? (
             qualified.slice(0, 50).map((coin: any) => (
               <div key={coin.id} style={{ background: "#0f1116", border: "1px solid #1a1a1f", borderRadius: "8px", padding: "12px", marginBottom: "8px" }}>
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div style={{ flex: 1 }}>
                     <div style={{ fontSize: "13px", fontWeight: 700, color: "#fff" }}>{coin.symbol || coin.mint.slice(0, 8)}</div>
                     <div style={{ fontSize: "10px", color: "#8a8a8e", marginTop: "2px" }}>
                       MCap: ${((coin.marketCapUsd || 0) / 1000).toFixed(1)}k
                     </div>
                   </div>
-                  <div style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-                    <div style={{ fontSize: "12px", fontWeight: 700, color: "#fff" }}>
-                      ${((coin.marketCapUsd || 0) / 1000).toFixed(1)}k
+                  <div style={{ display: "flex", gap: "6px" }}>
+                    <button onClick={(e) => { e.stopPropagation(); window.open(`https://solscan.io/token/${coin.mint}`, "_blank"); }} style={{ padding: "4px 8px", fontSize: "10px", background: "#1a1a1f", border: "1px solid #2a2a2f", borderRadius: "4px", color: "#34c759", cursor: "pointer" }}>Solscan</button>
+                    <button onClick={(e) => { e.stopPropagation(); window.open(`https://dexscreener.com/solana/${coin.mint}`, "_blank"); }} style={{ padding: "4px 8px", fontSize: "10px", background: "#1a1a1f", border: "1px solid #2a2a2f", borderRadius: "4px", color: "#34c759", cursor: "pointer" }}>Dex</button>
+                    <div style={{ textAlign: "right", whiteSpace: "nowrap", marginLeft: "12px" }}>
+                      <div style={{ fontSize: "12px", fontWeight: 700, color: "#fff" }}>
+                        ${((coin.marketCapUsd || 0) / 1000).toFixed(1)}k
+                      </div>
                     </div>
                   </div>
                 </div>
