@@ -59,7 +59,20 @@ export async function GET() {
       LIMIT 100
     `);
 
-    const validated = result.rows.map((c: any) => {
+    const validated = result.rows.filter((c: any) => {
+      const minutesOld = c.minutes_old || 1;
+      const mcap = Number(c.market_cap_usd || 0);
+      const liq = Number(c.liquidity_usd || 0);
+      const growthRate = mcap / minutesOld;
+      const liqRatio = mcap / (liq || 1);
+      
+      if (growthRate > 5000 && minutesOld < 10) return false;
+      if (minutesOld > 240 && mcap > 50000 && liqRatio > 50) return false;
+      if (mcap > 100000 && liqRatio > 100) return false;
+      
+      return true;
+    })
+    .map((c: any) => {
       const red_flags = [];
 
       const buyRatio = c.buy_ratio || 0.5;
