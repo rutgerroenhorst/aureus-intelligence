@@ -138,6 +138,9 @@ export default function ResultsPage() {
               <th style={{ padding: "16px", textAlign: "right", fontSize: "12px", fontWeight: 700, color: "var(--text-muted)" }}>
                 MULTIPLIER
               </th>
+              <th style={{ padding: "16px", textAlign: "center", fontSize: "12px", fontWeight: 700, color: "var(--text-muted)" }}>
+                CHART
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -183,6 +186,23 @@ export default function ResultsPage() {
                     }}
                   >
                     {token.multiplier.toFixed(2)}x
+                  </td>
+                  <td style={{ padding: "16px", textAlign: "center" }}>
+                    <button
+                      onClick={() => window.location.href = `https://dexscreener.com/solana/${token.mint}`}
+                      style={{
+                        padding: "6px 12px",
+                        fontSize: "11px",
+                        background: "#2585FF",
+                        border: "none",
+                        borderRadius: "4px",
+                        color: "#fff",
+                        cursor: "pointer",
+                        fontWeight: 600,
+                      }}
+                    >
+                      DexScreener
+                    </button>
                   </td>
                 </tr>
               );
