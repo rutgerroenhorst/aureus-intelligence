@@ -31,6 +31,7 @@ export async function GET() {
         .filter((c: any) => {
           const minutesOld = c.minutes_old || 1;
           const mcap = Number(c.market_cap_usd || 0);
+          const liq = Number(c.liquidity_usd || 0);
           const liqRatio = Number(c.liq_ratio || 0);
           const growthRate = mcap / minutesOld;
           const txnCount = Number(c.txn_count || 0);
@@ -42,8 +43,10 @@ export async function GET() {
           if (minutesOld <= 2 && (txnCount > 50 || holderCount > 100)) return false;
           if (minutesOld <= 5 && (txnCount > 200 || holderCount > 500)) return false;
           
-          // WASH TRADE DETECTION: High mcap but very few actual transactions
-          if (mcap > 50000 && txnCount < 10) return false;
+          // SUSPICIOUS: High mcap with weak fundamentals = wash trade / manipulation
+          if (mcap > 40000 && liq < 1000) return false;
+          if (mcap > 30000 && liq < 5000 && minutesOld < 120) return false;
+          if (mcap > 50000 && holderCount < 20 && minutesOld < 60) return false;
           
           return true;
         })
@@ -55,7 +58,7 @@ export async function GET() {
         })),
     });
   } catch (err) {
-    console.error("Momentum error:", err);
+    console.error("Error:", err);
     return NextResponse.json({ candidates: [] }, { status: 200 });
   }
 }

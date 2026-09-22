@@ -45,10 +45,11 @@ export async function GET() {
       .filter((c: any) => {
         const minutesOld = c.minutes_old || 1;
         const mcap = Number(c.market_cap_usd || 0);
+        const liq = Number(c.liquidity_usd || 0);
         const liqRatio = Number(c.liq_ratio || 0);
         const growthRate = mcap / minutesOld;
         const buyRatio = Number(c.buy_ratio || 0.5);
-        const txnCount = Number(c.txn_count || 0);
+        const holders = Number(c.holder_count || 0);
         
         // Pump pattern rejection
         if (growthRate > 5000 && minutesOld < 10) return false;
@@ -59,10 +60,12 @@ export async function GET() {
         if (buyRatio < 0.4 && minutesOld < 30) return false;
         
         // Whale-only (low holder count = concentrated)
-        if (Number(c.holder_count || 0) < 3 && minutesOld > 10) return false;
+        if (holders < 3 && minutesOld > 10) return false;
         
-        // WASH TRADE DETECTION
-        if (mcap > 50000 && txnCount < 10) return false;
+        // SUSPICIOUS: High mcap with weak fundamentals
+        if (mcap > 40000 && liq < 1000) return false;
+        if (mcap > 30000 && liq < 5000 && minutesOld < 120) return false;
+        if (mcap > 50000 && holders < 20 && minutesOld < 60) return false;
         
         return true;
       })

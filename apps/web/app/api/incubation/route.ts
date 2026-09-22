@@ -40,9 +40,11 @@ export async function GET() {
       .filter((c: any) => {
         const minutesOld = c.minutes_old || 1;
         const mcap = Number(c.market_cap_usd || 0);
+        const liq = Number(c.liquidity_usd || 0);
         const liqRatio = Number(c.liq_ratio || 0);
         const growthRate = mcap / minutesOld;
         const buyRatio = Number(c.buy_ratio || 0.5);
+        const holders = Number(c.holder_count || 0);
         
         // REJECT: Pump patterns
         if (growthRate > 5000 && minutesOld < 10) return false;
@@ -53,11 +55,14 @@ export async function GET() {
         if (buyRatio < 0.4 && minutesOld < 30) return false;
         
         // REJECT: Whale-only
-        if (Number(c.holder_count || 0) < 5 && minutesOld > 20) return false;
+        if (holders < 5 && minutesOld > 20) return false;
         
-        // REJECT: Suspicious - high mcap but very few trades = manipulation or dump in progress
-        const totalTxns = (c.total_buys || 0) + (c.total_sells || 0);
-        if (mcap > 50000 && totalTxns < 10 && minutesOld > 60) return false;
+        // SUSPICIOUS: High mcap relative to liquidity (artificial volume)
+        if (mcap > 40000 && liq < 1000) return false; // No real liquidity backing
+        if (mcap > 30000 && liq < 5000 && minutesOld < 120) return false; // Fake-aged coins
+        
+        // SUSPICIOUS: Too high price jump with few holders
+        if (mcap > 50000 && holders < 20 && minutesOld < 60) return false;
         
         return true;
       })
