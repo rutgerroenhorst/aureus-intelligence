@@ -111,64 +111,69 @@ export default function RadarPageElite() {
     const mcap = Number(c.market_cap_usd || 0);
     const conf = Number(c.confidence || c.buy_ratio || 0);
     return (
-    <div
-      style={{
-        background: "#0f1116",
-        border: `2px solid ${color}`,
-        borderRadius: "8px",
-        padding: "12px",
-        marginBottom: "8px",
-      }}
-    >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: "13px", fontWeight: 700, color: "#fff" }}>{c.symbol}</div>
-          <div style={{ fontSize: "10px", color: color, marginTop: "2px" }}>
-            {c.minutes_old || 0}m old • {conf.toFixed(0)}% {c.signal || c.strength || c.phase || ""}
+      <div
+        style={{
+          background: "#0f1116",
+          border: `2px solid ${color}`,
+          borderRadius: "8px",
+          padding: "12px",
+          marginBottom: "8px",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: "13px", fontWeight: 700, color: "#fff" }}>{c.symbol}</div>
+            <div style={{ fontSize: "10px", color: color, marginTop: "2px" }}>
+              {c.minutes_old || 0}m old • {conf.toFixed(0)}% {c.signal || c.strength || c.phase || ""}
+            </div>
           </div>
-        </div>
-        <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              window.location.href = `https://solscan.io/token/${c.mint}`;
-            }}
-            style={{
-              padding: "4px 8px",
-              fontSize: "10px",
-              background: "#1a1a1f",
-              border: "1px solid #2a2a2f",
-              borderRadius: "4px",
-              color: "#34c759",
-              cursor: "pointer",
-            }}
-          >
-            Solscan
-          </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              window.location.href = `https://dexscreener.com/solana/${c.mint}`;
-            }}
-            style={{
-              padding: "4px 8px",
-              fontSize: "10px",
-              background: "#1a1a1f",
-              border: "1px solid #2a2a2f",
-              borderRadius: "4px",
-              color: "#34c759",
-              cursor: "pointer",
-            }}
-          >
-            Dex
-          </button>
-          <div style={{ textAlign: "right", marginLeft: "12px", whiteSpace: "nowrap" }}>
-            <div style={{ fontSize: "13px", fontWeight: 700, color: color }}>{formatMcap(mcap)}</div>
+          <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                window.location.href = `https://solscan.io/token/${c.mint}`;
+              }}
+              style={{
+                padding: "4px 8px",
+                fontSize: "10px",
+                background: "#1a1a1f",
+                border: "1px solid #2a2a2f",
+                borderRadius: "4px",
+                color: "#34c759",
+                cursor: "pointer",
+              }}
+            >
+              Solscan
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                window.location.href = `https://dexscreener.com/solana/${c.mint}`;
+              }}
+              style={{
+                padding: "4px 8px",
+                fontSize: "10px",
+                background: "#1a1a1f",
+                border: "1px solid #2a2a2f",
+                borderRadius: "4px",
+                color: "#34c759",
+                cursor: "pointer",
+              }}
+            >
+              Dex
+            </button>
+            <div style={{ textAlign: "right", marginLeft: "12px", whiteSpace: "nowrap" }}>
+              <div style={{ fontSize: "13px", fontWeight: 700, color: color }}>{formatMcap(mcap)}</div>
+            </div>
           </div>
         </div>
       </div>
-    </div>
     );
+  };
+
+  const filterByChain = (coins: any[]) => {
+    if (!selectedChain) return coins;
+    return coins.filter((c: any) => c.chain === selectedChain);
   };
 
   return (
@@ -282,10 +287,6 @@ export default function RadarPageElite() {
           )}
         </div>
 
-      const filterByChain = (coins: any[]) => {
-        if (!selectedChain) return coins;
-        return coins.filter((c: any) => c.chain === selectedChain);
-      };
       )}
 
       {activeTab === "early" && (
