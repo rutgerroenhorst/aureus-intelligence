@@ -8,6 +8,15 @@ export async function GET() {
     const pool = getPool();
     
     const result = await pool.query(`
+      WITH txn_windows AS (
+        SELECT 
+          pool_id,
+          COUNT(DISTINCT CASE WHEN observed_at > now() - interval '5 minutes' THEN 1 END) as recent_buys,
+          COUNT(DISTINCT CASE WHEN observed_at > now() - interval '10 minutes' THEN 1 END) as medium_buys,
+          COUNT(DISTINCT CASE WHEN observed_at > now() - interval '15 minutes' THEN 1 END) as older_buys
+        FROM transaction_aggregates
+        GROUP BY pool_id
+      )
       SELECT 
         c.id, t.symbol_label as symbol, t.mint, c.discovered_at,
         EXTRACT(EPOCH FROM (now() - c.discovered_at))/60::int as minutes_old,
@@ -20,14 +29,17 @@ export async function GET() {
         COALESCE((SELECT sells FROM transaction_aggregates WHERE pool_id = c.pool_id ORDER BY observed_at DESC LIMIT 1), 0)::int as total_sells,
         COALESCE((SELECT buys::numeric FROM transaction_aggregates WHERE pool_id = c.pool_id ORDER BY observed_at DESC LIMIT 1) / 
                  NULLIF((SELECT (buys + sells)::numeric FROM transaction_aggregates WHERE pool_id = c.pool_id ORDER BY observed_at DESC LIMIT 1), 0), 0.5)::float as buy_ratio,
+        COALESCE((SELECT COUNT(*) FROM holder_snapshots WHERE pool_id = c.pool_id), 0)::int as holder_count,
         (oe.intel->'flags'->>'mintAuthorityActive')::boolean as mint_auth,
         (oe.intel->'flags'->>'freezeAuthorityActive')::boolean as freeze_auth,
-        (oe.intel->'onChain'->>'holderTop10Pct')::float as holder_top10_pct
+        (oe.intel->'onChain'->>'holderTop10Pct')::float as holder_top10_pct,
+        COALESCE(tw.recent_buys, 0)::int as buy_consistency_score
       FROM candidates c
       JOIN tokens t ON t.id = c.token_id
       LEFT JOIN onchain_enrichment oe ON oe.candidate_id = c.id
       LEFT JOIN LATERAL (SELECT price_usd, market_cap_usd FROM prices WHERE pool_id = c.pool_id ORDER BY observed_at DESC LIMIT 1) pr ON true
       LEFT JOIN LATERAL (SELECT liquidity_usd FROM liquidity_snapshots WHERE pool_id = c.pool_id ORDER BY observed_at DESC LIMIT 1) lq ON true
+      LEFT JOIN txn_windows tw ON tw.pool_id = c.pool_id
       WHERE c.discovered_at > now() - interval '7 days'
         AND c.current_state <> 'EXPIRED'
       ORDER BY c.discovered_at DESC
@@ -40,15 +52,18 @@ export async function GET() {
         const mcap = Number(c.market_cap_usd || 0);
         const liqRatio = Number(c.liq_ratio || 0);
         const growthRate = mcap / minutesOld;
+        const buyRatio = Number(c.buy_ratio || 0.5);
         
-        // Reject old pumped coins: high mcap + thin liq + old = rug
-        if (minutesOld > 360 && mcap > 80000 && liqRatio > 100) return false;
-        
-        // Reject abnormal fast growth (>$5k mcap per minute = pump)
+        // REJECT: Pump patterns
         if (growthRate > 5000 && minutesOld < 10) return false;
-        
-        // Reject coins with very thin liquidity at high mcap
+        if (minutesOld > 360 && mcap > 80000 && liqRatio > 100) return false;
         if (mcap > 80000 && liqRatio > 100) return false;
+        
+        // REJECT: Buy pressure inconsistency (spike then flatline)
+        if (buyRatio < 0.4 && minutesOld < 30) return false; // Early dump
+        
+        // REJECT: Whale only pattern (low holder count = concentrated)
+        if (Number(c.holder_count || 0) < 5 && minutesOld > 20) return false;
         
         return true;
       })
@@ -66,6 +81,7 @@ export async function GET() {
         else if (buys5m >= 3) score += 15;
         else if (buys5m >= 1) score += 8;
         
+        // TIGHTENED: Both authorities must be false
         const hasNoAuthority = !c.mint_auth && !c.freeze_auth;
         const hasOneAuthority = (c.mint_auth && !c.freeze_auth) || (!c.mint_auth && c.freeze_auth);
         const hasAnyAuthority = c.mint_auth || c.freeze_auth;
@@ -73,35 +89,50 @@ export async function GET() {
         else if (hasOneAuthority) score += 10;
         else if (hasAnyAuthority) score -= 15;
         
+        // TIGHTENED: Stricter holder concentration
         const holderTop10 = c.holder_top10_pct || 50;
         if (holderTop10 < 3) score += 25;
         else if (holderTop10 < 5) score += 15;
         else if (holderTop10 < 10) score += 8;
         else if (holderTop10 < 20) score += 3;
+        else score -= 10; // Penalize concentrated holders
+        
+        // NEW: Holder velocity (many holders = decentralized entry)
+        const holderCount = Number(c.holder_count || 0);
+        if (holderCount > 50) score += 20;
+        else if (holderCount > 20) score += 12;
+        else if (holderCount > 10) score += 5;
+        else score -= 15; // Whale-only pattern
+        
+        // NEW: Buy pressure consistency (sustained across windows)
+        const buyConsistency = Number(c.buy_consistency_score || 0);
+        if (buyConsistency >= 3) score += 15;
+        else if (buyConsistency >= 2) score += 8;
+        else if (buyConsistency >= 1) score += 3;
         
         const liquidity = c.liquidity_usd || 0;
         if (liquidity > 5000) score += 10;
         else if (liquidity > 1000) score += 5;
         
-        const minutes_old = c.minutes_old || 0;
-        if (minutes_old < 5) score += 15;
-        else if (minutes_old < 10) score += 10;
+        const minutesOld = c.minutes_old || 0;
+        if (minutesOld < 5) score += 15;
+        else if (minutesOld < 10) score += 10;
         
         let tier = "COLD";
-        if (score >= 90) tier = "ELITE";
-        else if (score >= 75) tier = "HOT";
+        if (score >= 100) tier = "ELITE";
+        else if (score >= 80) tier = "HOT";
         else if (score >= 60) tier = "WARM";
         
         return {
           ...c,
           score,
           tier,
-          buy_ratio: (buyRatio * 100).toFixed(1),
-          time_to_act: Math.max(0, 30 - minutes_old),
+          buy_ratio: (c.buy_ratio * 100).toFixed(1),
+          time_to_act: Math.max(0, 30 - minutesOld),
         };
       });
     
-    const filtered = scored.filter((c: any) => c.score >= 20);
+    const filtered = scored.filter((c: any) => c.score >= 30);
     return NextResponse.json({
       candidates: filtered.sort((a: any, b: any) => {
         const order: Record<string, number> = { ELITE: 0, HOT: 1, WARM: 2, COLD: 3 };
