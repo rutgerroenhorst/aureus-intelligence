@@ -8,27 +8,6 @@ export async function GET() {
     const pool = getPool();
     
     const result = await pool.query(`
-      WITH txn_analysis AS (
-        SELECT 
-          pool_id,
-          COUNT(*) as total_txns,
-          COUNT(DISTINCT buyer) as unique_buyers,
-          AVG(COALESCE(amount, 1)) as avg_txn_size,
-          STDDEV(COALESCE(amount, 1)) as txn_size_stddev,
-          COUNT(CASE WHEN COALESCE(amount, 1) < 0.1 THEN 1 END)::float / NULLIF(COUNT(*), 0) as micro_trade_ratio
-        FROM transaction_detail
-        WHERE observed_at > now() - interval '30 minutes'
-        GROUP BY pool_id
-      ),
-      txn_windows AS (
-        SELECT 
-          pool_id,
-          COUNT(DISTINCT CASE WHEN observed_at > now() - interval '5 minutes' THEN 1 END) as recent_buys,
-          COUNT(DISTINCT CASE WHEN observed_at > now() - interval '10 minutes' THEN 1 END) as medium_buys,
-          COUNT(DISTINCT CASE WHEN observed_at > now() - interval '15 minutes' THEN 1 END) as older_buys
-        FROM transaction_aggregates
-        GROUP BY pool_id
-      )
       SELECT 
         c.id, t.symbol_label as symbol, t.mint, c.discovered_at,
         EXTRACT(EPOCH FROM (now() - c.discovered_at))/60::int as minutes_old,
@@ -41,21 +20,16 @@ export async function GET() {
         COALESCE((SELECT sells FROM transaction_aggregates WHERE pool_id = c.pool_id ORDER BY observed_at DESC LIMIT 1), 0)::int as total_sells,
         COALESCE((SELECT buys::numeric FROM transaction_aggregates WHERE pool_id = c.pool_id ORDER BY observed_at DESC LIMIT 1) / 
                  NULLIF((SELECT (buys + sells)::numeric FROM transaction_aggregates WHERE pool_id = c.pool_id ORDER BY observed_at DESC LIMIT 1), 0), 0.5)::float as buy_ratio,
-        COALESCE((SELECT COUNT(*) FROM holder_snapshots WHERE pool_id = c.pool_id), 0)::int as holder_count,
+        COALESCE((SELECT COUNT(*) FROM holder_snapshots WHERE holder_snapshots.pool_id = c.pool_id), 0)::int as holder_count,
         (oe.intel->'flags'->>'mintAuthorityActive')::boolean as mint_auth,
         (oe.intel->'flags'->>'freezeAuthorityActive')::boolean as freeze_auth,
         (oe.intel->'onChain'->>'holderTop10Pct')::float as holder_top10_pct,
-        COALESCE(tw.recent_buys, 0)::int as buy_consistency_score,
-        COALESCE(ta.micro_trade_ratio, 0)::float as micro_trade_ratio,
-        COALESCE(ta.unique_buyers, 1)::int as unique_buyers,
-        COALESCE(ta.total_txns, 1)::int as total_txns
+        COALESCE((SELECT COUNT(DISTINCT CASE WHEN observed_at > now() - interval '5 minutes' THEN 1 END) FROM transaction_aggregates WHERE transaction_aggregates.pool_id = c.pool_id), 0)::int as buy_consistency_score
       FROM candidates c
       JOIN tokens t ON t.id = c.token_id
       LEFT JOIN onchain_enrichment oe ON oe.candidate_id = c.id
       LEFT JOIN LATERAL (SELECT price_usd, market_cap_usd FROM prices WHERE pool_id = c.pool_id ORDER BY observed_at DESC LIMIT 1) pr ON true
       LEFT JOIN LATERAL (SELECT liquidity_usd FROM liquidity_snapshots WHERE pool_id = c.pool_id ORDER BY observed_at DESC LIMIT 1) lq ON true
-      LEFT JOIN txn_windows tw ON tw.pool_id = c.pool_id
-      LEFT JOIN txn_analysis ta ON ta.pool_id = c.pool_id
       WHERE c.discovered_at > now() - interval '7 days'
         AND c.current_state <> 'EXPIRED'
       ORDER BY c.discovered_at DESC
@@ -69,9 +43,6 @@ export async function GET() {
         const liqRatio = Number(c.liq_ratio || 0);
         const growthRate = mcap / minutesOld;
         const buyRatio = Number(c.buy_ratio || 0.5);
-        const microTradeRatio = Number(c.micro_trade_ratio || 0);
-        const uniqueBuyers = Number(c.unique_buyers || 1);
-        const totalTxns = Number(c.total_txns || 1);
         
         // REJECT: Pump patterns
         if (growthRate > 5000 && minutesOld < 10) return false;
@@ -84,12 +55,9 @@ export async function GET() {
         // REJECT: Whale-only
         if (Number(c.holder_count || 0) < 5 && minutesOld > 20) return false;
         
-        // NEW: WASH TRADE DETECTION
-        // Constant micro-trades (0.01, 0.01, 0.01...) = bot spam
-        if (microTradeRatio > 0.8 && minutesOld < 60) return false;
-        
-        // Bot pattern: high txn volume but few unique buyers = wash trading
-        if (totalTxns > 100 && uniqueBuyers < 5) return false;
+        // REJECT: Suspicious - high mcap but very few trades = manipulation or dump in progress
+        const totalTxns = (c.total_buys || 0) + (c.total_sells || 0);
+        if (mcap > 50000 && totalTxns < 10 && minutesOld > 60) return false;
         
         return true;
       })
