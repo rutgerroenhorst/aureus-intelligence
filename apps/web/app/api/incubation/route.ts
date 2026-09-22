@@ -68,13 +68,16 @@ export async function GET() {
         
         const hasNoAuthority = !c.mint_auth && !c.freeze_auth;
         const hasOneAuthority = (c.mint_auth && !c.freeze_auth) || (!c.mint_auth && c.freeze_auth);
-        if (hasNoAuthority) score += 30;
-        else if (hasOneAuthority) score += 15;
+        const hasAnyAuthority = c.mint_auth || c.freeze_auth;
+        if (hasNoAuthority) score += 40;
+        else if (hasOneAuthority) score += 10;
+        else if (hasAnyAuthority) score -= 15;
         
         const holderTop10 = c.holder_top10_pct || 50;
-        if (holderTop10 < 5) score += 20;
-        else if (holderTop10 < 10) score += 12;
-        else if (holderTop10 < 20) score += 5;
+        if (holderTop10 < 3) score += 25;
+        else if (holderTop10 < 5) score += 15;
+        else if (holderTop10 < 10) score += 8;
+        else if (holderTop10 < 20) score += 3;
         
         const liquidity = c.liquidity_usd || 0;
         if (liquidity > 5000) score += 10;
