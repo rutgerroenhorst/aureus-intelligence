@@ -1,15 +1,15 @@
 {
-  "/page": "app/page.js",
-  "/today/page": "app/today/page.js",
-  "/api/elite-validator/route": "app/api/elite-validator/route.js",
-  "/api/incubation/route": "app/api/incubation/route.js",
   "/radar/page": "app/radar/page.js",
-  "/api/signals/route": "app/api/signals/route.js",
+  "/api/incubation/route": "app/api/incubation/route.js",
   "/api/candidates/route": "app/api/candidates/route.js",
+  "/api/elite-validator/route": "app/api/elite-validator/route.js",
+  "/api/signals/route": "app/api/signals/route.js",
+  "/api/ultra-early/route": "app/api/ultra-early/route.js",
   "/api/telemetry/route": "app/api/telemetry/route.js",
-  "/api/trends/route": "app/api/trends/route.js",
-  "/api/positions/route": "app/api/positions/route.js",
   "/api/performance/route": "app/api/performance/route.js",
+  "/today/page": "app/today/page.js",
+  "/api/positions/route": "app/api/positions/route.js",
   "/api/momentum/route": "app/api/momentum/route.js",
-  "/api/ultra-early/route": "app/api/ultra-early/route.js"
+  "/api/trends/route": "app/api/trends/route.js",
+  "/page": "app/page.js"
 }

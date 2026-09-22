@@ -14,13 +14,17 @@ export async function GET() {
         COALESCE(pr.price_usd, 0) as price_usd,
         COALESCE(pr.market_cap_usd, 0) as market_cap_usd,
         COALESCE(lq.liquidity_usd, 0) as liquidity_usd,
+        COALESCE(lq_peak.liquidity_usd, lq.liquidity_usd, 0) as peak_liquidity_usd,
         COALESCE(pr_first.price_usd, pr.price_usd, 0) as discovery_price_usd,
         COALESCE((SELECT buys FROM transaction_aggregates WHERE pool_id = c.pool_id AND observed_at > c.discovered_at AND observed_at <= c.discovered_at + interval '5 minutes' ORDER BY observed_at DESC LIMIT 1), 0)::int as buys_5m,
         COALESCE((SELECT buys FROM transaction_aggregates WHERE pool_id = c.pool_id ORDER BY observed_at DESC LIMIT 1), 0)::int as total_buys,
         COALESCE((SELECT sells FROM transaction_aggregates WHERE pool_id = c.pool_id ORDER BY observed_at DESC LIMIT 1), 0)::int as total_sells,
         COALESCE((SELECT sells FROM transaction_aggregates WHERE pool_id = c.pool_id AND observed_at > now() - interval '10 minutes' ORDER BY observed_at DESC LIMIT 1), 0)::int as sells_10m,
+        COALESCE((SELECT COUNT(*) FROM transaction_detail WHERE pool_id = c.pool_id AND observed_at > now() - interval '30 minutes'), 0)::int as txn_30m,
+        COALESCE((SELECT COUNT(*) FROM transaction_detail WHERE pool_id = c.pool_id AND observed_at > now() - interval '60 minutes'), 0)::int as txn_60m,
         COALESCE((SELECT buys::numeric FROM transaction_aggregates WHERE pool_id = c.pool_id ORDER BY observed_at DESC LIMIT 1) /
                  NULLIF((SELECT (buys + sells)::numeric FROM transaction_aggregates WHERE pool_id = c.pool_id ORDER BY observed_at DESC LIMIT 1), 0), 0.5)::float as buy_ratio,
+        EXTRACT(EPOCH FROM (now() - (SELECT observed_at FROM transaction_detail WHERE pool_id = c.pool_id ORDER BY observed_at DESC LIMIT 1)))/60::int as minutes_since_last_txn,
         (oe.intel->'flags'->>'mintAuthorityActive')::boolean as mint_auth,
         (oe.intel->'flags'->>'freezeAuthorityActive')::boolean as freeze_auth,
         (oe.intel->'onChain'->>'holderTop10Pct')::float as holder_top10_pct
@@ -30,6 +34,7 @@ export async function GET() {
       LEFT JOIN LATERAL (SELECT price_usd, market_cap_usd FROM prices WHERE pool_id = c.pool_id ORDER BY observed_at DESC LIMIT 1) pr ON true
       LEFT JOIN LATERAL (SELECT price_usd FROM prices WHERE pool_id = c.pool_id AND observed_at >= c.discovered_at ORDER BY observed_at ASC LIMIT 1) pr_first ON true
       LEFT JOIN LATERAL (SELECT liquidity_usd FROM liquidity_snapshots WHERE pool_id = c.pool_id ORDER BY observed_at DESC LIMIT 1) lq ON true
+      LEFT JOIN LATERAL (SELECT liquidity_usd FROM liquidity_snapshots WHERE pool_id = c.pool_id ORDER BY liquidity_usd DESC LIMIT 1) lq_peak ON true
       WHERE c.discovered_at > now() - interval '48 hours'
         AND c.current_state <> 'EXPIRED'
       ORDER BY c.discovered_at DESC
@@ -38,6 +43,30 @@ export async function GET() {
 
     const scored = result.rows.map((c: any) => {
       const red_flags = [];
+
+      // Dead coin detection
+      const txn30m = c.txn_30m || 0;
+      const txn60m = c.txn_60m || 0;
+      const minutesSinceLastTxn = c.minutes_since_last_txn || 999;
+
+      if (minutesSinceLastTxn > 30) {
+        red_flags.push(`DEAD: No txn for ${minutesSinceLastTxn}m`);
+      } else if (minutesSinceLastTxn > 15) {
+        red_flags.push(`Stagnant: No txn for ${minutesSinceLastTxn}m`);
+      } else if (txn30m < 5) {
+        red_flags.push(`Very low activity: ${txn30m} txn/30m`);
+      }
+
+      // Liquidity drain detection
+      const currentLiquidity = c.liquidity_usd || 0;
+      const peakLiquidity = c.peak_liquidity_usd || currentLiquidity || 1;
+      const liquidityRetention = peakLiquidity > 0 ? currentLiquidity / peakLiquidity : 1;
+
+      if (liquidityRetention < 0.2) {
+        red_flags.push(`Drained: ${(liquidityRetention * 100).toFixed(0)}% liquidity left`);
+      } else if (liquidityRetention < 0.5) {
+        red_flags.push(`Draining: ${(liquidityRetention * 100).toFixed(0)}% liquidity left`);
+      }
 
       // Rug pull detection
       const currentPrice = c.price_usd || 0;
@@ -58,6 +87,12 @@ export async function GET() {
         red_flags.push(`Sell spike: ${sells10m} sells`);
       }
 
+      // Low market cap + other issues = lost cause
+      const mcap = c.market_cap_usd || 0;
+      if (mcap < 5000 && red_flags.length >= 2) {
+        red_flags.push("LOST CAUSE: Low mcap + multiple issues");
+      }
+
       const hasNoAuthority = !c.mint_auth && !c.freeze_auth;
       if (!hasNoAuthority) red_flags.push("Has mint/freeze authority");
 
@@ -71,6 +106,15 @@ export async function GET() {
       if (liquidity < 1000) red_flags.push("Low liquidity");
 
       let score = 0;
+
+      // Heavily penalize dead coins
+      if (minutesSinceLastTxn > 30) score -= 200;
+      else if (minutesSinceLastTxn > 15) score -= 100;
+      else if (txn30m < 5) score -= 80;
+
+      // Penalize liquidity drain
+      if (liquidityRetention < 0.2) score -= 150;
+      else if (liquidityRetention < 0.5) score -= 75;
 
       // Penalize coins showing dump signs
       if (priceVelocity < 0.3) score -= 100;
@@ -111,6 +155,9 @@ export async function GET() {
         tier,
         red_flags: red_flags.length > 0 ? red_flags : undefined,
         price_velocity: priceVelocity.toFixed(3),
+        liquidity_retention: (liquidityRetention * 100).toFixed(0),
+        activity_30m: txn30m,
+        minutes_since_activity: minutesSinceLastTxn,
         buy_ratio: (buyRatio * 100).toFixed(1),
         time_to_act: Math.max(0, 12 - minutesOld),
       };
