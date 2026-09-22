@@ -24,15 +24,24 @@ export default function RadarPageElite() {
   const [trends, setTrends] = useState<any[]>([]);
   const [momentum, setMomentum] = useState<any[]>([]);
   const [performance, setPerformance] = useState<any>(null);
+  const [networks, setNetworks] = useState<any[]>([]);
+  const [selectedChain, setSelectedChain] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>("signals");
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const formatMcap = (mcap: number | null | undefined) => {
+    if (!mcap || mcap === 0) return "$0";
+    if (mcap >= 1_000_000) return `$${(mcap / 1_000_000).toFixed(1)}m`;
+    if (mcap >= 1_000) return `$${(mcap / 1_000).toFixed(0)}k`;
+    return `$${mcap.toFixed(0)}`;
+  };
 
   useEffect(() => {
     const fetchAll = async () => {
       try {
         setIsRefreshing(true);
-        const [candRes, eliteRes, ultRes, incRes, signalsRes, posRes, trendsRes, momRes, perfRes] = await Promise.all([
+        const [candRes, eliteRes, ultRes, incRes, signalsRes, posRes, trendsRes, momRes, perfRes, netRes] = await Promise.all([
           fetch("/api/candidates"),
           fetch("/api/elite-validator"),
           fetch("/api/ultra-early"),
@@ -42,6 +51,7 @@ export default function RadarPageElite() {
           fetch("/api/trends"),
           fetch("/api/momentum"),
           fetch("/api/performance"),
+          fetch("/api/network-sentiment"),
         ]);
 
         if (candRes.ok) setCandidates(await candRes.json().then(d => d.candidates || []));
@@ -57,6 +67,7 @@ export default function RadarPageElite() {
         if (trendsRes.ok) setTrends(await trendsRes.json().then(d => d.candidates || []));
         if (momRes.ok) setMomentum(await momRes.json().then(d => d.candidates || []));
         if (perfRes.ok) setPerformance(await perfRes.json().then(d => d.metrics || {}));
+        if (netRes.ok) setNetworks(await netRes.json().then(d => d.networks || []));
 
         setLastUpdate(new Date());
       } catch (err) {
@@ -152,7 +163,7 @@ export default function RadarPageElite() {
             Dex
           </button>
           <div style={{ textAlign: "right", marginLeft: "12px", whiteSpace: "nowrap" }}>
-            <div style={{ fontSize: "13px", fontWeight: 700, color: color }}>${mcap.toFixed(0)}</div>
+            <div style={{ fontSize: "13px", fontWeight: 700, color: color }}>{formatMcap(mcap)}</div>
           </div>
         </div>
       </div>
@@ -167,6 +178,26 @@ export default function RadarPageElite() {
           <div style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#34c759" }} />
           <span style={{ color: "#8a8a8e" }}>{isRefreshing ? "Scanning..." : "Live"}</span>
           {lastUpdate && <span style={{ color: "#6f6f73", fontSize: "11px" }}>{Math.round((Date.now() - lastUpdate.getTime()) / 1000)}s ago</span>}
+        </div>
+        <div style={{ display: "flex", gap: "6px" }}>
+          {networks.slice(0, 5).map((net: any) => (
+            <button
+              key={net.chain}
+              onClick={() => setSelectedChain(selectedChain === net.chain ? null : net.chain)}
+              style={{
+                padding: "6px 12px",
+                fontSize: "11px",
+                background: selectedChain === net.chain ? net.status === "FIRE" ? "#ff0000" : net.status === "HOT" ? "#ff6b00" : "#666" : "#1a1a1f",
+                border: `1px solid ${net.status === "FIRE" ? "#ff0000" : net.status === "HOT" ? "#ff6b00" : net.status === "WARM" ? "#ffa500" : "#2a2a2f"}`,
+                borderRadius: "4px",
+                color: net.status === "FIRE" ? "#ff0000" : net.status === "HOT" ? "#ff6b00" : net.status === "WARM" ? "#ffa500" : "#8a8a8e",
+                cursor: "pointer",
+                fontWeight: 600,
+              }}
+            >
+              {net.chain} {net.status === "FIRE" ? "🔥" : net.status === "HOT" ? "🔥" : ""}
+            </button>
+          ))}
         </div>
       </div>
 
