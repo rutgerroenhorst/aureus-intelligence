@@ -16,10 +16,13 @@ export async function GET() {
         COALESCE(lq.liquidity_usd, 0) as liquidity_usd,
         COALESCE(lq_peak.liquidity_usd, lq.liquidity_usd, 0) as peak_liquidity_usd,
         COALESCE(pr_first.price_usd, pr.price_usd, 0) as discovery_price_usd,
+        COALESCE(pr_peak.price_usd, pr.price_usd, 0) as peak_price_usd,
         COALESCE((SELECT buys FROM transaction_aggregates WHERE pool_id = c.pool_id AND observed_at > c.discovered_at AND observed_at <= c.discovered_at + interval '5 minutes' ORDER BY observed_at DESC LIMIT 1), 0)::int as buys_5m,
         COALESCE((SELECT buys FROM transaction_aggregates WHERE pool_id = c.pool_id ORDER BY observed_at DESC LIMIT 1), 0)::int as total_buys,
         COALESCE((SELECT sells FROM transaction_aggregates WHERE pool_id = c.pool_id ORDER BY observed_at DESC LIMIT 1), 0)::int as total_sells,
         COALESCE((SELECT sells FROM transaction_aggregates WHERE pool_id = c.pool_id AND observed_at > now() - interval '10 minutes' ORDER BY observed_at DESC LIMIT 1), 0)::int as sells_10m,
+        COALESCE((SELECT COUNT(*) FROM transaction_detail WHERE pool_id = c.pool_id AND observed_at > now() - interval '5 minutes'), 0)::int as txn_5m,
+        COALESCE((SELECT COUNT(*) FROM transaction_detail WHERE pool_id = c.pool_id AND observed_at > now() - interval '10 minutes'), 0)::int as txn_10m,
         COALESCE((SELECT COUNT(*) FROM transaction_detail WHERE pool_id = c.pool_id AND observed_at > now() - interval '30 minutes'), 0)::int as txn_30m,
         COALESCE((SELECT COUNT(*) FROM transaction_detail WHERE pool_id = c.pool_id AND observed_at > now() - interval '60 minutes'), 0)::int as txn_60m,
         COALESCE((SELECT buys::numeric FROM transaction_aggregates WHERE pool_id = c.pool_id ORDER BY observed_at DESC LIMIT 1) /
@@ -33,6 +36,7 @@ export async function GET() {
       LEFT JOIN onchain_enrichment oe ON oe.candidate_id = c.id
       LEFT JOIN LATERAL (SELECT price_usd, market_cap_usd FROM prices WHERE pool_id = c.pool_id ORDER BY observed_at DESC LIMIT 1) pr ON true
       LEFT JOIN LATERAL (SELECT price_usd FROM prices WHERE pool_id = c.pool_id AND observed_at >= c.discovered_at ORDER BY observed_at ASC LIMIT 1) pr_first ON true
+      LEFT JOIN LATERAL (SELECT price_usd FROM prices WHERE pool_id = c.pool_id ORDER BY price_usd DESC LIMIT 1) pr_peak ON true
       LEFT JOIN LATERAL (SELECT liquidity_usd FROM liquidity_snapshots WHERE pool_id = c.pool_id ORDER BY observed_at DESC LIMIT 1) lq ON true
       LEFT JOIN LATERAL (SELECT liquidity_usd FROM liquidity_snapshots WHERE pool_id = c.pool_id ORDER BY liquidity_usd DESC LIMIT 1) lq_peak ON true
       WHERE c.discovered_at > now() - interval '48 hours'
@@ -43,11 +47,24 @@ export async function GET() {
 
     const scored = result.rows.map((c: any) => {
       const red_flags = [];
+      const minutesOld = c.minutes_old || 0;
+
+      // Age gate: too young = risky (before early pumpers exit)
+      if (minutesOld < 5) {
+        red_flags.push(`TOO YOUNG: Only ${minutesOld}m old (risky)`);
+      }
 
       // Dead coin detection
+      const txn5m = c.txn_5m || 0;
+      const txn10m = c.txn_10m || 0;
       const txn30m = c.txn_30m || 0;
       const txn60m = c.txn_60m || 0;
       const minutesSinceLastTxn = c.minutes_since_last_txn || 999;
+
+      // Volume cliff: activity drops from 50+ to <5 txn (pump & dump)
+      if (txn10m > 20 && txn5m < 3) {
+        red_flags.push(`CLIFF: Activity dropped from ${txn10m} → ${txn5m} txn`);
+      }
 
       if (minutesSinceLastTxn > 30) {
         red_flags.push(`DEAD: No txn for ${minutesSinceLastTxn}m`);
@@ -68,21 +85,38 @@ export async function GET() {
         red_flags.push(`Draining: ${(liquidityRetention * 100).toFixed(0)}% liquidity left`);
       }
 
-      // Rug pull detection
+      // Momentum reversal: peaked and now dumping (classic pump & dump)
       const currentPrice = c.price_usd || 0;
+      const peakPrice = c.peak_price_usd || currentPrice || 1;
       const discoveryPrice = c.discovery_price_usd || currentPrice || 1;
       const priceVelocity = discoveryPrice > 0 ? currentPrice / discoveryPrice : 1;
-      const priceDropPct = Math.max(0, (1 - priceVelocity) * 100);
+      const peakToCurrentDrop = peakPrice > 0 ? (1 - currentPrice / peakPrice) * 100 : 0;
+      const peakGain = discoveryPrice > 0 ? (peakPrice / discoveryPrice - 1) * 100 : 0;
 
+      // Detect if peaked and crashed (pump & dump signature)
+      if (peakGain > 50 && peakToCurrentDrop > 40) {
+        red_flags.push(`DUMP PATTERN: Peaked +${peakGain.toFixed(0)}%, now -${peakToCurrentDrop.toFixed(0)}%`);
+      }
+
+      const priceDropPct = Math.max(0, (1 - priceVelocity) * 100);
       if (priceVelocity < 0.5) {
         red_flags.push(`DUMP: Price -${priceDropPct.toFixed(0)}% from discovery`);
       } else if (priceVelocity < 0.75) {
         red_flags.push(`Price down ${priceDropPct.toFixed(0)}%`);
       }
 
+      // Sell-to-buy ratio: overall dump pressure
       const totalBuys = c.total_buys || 1;
       const totalSells = c.total_sells || 0;
+      const sellToBuyRatio = totalSells / Math.max(1, totalBuys);
       const sells10m = c.sells_10m || 0;
+
+      if (sellToBuyRatio > 1.5) {
+        red_flags.push(`DUMP PRESSURE: ${sellToBuyRatio.toFixed(1)}x more sells than buys`);
+      } else if (sellToBuyRatio > 1.0) {
+        red_flags.push(`Sell pressure: ${sellToBuyRatio.toFixed(1)}x sell-to-buy`);
+      }
+
       if (sells10m > totalBuys * 0.5 && sells10m > 3) {
         red_flags.push(`Sell spike: ${sells10m} sells`);
       }
@@ -107,6 +141,12 @@ export async function GET() {
 
       let score = 0;
 
+      // Age penalty: too young = risky
+      if (minutesOld < 5) score -= 150;
+
+      // Volume cliff: major dump signature
+      if (txn10m > 20 && txn5m < 3) score -= 200;
+
       // Heavily penalize dead coins
       if (minutesSinceLastTxn > 30) score -= 200;
       else if (minutesSinceLastTxn > 15) score -= 100;
@@ -115,6 +155,13 @@ export async function GET() {
       // Penalize liquidity drain
       if (liquidityRetention < 0.2) score -= 150;
       else if (liquidityRetention < 0.5) score -= 75;
+
+      // Momentum reversal: peaked and dumped
+      if (peakGain > 50 && peakToCurrentDrop > 40) score -= 180;
+
+      // Dump pressure (sell-to-buy ratio)
+      if (sellToBuyRatio > 1.5) score -= 100;
+      else if (sellToBuyRatio > 1.0) score -= 50;
 
       // Penalize coins showing dump signs
       if (priceVelocity < 0.3) score -= 100;
@@ -140,7 +187,6 @@ export async function GET() {
       if (liquidity > 5000) score += 10;
       else if (liquidity > 1000) score += 5;
 
-      const minutesOld = c.minutes_old || 0;
       if (minutesOld < 3) score += 15;
       else if (minutesOld < 6) score += 10;
 
@@ -155,7 +201,12 @@ export async function GET() {
         tier,
         red_flags: red_flags.length > 0 ? red_flags : undefined,
         price_velocity: priceVelocity.toFixed(3),
+        peak_gain_pct: peakGain.toFixed(1),
+        peak_to_current_drop_pct: peakToCurrentDrop.toFixed(1),
+        sell_to_buy_ratio: sellToBuyRatio.toFixed(2),
         liquidity_retention: (liquidityRetention * 100).toFixed(0),
+        activity_5m: txn5m,
+        activity_10m: txn10m,
         activity_30m: txn30m,
         minutes_since_activity: minutesSinceLastTxn,
         buy_ratio: (buyRatio * 100).toFixed(1),
