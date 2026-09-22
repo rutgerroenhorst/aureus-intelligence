@@ -21,11 +21,11 @@ export async function GET() {
       LEFT JOIN onchain_enrichment oe ON oe.candidate_id = c.id
       LEFT JOIN LATERAL (SELECT market_cap_usd FROM prices WHERE pool_id = c.pool_id ORDER BY observed_at DESC LIMIT 1) pr ON true
       LEFT JOIN LATERAL (SELECT liquidity_usd FROM liquidity_snapshots WHERE pool_id = c.pool_id ORDER BY observed_at DESC LIMIT 1) lq ON true
-      WHERE c.discovered_at > now() - interval '48 hours' 
+      WHERE c.discovered_at > now() - interval '30 minutes' 
         AND COALESCE(pr.market_cap_usd, 0) >= 5000
         AND c.current_state <> 'EXPIRED'
       ORDER BY c.discovered_at DESC
-      LIMIT 500
+      LIMIT 50
     `);
     
     const signals = result.rows.map((c: any) => {

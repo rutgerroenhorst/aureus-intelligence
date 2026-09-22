@@ -11,10 +11,10 @@ export async function GET() {
       SELECT
         c.chain,
         COUNT(DISTINCT c.id) as total_candidates,
-        COALESCE((SELECT COUNT(*) FROM transaction_detail WHERE pool_id IN (SELECT pool_id FROM candidates WHERE chain = c.chain) AND observed_at > now() - interval '1 hour' AND is_buy = true), 0)::int as buys_1h,
-        COALESCE((SELECT COUNT(*) FROM transaction_detail WHERE pool_id IN (SELECT pool_id FROM candidates WHERE chain = c.chain) AND observed_at > now() - interval '1 hour'), 0)::int as txn_1h,
+        COALESCE((SELECT SUM(buys) FROM transaction_aggregates WHERE pool_id IN (SELECT pool_id FROM candidates WHERE chain = c.chain) AND observed_at > now() - interval '1 hour'), 0)::int as buys_1h,
+        COALESCE((SELECT SUM(buys + sells) FROM transaction_aggregates WHERE pool_id IN (SELECT pool_id FROM candidates WHERE chain = c.chain) AND observed_at > now() - interval '1 hour'), 0)::int as txn_1h,
         COALESCE((SELECT SUM(COALESCE(pr.market_cap_usd, 0)) FROM candidates c2 JOIN LATERAL (SELECT market_cap_usd FROM prices WHERE pool_id = c2.pool_id ORDER BY observed_at DESC LIMIT 1) pr ON true WHERE c2.chain = c.chain AND c2.discovered_at > now() - interval '24 hours'), 0)::numeric as volume_24h_usd,
-        COALESCE((SELECT COUNT(DISTINCT from_addr) FROM transaction_detail WHERE pool_id IN (SELECT pool_id FROM candidates WHERE chain = c.chain) AND observed_at > now() - interval '1 hour' AND is_buy = true), 0)::int as unique_buyers_1h
+        COALESCE((SELECT SUM(buyers) FROM transaction_aggregates WHERE pool_id IN (SELECT pool_id FROM candidates WHERE chain = c.chain) AND observed_at > now() - interval '1 hour'), 0)::int as unique_buyers_1h
       FROM candidates c
       WHERE c.discovered_at > now() - interval '24 hours'
         AND c.current_state <> 'EXPIRED'

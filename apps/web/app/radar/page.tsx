@@ -78,7 +78,7 @@ export default function RadarPageElite() {
     };
 
     fetchAll();
-    const poll = setInterval(fetchAll, 10_000);
+    const poll = setInterval(fetchAll, 5_000);
     return () => clearInterval(poll);
   }, []);
 
@@ -131,7 +131,7 @@ export default function RadarPageElite() {
           <button
             onClick={(e) => {
               e.stopPropagation();
-              window.open(`https://solscan.io/token/${c.mint}`, "_blank");
+              window.location.href = `https://solscan.io/token/${c.mint}`;
             }}
             style={{
               padding: "4px 8px",
@@ -148,7 +148,7 @@ export default function RadarPageElite() {
           <button
             onClick={(e) => {
               e.stopPropagation();
-              window.open(`https://dexscreener.com/solana/${c.mint}`, "_blank");
+              window.location.href = `https://dexscreener.com/solana/${c.mint}`;
             }}
             style={{
               padding: "4px 8px",
@@ -281,16 +281,21 @@ export default function RadarPageElite() {
             <div style={{ color: "#6f6f73", fontSize: "12px", padding: "20px" }}>No S-grade elite coins</div>
           )}
         </div>
+
+      const filterByChain = (coins: any[]) => {
+        if (!selectedChain) return coins;
+        return coins.filter((c: any) => c.chain === selectedChain);
+      };
       )}
 
       {activeTab === "early" && (
         <div>
           {ultraEarlyCandidates.length > 0 || incubationCandidates.length > 0 ? (
             <div>
-              {ultraEarlyCandidates.map((c: any) => (
+              {filterByChain(ultraEarlyCandidates).map((c: any) => (
                 <CoinRow key={c.id} c={c} color="#ff9500" />
               ))}
-              {incubationCandidates.map((c: any) => (
+              {filterByChain(incubationCandidates).map((c: any) => (
                 <CoinRow key={c.id} c={c} color="#ff00ff" />
               ))}
             </div>

@@ -12,10 +12,10 @@ export async function GET() {
         c.id, t.symbol_label as symbol, t.mint, c.discovered_at,
         EXTRACT(EPOCH FROM (now() - c.discovered_at))/60::int as minutes_old,
         COALESCE(pr.market_cap_usd, 0) as market_cap_usd,
-        COALESCE((SELECT COUNT(DISTINCT from_addr) FROM transaction_detail WHERE pool_id = c.pool_id AND is_buy = true AND observed_at > now() - interval '5 minutes'), 0)::int as unique_buyers_5m,
-        COALESCE((SELECT COUNT(DISTINCT from_addr) FROM transaction_detail WHERE pool_id = c.pool_id AND is_buy = true AND observed_at > now() - interval '10 minutes'), 0)::int as unique_buyers_10m,
-        COALESCE((SELECT SUM(CASE WHEN is_buy THEN 1 ELSE 0 END) FROM transaction_detail WHERE pool_id = c.pool_id AND observed_at > now() - interval '1 minute'), 0)::int as buys_1m,
-        COALESCE((SELECT SUM(CASE WHEN is_buy THEN 1 ELSE 0 END) FROM transaction_detail WHERE pool_id = c.pool_id AND observed_at > now() - interval '5 minutes'), 0)::int as buys_5m
+        COALESCE((SELECT SUM(buyers) FROM transaction_aggregates WHERE pool_id = c.pool_id AND observed_at > now() - interval '5 minutes'), 0)::int as unique_buyers_5m,
+        COALESCE((SELECT SUM(buyers) FROM transaction_aggregates WHERE pool_id = c.pool_id AND observed_at > now() - interval '10 minutes'), 0)::int as unique_buyers_10m,
+        COALESCE((SELECT SUM(buys) FROM transaction_aggregates WHERE pool_id = c.pool_id AND observed_at > now() - interval '1 minute'), 0)::int as buys_1m,
+        COALESCE((SELECT SUM(buys) FROM transaction_aggregates WHERE pool_id = c.pool_id AND observed_at > now() - interval '5 minutes'), 0)::int as buys_5m
       FROM candidates c
       JOIN tokens t ON t.id = c.token_id
       LEFT JOIN LATERAL (SELECT market_cap_usd FROM prices WHERE pool_id = c.pool_id ORDER BY observed_at DESC LIMIT 1) pr ON true

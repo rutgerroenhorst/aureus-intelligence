@@ -27,12 +27,12 @@ export async function GET() {
       LEFT JOIN onchain_enrichment oe ON oe.candidate_id = c.id
       LEFT JOIN LATERAL (SELECT price_usd, market_cap_usd FROM prices WHERE pool_id = c.pool_id ORDER BY observed_at DESC LIMIT 1) pr ON true
       LEFT JOIN LATERAL (SELECT liquidity_usd FROM liquidity_snapshots WHERE pool_id = c.pool_id ORDER BY observed_at DESC LIMIT 1) lq ON true
-      WHERE c.discovered_at > now() - interval '48 hours'
+      WHERE c.discovered_at > now() - interval '2 hours'
         AND COALESCE(pr.market_cap_usd, 0) < 100000
         AND COALESCE(pr.market_cap_usd, 0) >= 10000
         AND c.current_state <> 'EXPIRED'
       ORDER BY c.discovered_at DESC
-      LIMIT 200
+      LIMIT 100
     `);
     
     const scored = result.rows.map((c: any) => {
@@ -81,8 +81,9 @@ export async function GET() {
       };
     });
     
+    const filtered = scored.filter((c: any) => c.market_cap_usd >= 10000 && c.market_cap_usd <= 100000 && c.liquidity_usd >= 500);
     return NextResponse.json({
-      candidates: scored.sort((a: any, b: any) => {
+      candidates: filtered.sort((a: any, b: any) => {
         const order: Record<string, number> = { ELITE: 0, HOT: 1, WARM: 2, COLD: 3 };
         return ((order[a.tier] ?? 999) - (order[b.tier] ?? 999)) || (b.score - a.score);
       })

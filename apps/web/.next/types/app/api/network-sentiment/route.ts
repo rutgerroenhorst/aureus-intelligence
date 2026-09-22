@@ -1,8 +1,8 @@
-// File: /Users/rutge/Claude/Projects/business takeoverAI/aureus-intelligence/apps/web/app/api/board/route.ts
-import * as entry from '../../../../../app/api/board/route.js'
+// File: /Users/rutge/Claude/Projects/business takeoverAI/aureus-intelligence/apps/web/app/api/network-sentiment/route.ts
+import * as entry from '../../../../../app/api/network-sentiment/route.js'
 import type { NextRequest } from 'next/server.js'
 
-type TEntry = typeof import('../../../../../app/api/board/route.js')
+type TEntry = typeof import('../../../../../app/api/network-sentiment/route.js')
 
 // Check that the entry is a valid entry
 checkFields<Diff<{
