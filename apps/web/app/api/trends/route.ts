@@ -13,7 +13,9 @@ export async function GET() {
         EXTRACT(EPOCH FROM (now() - c.discovered_at))/60::int as minutes_old,
         COALESCE(pr.market_cap_usd, 0) as market_cap_usd,
         COALESCE(lq.liquidity_usd, 0) as liquidity_usd,
-        COALESCE(pr.market_cap_usd, 0)::numeric / NULLIF(COALESCE(lq.liquidity_usd, 1), 0) as liq_ratio
+        COALESCE(pr.market_cap_usd, 0)::numeric / NULLIF(COALESCE(lq.liquidity_usd, 1), 0) as liq_ratio,
+        COALESCE((SELECT COUNT(*) FROM transaction_aggregates WHERE pool_id = c.pool_id), 0)::int as txn_count,
+        COALESCE((SELECT COUNT(*) FROM holder_snapshots WHERE pool_id = c.pool_id), 0)::int as holder_count
       FROM candidates c
       JOIN tokens t ON t.id = c.token_id
       LEFT JOIN LATERAL (SELECT market_cap_usd FROM prices WHERE pool_id = c.pool_id ORDER BY observed_at DESC LIMIT 1) pr ON true
@@ -30,10 +32,14 @@ export async function GET() {
         const mcap = Number(c.market_cap_usd || 0);
         const liqRatio = Number(c.liq_ratio || 0);
         const growthRate = mcap / minutesOld;
+        const txnCount = Number(c.txn_count || 0);
+        const holderCount = Number(c.holder_count || 0);
         
         if (growthRate > 5000 && minutesOld < 10) return false;
         if (minutesOld > 240 && mcap > 50000 && liqRatio > 50) return false;
         if (mcap > 100000 && liqRatio > 100) return false;
+        if (minutesOld <= 2 && (txnCount > 50 || holderCount > 100)) return false;
+        if (minutesOld <= 5 && (txnCount > 200 || holderCount > 500)) return false;
         
         return true;
       })
