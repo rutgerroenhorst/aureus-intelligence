@@ -88,14 +88,14 @@ export async function GET() {
         const buys_1m = Number(c.buys_1m || 0);
         const volume_1m = Number(c.volume_1m || 1);
         
-        // CRITICAL: Discovery timing (50x are caught 0-5 min old)
-        if (minutesOld < 0.5) score += 150;  // < 30 seconds = PRIME
-        else if (minutesOld < 1) score += 130;
-        else if (minutesOld < 2) score += 110;
-        else if (minutesOld < 5) score += 80;
-        else if (minutesOld < 10) score += 50;
-        else if (minutesOld < 20) score += 25;
-        else score += 10;
+        // CRITICAL: Discovery timing (generational wealth caught 0-2 min old)
+        if (minutesOld < 0.33) score += 200;  // < 20 seconds = LEGENDARY
+        else if (minutesOld < 0.5) score += 180;  // 20-30 sec
+        else if (minutesOld < 1) score += 150;  // < 1 min = PRIME
+        else if (minutesOld < 2) score += 120;  // < 2 min = EXCELLENT
+        else if (minutesOld < 5) score += 70;
+        else if (minutesOld < 10) score += 35;
+        else score += 5;
         
         // AUTHORITIES: No authorities critical
         if (!c.mint_auth && !c.freeze_auth) score += 100;
@@ -145,14 +145,14 @@ export async function GET() {
         else score += 5;
         
         let tier = "COLD";
-        if (score >= 450) tier = "ELITE";
-        else if (score >= 350) tier = "HOT";
-        else if (score >= 250) tier = "WARM";
+        if (score >= 520) tier = "ELITE";  // Raised from 450: must catch within 30sec + all quality metrics
+        else if (score >= 400) tier = "HOT";  // Raised from 350
+        else if (score >= 280) tier = "WARM";  // Raised from 250
         
         return {...c, score, tier, momentum: buys_1m, acceleration: buyRatio_1m};
       });
     
-    const filtered = scored.filter((c: any) => c.score >= 250);
+    const filtered = scored.filter((c: any) => c.score >= 280);
     
     return NextResponse.json(
       {
