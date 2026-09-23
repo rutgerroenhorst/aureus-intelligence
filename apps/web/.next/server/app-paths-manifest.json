@@ -1,7 +1,18 @@
 {
-  "/api/telemetry/route": "app/api/telemetry/route.js",
-  "/api/board/route": "app/api/board/route.js",
   "/radar/page": "app/radar/page.js",
+  "/api/elite-validator/route": "app/api/elite-validator/route.js",
+  "/api/candidates/route": "app/api/candidates/route.js",
+  "/page": "app/page.js",
+  "/api/ultra-early/route": "app/api/ultra-early/route.js",
+  "/api/signals/route": "app/api/signals/route.js",
+  "/api/positions/route": "app/api/positions/route.js",
+  "/api/incubation/route": "app/api/incubation/route.js",
+  "/api/trends/route": "app/api/trends/route.js",
+  "/api/board/route": "app/api/board/route.js",
+  "/api/telemetry/route": "app/api/telemetry/route.js",
+  "/api/network-sentiment/route": "app/api/network-sentiment/route.js",
   "/results/page": "app/results/page.js",
-  "/signals/page": "app/signals/page.js"
+  "/api/performance/route": "app/api/performance/route.js",
+  "/api/momentum/route": "app/api/momentum/route.js",
+  "/today/page": "app/today/page.js"
 }
