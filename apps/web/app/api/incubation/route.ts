@@ -44,31 +44,24 @@ export async function GET() {
         const liqRatio = Number(c.liq_ratio || 0);
         const growthRate = mcap / minutesOld;
         const buyRatio = Number(c.buy_ratio || 0.5);
-        const holders = Number(c.holder_count || 0);
+        const holderCount = Number(c.holder_count || 0);
+        const txnCount = (c.total_buys || 0) + (c.total_sells || 0);
         
-        // REJECT: Pump patterns
         if (growthRate > 5000 && minutesOld < 10) return false;
         if (minutesOld > 360 && mcap > 80000 && liqRatio > 100) return false;
         if (mcap > 80000 && liqRatio > 100) return false;
-        
-        // REJECT: Early dump
         if (buyRatio < 0.4 && minutesOld < 30) return false;
-        
-        // REJECT: Whale-only
-        if (holders < 5 && minutesOld > 20) return false;
-        
-        // SUSPICIOUS: High mcap relative to liquidity (artificial volume)
-        if (mcap > 40000 && liq < 1000) return false; // No real liquidity backing
-        if (mcap > 30000 && liq < 5000 && minutesOld < 120) return false; // Fake-aged coins
-        
-        // SUSPICIOUS: Too high price jump with few holders
-        if (mcap > 50000 && holders < 20 && minutesOld < 60) return false;
+        if (holderCount < 5 && minutesOld > 20) return false;
+        if (minutesOld <= 2 && (txnCount > 50 || holderCount > 100)) return false;
+        if (minutesOld <= 5 && (txnCount > 200 || holderCount > 500)) return false;
+        if (mcap > 40000 && liq < 1000) return false;
+        if (mcap > 30000 && liq < 5000 && minutesOld < 120) return false;
+        if (mcap > 50000 && holderCount < 20 && minutesOld < 60) return false;
         
         return true;
       })
       .map((c: any) => {
         let score = 0;
-        
         const buyRatio = c.buy_ratio || 0.5;
         if (buyRatio > 0.75) score += 25;
         else if (buyRatio > 0.65) score += 20;
@@ -118,22 +111,11 @@ export async function GET() {
         else if (score >= 80) tier = "HOT";
         else if (score >= 60) tier = "WARM";
         
-        return {
-          ...c,
-          score,
-          tier,
-          buy_ratio: (c.buy_ratio * 100).toFixed(1),
-          time_to_act: Math.max(0, 30 - minutesOld),
-        };
+        return {...c, score, tier, buy_ratio: (c.buy_ratio * 100).toFixed(1), time_to_act: Math.max(0, 30 - minutesOld)};
       });
     
     const filtered = scored.filter((c: any) => c.score >= 30);
-    return NextResponse.json({
-      candidates: filtered.sort((a: any, b: any) => {
-        const order: Record<string, number> = { ELITE: 0, HOT: 1, WARM: 2, COLD: 3 };
-        return ((order[a.tier] ?? 999) - (order[b.tier] ?? 999)) || (b.score - a.score);
-      })
-    }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({candidates: filtered.sort((a: any, b: any) => {const order: Record<string, number> = { ELITE: 0, HOT: 1, WARM: 2, COLD: 3 }; return ((order[a.tier] ?? 999) - (order[b.tier] ?? 999)) || (b.score - a.score);})}, { headers: { "Cache-Control": "no-store" } });
   } catch (err) {
     console.error("Incubation error:", err);
     return NextResponse.json({ error: "Failed", candidates: [] }, { status: 200 });

@@ -6,17 +6,12 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   try {
     const pool = getPool();
-
     const result = await pool.query(`
       WITH txn_windows AS (
-        SELECT 
-          pool_id,
-          COUNT(DISTINCT CASE WHEN observed_at > now() - interval '5 minutes' THEN 1 END) as recent_buys
-        FROM transaction_aggregates
-        GROUP BY pool_id
+        SELECT pool_id, COUNT(DISTINCT CASE WHEN observed_at > now() - interval '5 minutes' THEN 1 END) as recent_buys
+        FROM transaction_aggregates GROUP BY pool_id
       )
-      SELECT
-        c.id, t.symbol_label as symbol, t.mint, c.discovered_at,
+      SELECT c.id, t.symbol_label as symbol, t.mint, c.discovered_at,
         EXTRACT(EPOCH FROM (now() - c.discovered_at))/60::int as minutes_old,
         COALESCE(pr.market_cap_usd, 0) as market_cap_usd,
         COALESCE(lq.liquidity_usd, 0) as liquidity_usd,
@@ -28,17 +23,16 @@ export async function GET() {
         (oe.intel->'flags'->>'freezeAuthorityActive')::boolean as freeze_auth,
         (oe.intel->'onChain'->>'holderTop10Pct')::float as holder_top10_pct,
         COALESCE(tw.recent_buys, 0)::int as buy_consistency_score,
-        COALESCE((SELECT COUNT(*) FROM transaction_aggregates WHERE transaction_aggregates.pool_id = c.pool_id), 0)::int as txn_count
+        COALESCE((SELECT buys FROM transaction_aggregates WHERE transaction_aggregates.pool_id = c.pool_id ORDER BY observed_at DESC LIMIT 1), 0)::int as total_buys,
+        COALESCE((SELECT sells FROM transaction_aggregates WHERE transaction_aggregates.pool_id = c.pool_id ORDER BY observed_at DESC LIMIT 1), 0)::int as total_sells
       FROM candidates c
       JOIN tokens t ON t.id = c.token_id
       LEFT JOIN onchain_enrichment oe ON oe.candidate_id = c.id
       LEFT JOIN LATERAL (SELECT market_cap_usd FROM prices WHERE pool_id = c.pool_id ORDER BY observed_at DESC LIMIT 1) pr ON true
       LEFT JOIN LATERAL (SELECT liquidity_usd FROM liquidity_snapshots WHERE pool_id = c.pool_id ORDER BY observed_at DESC LIMIT 1) lq ON true
       LEFT JOIN txn_windows tw ON tw.pool_id = c.pool_id
-      WHERE c.discovered_at > now() - interval '7 days'
-        AND c.current_state <> 'EXPIRED'
-      ORDER BY c.discovered_at DESC
-      LIMIT 100
+      WHERE c.discovered_at > now() - interval '7 days' AND c.current_state <> 'EXPIRED'
+      ORDER BY c.discovered_at DESC LIMIT 100
     `);
 
     const candidates = result.rows
@@ -49,29 +43,24 @@ export async function GET() {
         const liqRatio = Number(c.liq_ratio || 0);
         const growthRate = mcap / minutesOld;
         const buyRatio = Number(c.buy_ratio || 0.5);
-        const holders = Number(c.holder_count || 0);
+        const holderCount = Number(c.holder_count || 0);
+        const txnCount = (c.total_buys || 0) + (c.total_sells || 0);
         
-        // Pump pattern rejection
         if (growthRate > 5000 && minutesOld < 10) return false;
         if (minutesOld > 240 && mcap > 50000 && liqRatio > 50) return false;
         if (mcap > 100000 && liqRatio > 100) return false;
-        
-        // Early dump indicator
         if (buyRatio < 0.4 && minutesOld < 30) return false;
-        
-        // Whale-only (low holder count = concentrated)
-        if (holders < 3 && minutesOld > 10) return false;
-        
-        // SUSPICIOUS: High mcap with weak fundamentals
+        if (holderCount < 3 && minutesOld > 10) return false;
+        if (minutesOld <= 2 && (txnCount > 50 || holderCount > 100)) return false;
+        if (minutesOld <= 5 && (txnCount > 200 || holderCount > 500)) return false;
         if (mcap > 40000 && liq < 1000) return false;
         if (mcap > 30000 && liq < 5000 && minutesOld < 120) return false;
-        if (mcap > 50000 && holders < 20 && minutesOld < 60) return false;
+        if (mcap > 50000 && holderCount < 20 && minutesOld < 60) return false;
         
         return true;
       })
       .map((c: any) => {
         let score = 0;
-        
         const buyRatio = Number(c.buy_ratio || 0.5);
         if (buyRatio > 0.75) score += 20;
         else if (buyRatio > 0.65) score += 15;
@@ -92,11 +81,7 @@ export async function GET() {
         else if (holderTop10 < 5) score += 12;
         else score -= 5;
         
-        return {
-          ...c,
-          tier: "EARLY",
-          score: Math.max(0, score),
-        };
+        return {...c, tier: "EARLY", score: Math.max(0, score)};
       });
 
     return NextResponse.json(

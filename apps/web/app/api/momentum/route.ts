@@ -26,37 +26,30 @@ export async function GET() {
       LIMIT 150
     `);
     
-    return NextResponse.json({
-      candidates: result.rows
-        .filter((c: any) => {
-          const minutesOld = c.minutes_old || 1;
-          const mcap = Number(c.market_cap_usd || 0);
-          const liq = Number(c.liquidity_usd || 0);
-          const liqRatio = Number(c.liq_ratio || 0);
-          const growthRate = mcap / minutesOld;
-          const txnCount = Number(c.txn_count || 0);
-          const holderCount = Number(c.holder_count || 0);
-          
-          if (growthRate > 5000 && minutesOld < 10) return false;
-          if (minutesOld > 240 && mcap > 50000 && liqRatio > 50) return false;
-          if (mcap > 100000 && liqRatio > 100) return false;
-          if (minutesOld <= 2 && (txnCount > 50 || holderCount > 100)) return false;
-          if (minutesOld <= 5 && (txnCount > 200 || holderCount > 500)) return false;
-          
-          // SUSPICIOUS: High mcap with weak fundamentals = wash trade / manipulation
-          if (mcap > 40000 && liq < 1000) return false;
-          if (mcap > 30000 && liq < 5000 && minutesOld < 120) return false;
-          if (mcap > 50000 && holderCount < 20 && minutesOld < 60) return false;
-          
-          return true;
-        })
-        .map((c: any) => ({
-          ...c,
-          phase: "active",
-          strength: "moderate",
-          confidence: 50,
-        })),
-    });
+    const candidates = result.rows
+      .filter((c: any) => {
+        const minutesOld = c.minutes_old || 1;
+        const mcap = Number(c.market_cap_usd || 0);
+        const liq = Number(c.liquidity_usd || 0);
+        const liqRatio = Number(c.liq_ratio || 0);
+        const growthRate = mcap / minutesOld;
+        const txnCount = Number(c.txn_count || 0);
+        const holderCount = Number(c.holder_count || 0);
+        
+        if (growthRate > 5000 && minutesOld < 10) return false;
+        if (minutesOld > 240 && mcap > 50000 && liqRatio > 50) return false;
+        if (mcap > 100000 && liqRatio > 100) return false;
+        if (minutesOld <= 2 && (txnCount > 50 || holderCount > 100)) return false;
+        if (minutesOld <= 5 && (txnCount > 200 || holderCount > 500)) return false;
+        
+        if (mcap > 40000 && liq < 1000) return false;
+        if (mcap > 30000 && liq < 5000 && minutesOld < 120) return false;
+        if (mcap > 50000 && holderCount < 20 && minutesOld < 60) return false;
+        
+        return true;
+      });
+      
+    return NextResponse.json({ candidates }, { headers: { "Cache-Control": "no-store" } });
   } catch (err) {
     console.error("Error:", err);
     return NextResponse.json({ candidates: [] }, { status: 200 });
