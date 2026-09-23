@@ -1,6 +1,7 @@
 {
+  "/api/telemetry/route": "app/api/telemetry/route.js",
+  "/api/board/route": "app/api/board/route.js",
   "/radar/page": "app/radar/page.js",
   "/results/page": "app/results/page.js",
-  "/api/telemetry/route": "app/api/telemetry/route.js",
   "/signals/page": "app/signals/page.js"
 }
