@@ -29,7 +29,8 @@ export async function GET() {
         COALESCE((SELECT buys::numeric FROM transaction_aggregates WHERE pool_id = c.pool_id ORDER BY observed_at DESC LIMIT 1) / 
                  NULLIF((SELECT (buys + sells)::numeric FROM transaction_aggregates WHERE pool_id = c.pool_id ORDER BY observed_at DESC LIMIT 1), 0), 0.5)::float as buy_ratio,
         COALESCE((SELECT buys FROM transaction_aggregates WHERE pool_id = c.pool_id AND observed_at > now() - interval '1 minute' ORDER BY observed_at DESC LIMIT 1), 0)::int as buys_1m,
-        COALESCE((SELECT (buys + sells) FROM transaction_aggregates WHERE pool_id = c.pool_id AND observed_at > now() - interval '1 minute' ORDER BY observed_at DESC LIMIT 1), 1)::int as volume_1m
+        COALESCE((SELECT (buys + sells) FROM transaction_aggregates WHERE pool_id = c.pool_id AND observed_at > now() - interval '1 minute' ORDER BY observed_at DESC LIMIT 1), 1)::int as volume_1m,
+        COALESCE((SELECT COUNT(*) FROM transaction_aggregates WHERE pool_id = c.pool_id), 0)::int as txn_count
       FROM candidates c
       JOIN tokens t ON t.id = c.token_id
       LEFT JOIN onchain_enrichment oe ON oe.candidate_id = c.id
@@ -49,27 +50,13 @@ export async function GET() {
         const holderCount = Number(c.holder_count || 0);
         const holderTop10 = c.holder_top10_pct || 100;
         const buyRatio = Number(c.buy_ratio || 0.5);
-        const totalBuys = Number(c.total_buys || 0);
-        const totalSells = Number(c.total_sells || 0);
-        const volume_1m = Number(c.volume_1m || 1);
         
-        // MUST HAVE: NO authorities
         if (c.mint_auth || c.freeze_auth) return false;
-        
-        // MUST HAVE: Distributed holders
         if (holderTop10 > 5) return false;
-        if (holderCount < 5) return false;  // Lower bar for ultra-early
-        
-        // MUST HAVE: Some liquidity
-        if (liq < 500) return false;  // Can be thin at discovery
-        
-        // MUST HAVE: Real buy pressure
+        if (holderCount < 5) return false;
+        if (liq < 500) return false;
         if (buyRatio < 0.6) return false;
-        
-        // ULTRA-EARLY ONLY: <30 minutes
         if (minutesOld > 30) return false;
-        
-        // MUST BE: Micro-cap
         if (mcap < 5000 || mcap > 100000) return false;
         
         return true;
@@ -87,74 +74,70 @@ export async function GET() {
         const totalSells = Number(c.total_sells || 0);
         const buys_1m = Number(c.buys_1m || 0);
         const volume_1m = Number(c.volume_1m || 1);
+        const txnCount = Number(c.txn_count || 0);
         
-        // CRITICAL: Discovery timing (generational wealth caught 0-2 min old)
-        if (minutesOld < 0.33) score += 200;  // < 20 seconds = LEGENDARY
-        else if (minutesOld < 0.5) score += 180;  // 20-30 sec
-        else if (minutesOld < 1) score += 150;  // < 1 min = PRIME
-        else if (minutesOld < 2) score += 120;  // < 2 min = EXCELLENT
+        if (minutesOld < 0.33) score += 200;
+        else if (minutesOld < 0.5) score += 180;
+        else if (minutesOld < 1) score += 150;
+        else if (minutesOld < 2) score += 120;
         else if (minutesOld < 5) score += 70;
         else if (minutesOld < 10) score += 35;
         else score += 5;
         
-        // AUTHORITIES: No authorities critical
         if (!c.mint_auth && !c.freeze_auth) score += 100;
-        else return {...c, score: 0, tier: "COLD"};  // Reject if authorities exist
+        else return {...c, score: 0, tier: "COLD"};
         
-        // HOLDER DISTRIBUTION: Ultra-concentrated = high upside
+        // Early adoption: transaction density signal
+        const txnDensity = txnCount / Math.max(1, mcap / 1000);
+        if (txnDensity > 200) score += 120;
+        else if (txnDensity > 100) score += 85;
+        else if (txnDensity > 50) score += 50;
+        
         if (holderTop10 < 2) score += 90;
         else if (holderTop10 < 3) score += 70;
         else if (holderTop10 < 5) score += 40;
         
-        // HOLDER COUNT: Larger = more organic
         if (holderCount > 30) score += 60;
         else if (holderCount > 15) score += 35;
         else if (holderCount > 5) score += 15;
         
-        // BUY RATIO: Strong buyers
         if (buyRatio > 0.85) score += 70;
         else if (buyRatio > 0.75) score += 50;
         else if (buyRatio > 0.65) score += 30;
         
-        // MOMENTUM ACCELERATION: Recent buy velocity
-        if (buys_1m > 20) score += 80;  // Massive recent activity
+        if (buys_1m > 20) score += 80;
         else if (buys_1m > 10) score += 50;
         else if (buys_1m > 3) score += 25;
         
-        // VOLUME BREAKOUT: High volume/buy ratio = momentum (CATE-style detection)
         const buyRatio_1m = buys_1m / Math.max(1, volume_1m);
-        if (buyRatio_1m > 0.85) score += 85;  // Extreme buy pressure = pump starting
+        if (buyRatio_1m > 0.85) score += 85;
         else if (buyRatio_1m > 0.75) score += 55;
         else if (buyRatio_1m > 0.65) score += 30;
 
-        // VOLUME EXPLOSION: Recent volume spike signals early momentum
-        if (volume_1m > 80) score += 90;  // High volume in last 1m = catching pump early
+        if (volume_1m > 80) score += 90;
         else if (volume_1m > 40) score += 60;
         else if (volume_1m > 20) score += 30;
 
-        // TOTAL BUY COUNT: Sustained volume
         if (totalBuys > 100) score += 50;
         else if (totalBuys > 50) score += 30;
         else if (totalBuys > 20) score += 15;
         
-        // MICRO-CAP STAGE: Smallest = highest % upside
         if (mcap < 15000) score += 60;
         else if (mcap < 30000) score += 40;
         else if (mcap < 50000) score += 20;
         else score += 10;
         
-        // LIQUIDITY ADEQUACY: Enough to move
         const liqRatio = liq / Math.max(1, mcap);
         if (liqRatio > 0.15) score += 40;
         else if (liqRatio > 0.08) score += 20;
         else score += 5;
         
         let tier = "COLD";
-        if (score >= 520) tier = "ELITE";  // Raised from 450: must catch within 30sec + all quality metrics
-        else if (score >= 400) tier = "HOT";  // Raised from 350
-        else if (score >= 280) tier = "WARM";  // Raised from 250
+        if (score >= 520) tier = "ELITE";
+        else if (score >= 400) tier = "HOT";
+        else if (score >= 280) tier = "WARM";
         
-        return {...c, score, tier, momentum: buys_1m, acceleration: buyRatio_1m};
+        return {...c, score, tier, txnDensity};
       });
     
     const filtered = scored.filter((c: any) => c.score >= 280);
