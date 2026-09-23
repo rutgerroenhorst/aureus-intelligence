@@ -61,31 +61,50 @@ export async function GET() {
       })
       .map((c: any) => {
         let score = 0;
+        
+        // AUTHORITIES - PRIMARY SIGNAL
+        const hasNoAuthority = !c.mint_auth && !c.freeze_auth;
+        const hasOneAuthority = (c.mint_auth && !c.freeze_auth) || (!c.mint_auth && c.freeze_auth);
+        if (hasNoAuthority) score += 50;
+        else if (hasOneAuthority) score += 10;
+        else score -= 25;
+        
+        // HOLDER CONCENTRATION
+        const holderTop10 = c.holder_top10_pct || 50;
+        if (holderTop10 < 3) score += 40;
+        else if (holderTop10 < 5) score += 20;
+        else if (holderTop10 < 10) score += 8;
+        else score -= 15;
+        
+        // HOLDER COUNT
+        const holderCount = Number(c.holder_count || 0);
+        if (holderCount > 30) score += 25;
+        else if (holderCount > 10) score += 12;
+        else if (holderCount > 5) score += 0;
+        else score -= 20;
+        
+        // BUY RATIO
         const buyRatio = Number(c.buy_ratio || 0.5);
         if (buyRatio > 0.75) score += 20;
         else if (buyRatio > 0.65) score += 15;
-        else if (buyRatio > 0.5) score += 10;
-        
-        const holderCount = Number(c.holder_count || 0);
-        if (holderCount > 30) score += 20;
-        else if (holderCount > 10) score += 12;
-        else if (holderCount > 3) score += 5;
-        else score -= 20;
-        
-        const hasNoAuthority = !c.mint_auth && !c.freeze_auth;
-        if (hasNoAuthority) score += 25;
+        else if (buyRatio > 0.5) score += 8;
         else score -= 10;
         
-        const holderTop10 = c.holder_top10_pct || 50;
-        if (holderTop10 < 3) score += 20;
-        else if (holderTop10 < 5) score += 12;
-        else score -= 5;
+        // EARLY STAGE BONUS
+        const minutesOld = c.minutes_old || 0;
+        if (minutesOld < 5) score += 20;
+        else if (minutesOld < 10) score += 12;
         
-        return {...c, tier: "EARLY", score: Math.max(0, score)};
+        // BUY CONSISTENCY
+        const consistency = Number(c.buy_consistency_score || 0);
+        if (consistency >= 3) score += 15;
+        else if (consistency >= 2) score += 8;
+        
+        return {...c, tier: score >= 70 ? "EARLY" : "COLD", score: Math.max(0, score)};
       });
 
     return NextResponse.json(
-      { candidates: candidates.filter((c: any) => c.score >= 15).sort((a: any, b: any) => b.score - a.score) },
+      { candidates: candidates.filter((c: any) => c.score >= 100).sort((a: any, b: any) => b.score - a.score) },
       { headers: { "Cache-Control": "no-store" } }
     );
   } catch (err) {

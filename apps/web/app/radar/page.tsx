@@ -87,14 +87,12 @@ export default function RadarPageElite() {
   const isWashTrade = (c: Candidate) => {
     const mcap = Number(c.marketCapUsd || 0);
     const liq = Number(c.liquidityUsd || 0);
-    const liqRatio = mcap / Math.max(liq, 1);
-    const ageHours = (Date.now() - new Date(c.discovered_at).getTime()) / (1000 * 60 * 60);
-
-    if (mcap > 30000 && liq < 2000) return true;
-    if (mcap > 25000 && liq < 10000 && ageHours < 3) return true;
-    if (liqRatio > 50 && mcap > 30000) return true;
-    if (mcap > 25000 && liq < 5000) return true;
-
+    
+    // Only use available data: mcap + liquidity ratio
+    if (mcap > 30000 && liq < 2000) return true;  // High mcap, no liquidity
+    if (mcap > 40000 && liq < 5000) return true;   // Moderate mcap, weak liquidity
+    if (liq === 0 || !liq) return true;             // No liquidity = scam
+    
     return false;
   };
 
