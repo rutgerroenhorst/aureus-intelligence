@@ -88,13 +88,12 @@ export default function RadarPageElite() {
     const mcap = Number(c.marketCapUsd || 0);
     const liq = Number(c.liquidityUsd || 0);
     const liqRatio = mcap / Math.max(liq, 1);
-    const holderCount = Number(c.holderCount || 0);
     const ageHours = (Date.now() - new Date(c.discovered_at).getTime()) / (1000 * 60 * 60);
 
     if (mcap > 30000 && liq < 2000) return true;
     if (mcap > 25000 && liq < 10000 && ageHours < 3) return true;
-    if (mcap > 40000 && holderCount < 25) return true;
-    if (liqRatio > 80 && mcap > 40000) return true;
+    if (liqRatio > 50 && mcap > 30000) return true;
+    if (mcap > 25000 && liq < 5000) return true;
 
     return false;
   };
