@@ -121,12 +121,17 @@ export async function GET() {
         else if (buys_1m > 10) score += 50;
         else if (buys_1m > 3) score += 25;
         
-        // VOLUME BREAKOUT: High volume/buy ratio = momentum
+        // VOLUME BREAKOUT: High volume/buy ratio = momentum (CATE-style detection)
         const buyRatio_1m = buys_1m / Math.max(1, volume_1m);
-        if (buyRatio_1m > 0.8) score += 70;
-        else if (buyRatio_1m > 0.7) score += 45;
-        else if (buyRatio_1m > 0.6) score += 25;
-        
+        if (buyRatio_1m > 0.85) score += 85;  // Extreme buy pressure = pump starting
+        else if (buyRatio_1m > 0.75) score += 55;
+        else if (buyRatio_1m > 0.65) score += 30;
+
+        // VOLUME EXPLOSION: Recent volume spike signals early momentum
+        if (volume_1m > 80) score += 90;  // High volume in last 1m = catching pump early
+        else if (volume_1m > 40) score += 60;
+        else if (volume_1m > 20) score += 30;
+
         // TOTAL BUY COUNT: Sustained volume
         if (totalBuys > 100) score += 50;
         else if (totalBuys > 50) score += 30;
