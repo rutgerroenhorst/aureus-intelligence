@@ -56,7 +56,7 @@ export async function GET() {
         if (minutesOld <= 5 && (txnCount > 200 || holderCount > 500)) return false;
         if (mcap > 40000 && liq < 1000) return false;
         if (mcap > 30000 && liq < 5000 && minutesOld < 120) return false;
-        if (mcap > 50000 && holderCount < 20 && minutesOld < 60) return false;
+        if (mcap > 45000 && holderCount < 20 && minutesOld < 60) return false;
         
         return true;
       })

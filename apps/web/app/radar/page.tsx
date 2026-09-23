@@ -83,10 +83,26 @@ export default function RadarPageElite() {
   }, []);
 
   const isRugged = (c: Candidate) => !c.marketCapUsd || c.marketCapUsd < 5000;
+
+  const isWashTrade = (c: Candidate) => {
+    const mcap = Number(c.marketCapUsd || 0);
+    const liq = Number(c.liquidityUsd || 0);
+    const liqRatio = mcap / Math.max(liq, 1);
+    const holderCount = Number(c.holderCount || 0);
+    const ageHours = (Date.now() - new Date(c.discovered_at).getTime()) / (1000 * 60 * 60);
+
+    if (mcap > 30000 && liq < 2000) return true;
+    if (mcap > 25000 && liq < 10000 && ageHours < 3) return true;
+    if (mcap > 40000 && holderCount < 25) return true;
+    if (liqRatio > 80 && mcap > 40000) return true;
+
+    return false;
+  };
+
   const qualified = candidates.filter((c) => (c.marketCapUsd || 0) >= 10000).sort((a, b) => new Date(b.discovered_at).getTime() - new Date(a.discovered_at).getTime());
   const earlyEntry = qualified.filter((c) => {
     const ageHours = (Date.now() - new Date(c.discovered_at).getTime()) / (1000 * 60 * 60);
-    return ageHours < 6 && !isRugged(c);
+    return ageHours < 6 && !isRugged(c) && !isWashTrade(c);
   }).slice(0, 50);
 
   const TabButton = ({ tab, label, count }: { tab: Tab; label: string; count?: number }) => (
