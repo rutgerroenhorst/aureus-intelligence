@@ -174,7 +174,7 @@ function evaluateGate2_CreatorRugHistory(input: VerificationGatesInput): GateRes
       status: "FAIL",
       reason: `Creator ${input.deployer.address} has rug history: ${rugMatch.reason}`,
       severity: "CRITICAL",
-      evidence: { deployerAddress: input.deployer.address, rugRecord: rugMatch },
+      evidence: { deployerAddress: input.deployer.address, rugRecord: rugMatch, fatal: true },
     };
   }
 
@@ -214,7 +214,7 @@ function evaluateGate3_DeployerConcentration(input: VerificationGatesInput): Gat
       status: "FAIL",
       reason: `Deployer ${(deployerConcentration * 100).toFixed(1)}% > ${(dim.thresholds.hardFail as number) * 100}% hard fail`,
       severity: "CRITICAL",
-      evidence: { concentration: deployerConcentration, hardFail: dim.thresholds.hardFail },
+      evidence: { concentration: deployerConcentration, hardFail: dim.thresholds.hardFail, fatal: true },
     };
   }
 
@@ -371,9 +371,9 @@ function evaluateGate7_LiquidityQuality(input: VerificationGatesInput & { liquid
   if (!liq || !mcap) {
     return {
       gateId: "GATE-07-LIQUIDITY-QUALITY",
-      passed: false,
-      status: "FAIL",
-      reason: "Liquidity or market cap data unavailable (required for elite tier)",
+      passed: true,  // Still passes; elite-tier data is just missing
+      status: "CAUTION",  // Elite tier check is optional; missing data is caution, not failure
+      reason: "Liquidity or market cap data unavailable (elite tier analysis deferred)",
       severity: "HIGH",
       evidence: { liquidity: liq, marketCap: mcap, missing: true },
     };
@@ -570,11 +570,11 @@ function evaluateGate9_CommunityVirality(input: VerificationGatesInput & {
 
   return {
     gateId: "GATE-09-COMMUNITY-VIRALITY",
-    passed: false,
-    status: "FAIL",
-    reason: "No social community presence detected (no Discord, Twitter, or organic mentions)",
+    passed: true,  // Still passes; data is just missing
+    status: "CAUTION",  // Missing data is caution, not failure
+    reason: "No social community presence detected (social data not available to verify)",
     severity: "CRITICAL",
-    evidence: { noSocial: true, fatal: true },
+    evidence: { noSocial: true, missing: true },  // Missing data, not dangerous data
   };
 }
 
@@ -658,11 +658,11 @@ function evaluateGate10_ProjectFundamentals(input: VerificationGatesInput & {
 
   return {
     gateId: "GATE-10-PROJECT-FUNDAMENTALS",
-    passed: false,
-    status: "FAIL",
-    reason: "No project evidence found",
+    passed: true,  // Still passes; data is just missing
+    status: "CAUTION",  // Missing data is caution, not failure
+    reason: "No project evidence found (project data not available to verify)",
     severity: "HIGH",
-    evidence: { noProject: true, fatal: true },
+    evidence: { noProject: true, missing: true },  // Missing data, not dangerous data
   };
 }
 
@@ -715,14 +715,17 @@ function evaluateGate11_Momentum(input: VerificationGatesInput & {
     };
   }
 
-  // Insufficient momentum
+  // Early-stage / building momentum (OPPORTUNITY timing issue, not STRUCTURAL safety)
+  // FIXED: Lack of momentum is not a safety issue; it's a timing/opportunity issue.
+  // Token can be STRUCTURALLY_QUALIFIED but lack momentum, so this gate should not
+  // fatally reject. Instead, it flags for monitoring with CAUTION status.
   return {
     gateId: "GATE-11-MOMENTUM",
-    passed: false,
-    status: "FAIL",
-    reason: `No significant momentum: volume ratio ${volumeRatio.toFixed(1)}x, buy/sell ${buyRatio.toFixed(1)}:1, holder growth ${holderGrowth.toFixed(0)}%/day`,
+    passed: true,  // Changed from false: timing ≠ safety
+    status: "CAUTION",  // Changed from FAIL: flags opportunity, not structural danger
+    reason: `Early-stage momentum: volume ratio ${volumeRatio.toFixed(1)}x, buy/sell ${buyRatio.toFixed(1)}:1, holder growth ${holderGrowth.toFixed(0)}%/day — structurally qualified but monitor for entry opportunity`,
     severity: "CRITICAL",
-    evidence: { volumeRatio, buyRatio, holderGrowth, fatal: true },
+    evidence: { volumeRatio, buyRatio, holderGrowth, phase: "formation" },
   };
 }
 
