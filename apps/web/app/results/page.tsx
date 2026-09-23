@@ -31,7 +31,7 @@ export default function ResultsPage() {
               multiplier: c.marketCapFirstSeen ? (c.marketCapUsd || 1) / c.marketCapFirstSeen : 1,
               currentMcap: c.marketCapUsd || 0,
             }))
-            .filter(c => c.multiplier >= 2.0)
+            .filter(c => c.multiplier >= 1.99)
             .sort((a, b) => b.multiplier - a.multiplier);
 
           setWinners(qualified);
@@ -60,7 +60,7 @@ export default function ResultsPage() {
   return (
     <div style={{ padding: '32px' }}>
       <h1>🏆 Generational Wealth Winners</h1>
-      <p>Coins that actually delivered returns (2x or more)</p>
+      <p>Coins that delivered returns (1.99x or more - essentially 2x+)</p>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '40px' }}>
         <div>
           <div>Winners</div>
@@ -108,7 +108,7 @@ export default function ResultsPage() {
         </table>
       ) : (
         <div style={{ textAlign: 'center', padding: '40px', color: '#8a8a8e' }}>
-          No 2x+ winners in current dataset
+          No winners in current dataset
         </div>
       )}
     </div>
