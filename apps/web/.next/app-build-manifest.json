@@ -1,9 +1,9 @@
 {
   "pages": {
-    "/results/page": [
+    "/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/results/page.js"
+      "static/chunks/app/page.js"
     ],
     "/layout": [
       "static/chunks/webpack.js",
@@ -16,20 +16,20 @@
       "static/chunks/main-app.js",
       "static/chunks/app/error.js"
     ],
+    "/today/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/today/page.js"
+    ],
     "/radar/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/radar/page.js"
     ],
-    "/stream/page": [
+    "/results/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/stream/page.js"
-    ],
-    "/signals/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/signals/page.js"
+      "static/chunks/app/results/page.js"
     ]
   }
 }

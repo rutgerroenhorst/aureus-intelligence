@@ -1,211 +1,280 @@
 import { NextResponse } from "next/server";
-import { getPool } from "@aureus/db";
 
 export const dynamic = "force-dynamic";
 
-async function fetchDexScreenerData(mint: string) {
+const txnCache = new Map<string, {data: any, time: number}>();
+const TXN_CACHE_TTL = 60000;
+
+async function getTxnsData(mint: string): Promise<any> {
   try {
-    const res = await fetch(`https://api.dexscreener.com/tokens/v1/solana/${mint}`, {
-      next: { revalidate: 0 }
-    });
+    const cached = txnCache.get(mint);
+    if (cached && Date.now() - cached.time < TXN_CACHE_TTL) {
+      return cached.data;
+    }
+
+    const res = await fetch(
+      `https://api.dexscreener.com/latest/dex/tokens/${mint}`,
+      { signal: AbortSignal.timeout(3000) }
+    );
+    
     if (!res.ok) return null;
+    
     const data = await res.json();
-    return data.pairs?.[0] || null;
-  } catch (e) {
+    const pair = data.pairs?.[0];
+    
+    if (!pair?.txns) return null;
+    
+    const txns = {
+      m5: pair.txns.m5,
+      h1: pair.txns.h1,
+      h6: pair.txns.h6,
+      h24: pair.txns.h24,
+    };
+    
+    txnCache.set(mint, { data: txns, time: Date.now() });
+    return txns;
+  } catch (err) {
     return null;
   }
 }
 
 export async function GET() {
   try {
-    const pool = getPool();
-    
-    const result = await pool.query(`
-      SELECT 
-        c.id, t.symbol_label as symbol, t.mint, c.discovered_at,
-        EXTRACT(EPOCH FROM (now() - c.discovered_at))/60::int as minutes_old,
-        COALESCE(pr.price_usd, 0) as price_usd,
-        COALESCE(pr.market_cap_usd, 0) as market_cap_usd,
-        COALESCE(lq.liquidity_usd, 0) as liquidity_usd,
-        COALESCE((SELECT COUNT(*) FROM holder_snapshots WHERE holder_snapshots.pool_id = c.pool_id), 0)::int as holder_count,
-        (oe.intel->'flags'->>'mintAuthorityActive')::boolean as mint_auth,
-        (oe.intel->'flags'->>'freezeAuthorityActive')::boolean as freeze_auth,
-        (oe.intel->'onChain'->>'holderTop10Pct')::float as holder_top10_pct,
-        COALESCE((SELECT COUNT(*) FROM transaction_aggregates WHERE pool_id = c.pool_id AND observed_at > now() - interval '1 minute'), 0)::int as txn_1m,
-        COALESCE((SELECT COUNT(*) FROM transaction_aggregates WHERE pool_id = c.pool_id AND observed_at > now() - interval '5 minute'), 0)::int as txn_5m,
-        COALESCE((SELECT COUNT(*) FROM transaction_aggregates WHERE pool_id = c.pool_id AND observed_at > now() - interval '10 minute'), 0)::int as txn_10m,
-        COALESCE((SELECT COUNT(*) FROM transaction_aggregates WHERE pool_id = c.pool_id), 0)::int as txn_total,
-        COALESCE((SELECT buys::numeric FROM transaction_aggregates WHERE pool_id = c.pool_id ORDER BY observed_at DESC LIMIT 1) / 
-                 NULLIF((SELECT (buys + sells)::numeric FROM transaction_aggregates WHERE pool_id = c.pool_id ORDER BY observed_at DESC LIMIT 1), 0), 0.5)::float as buy_ratio,
-        COALESCE((SELECT COUNT(*) FROM transaction_details WHERE pool_id = c.pool_id AND is_buy = true AND COALESCE(amount_usd, 0) > 1000 AND observed_at > now() - interval '5 minute'), 0)::int as whale_buys_5m,
-        COALESCE((SELECT AVG(COALESCE(amount_usd, 0)) FROM transaction_details WHERE pool_id = c.pool_id AND is_buy = true AND COALESCE(amount_usd, 0) > 500), 0)::numeric as avg_buy_size
-      FROM candidates c
-      JOIN tokens t ON t.id = c.token_id
-      LEFT JOIN onchain_enrichment oe ON oe.candidate_id = c.id
-      LEFT JOIN LATERAL (SELECT price_usd, market_cap_usd FROM prices WHERE pool_id = c.pool_id ORDER BY observed_at DESC LIMIT 1) pr ON true
-      LEFT JOIN LATERAL (SELECT liquidity_usd FROM liquidity_snapshots WHERE pool_id = c.pool_id ORDER BY observed_at DESC LIMIT 1) lq ON true
-      WHERE c.discovered_at > now() - interval '60 minutes'
-        AND c.current_state <> 'EXPIRED'
-      ORDER BY c.discovered_at DESC
-      LIMIT 300
-    `);
+    const allRes = await fetch("http://localhost:3000/api/candidates", {
+      cache: "no-store",
+    });
 
-    const enriched = await Promise.all(
-      result.rows.map(async (c: any) => {
-        const dex = await fetchDexScreenerData(c.mint);
-        return { ...c, dexData: dex };
-      })
-    );
+    if (!allRes.ok) {
+      return NextResponse.json({
+        error: "Failed",
+        cateCoins: [],
+        summary: { elite: 0, hot: 0, rising: 0, watch: 0, scanned: 0, passed: 0 },
+      });
+    }
 
-    const cateSignals = enriched
-      .filter((c: any) => {
-        const minutesOld = c.minutes_old || 1;
-        const mcap = Number(c.market_cap_usd || 0);
-        const liq = Number(c.liquidity_usd || 0);
-        const holderCount = Number(c.holder_count || 0);
-        const holderTop10 = c.holder_top10_pct || 100;
-        const buyRatio = Number(c.buy_ratio || 0.5);
+    const allData = await allRes.json();
+    const allCandidates = allData.candidates || [];
 
-        if (c.mint_auth || c.freeze_auth) return false;
-        if (holderTop10 > 3) return false;
-        if (holderCount < 2) return false;
-        if (liq < 100) return false;
-        if (mcap < 500 || mcap > 100000) return false;
-        if (buyRatio < 0.50) return false;
+    const safeRes = await fetch("http://localhost:3000/api/safety-gate", {
+      cache: "no-store",
+    });
 
-        if (c.dexData?.priceChange?.h24 && c.dexData.priceChange.h24 < -75) return false;
+    if (!safeRes.ok) {
+      return NextResponse.json({
+        error: "Safety gate failed",
+        cateCoins: [],
+        summary: { elite: 0, hot: 0, rising: 0, watch: 0, scanned: 0, passed: 0 },
+      });
+    }
 
-        return true;
-      })
+    const safeData = await safeRes.json();
+    const candidates = safeData.safe_candidates || [];
+
+    const now = Date.now();
+    const freshCandidates = candidates.filter((c: any) => {
+      const minutesOld = Math.floor((now - new Date(c.discovered_at).getTime()) / (1000 * 60));
+      return minutesOld < 10;
+    });
+
+    const txnsPromises = freshCandidates.map(c => getTxnsData(c.mint).catch(() => null));
+    const txnsResults = await Promise.all(txnsPromises);
+
+    const txnsMap = new Map();
+    freshCandidates.forEach((c, idx) => {
+      txnsMap.set(c.mint, txnsResults[idx]);
+    });
+
+    const cateSignals = candidates
       .map((c: any) => {
-        const minutesOld = c.minutes_old || 1;
-        const mcap = Number(c.market_cap_usd || 0);
-        const liq = Number(c.liquidity_usd || 0);
-        const holderCount = Number(c.holder_count || 0);
-        const holderTop10 = c.holder_top10_pct || 100;
-        const buyRatio = Number(c.buy_ratio || 0.5);
-        const txn1m = Number(c.txn_1m || 0);
-        const txn5m = Number(c.txn_5m || 0);
-        const txn10m = Number(c.txn_10m || 0);
-        const txnTotal = Number(c.txn_total || 0);
-        const whaleByus5m = Number(c.whale_buys_5m || 0);
-        const avgBuySize = Number(c.avg_buy_size || 0);
-
-        const txnDensity = txnTotal / Math.max(1, mcap / 1000);
-        const txnVelocity = txn1m / Math.max(1, minutesOld / 60);
-        const hypeAccel = txn5m > 0 ? (txn1m / (txn5m / 5)) : 0;  // Acceleration factor
-        const whaleActivity = whaleByus5m > 0 ? whaleByus5m * (avgBuySize / 1000) : 0;  // Whale intensity
-        const holderGrowthScore = holderCount > 20 ? 1 : holderCount > 10 ? 0.7 : holderCount > 5 ? 0.5 : 0.2;
-        const distributionScore = holderTop10 < 1 ? 1 : holderTop10 < 2 ? 0.9 : 0.5;
+        const mcap = Number(c.marketCapUsd || 0);
+        const liq = Number(c.liquidityUsd || 0);
+        const discoveredAt = new Date(c.discovered_at).getTime();
+        const minutesOld = Math.floor((now - discoveredAt) / (1000 * 60));
+        const hoursOld = minutesOld / 60;
 
         let cateScore = 0;
+        const issues: string[] = [];
+        let momentumBadge = "—";
 
-        // DISCOVERY TIMING (0-20)
-        if (minutesOld < 1) cateScore += 20;
-        else if (minutesOld < 2) cateScore += 18;
-        else if (minutesOld < 5) cateScore += 15;
-        else if (minutesOld < 15) cateScore += 10;
-        else if (minutesOld < 30) cateScore += 5;
-        else cateScore += 2;
-
-        // TXN DENSITY (0-25)
-        if (txnDensity > 300) cateScore += 25;
-        else if (txnDensity > 150) cateScore += 20;
-        else if (txnDensity > 50) cateScore += 15;
-        else if (txnDensity > 20) cateScore += 10;
-        else if (txnDensity > 5) cateScore += 5;
-
-        // TXN VELOCITY (0-20)
-        if (txnVelocity > 100) cateScore += 20;
-        else if (txnVelocity > 50) cateScore += 16;
-        else if (txnVelocity > 20) cateScore += 12;
-        else if (txnVelocity > 5) cateScore += 8;
-        else if (txnVelocity > 1) cateScore += 4;
-
-        // HYPE ACCELERATION (0-15) - NEW
-        if (hypeAccel > 3) cateScore += 15;
-        else if (hypeAccel > 2) cateScore += 12;
-        else if (hypeAccel > 1.5) cateScore += 10;
-        else if (hypeAccel > 1) cateScore += 6;
-
-        // WHALE ACTIVITY (0-15) - NEW
-        if (whaleActivity > 10) cateScore += 15;
-        else if (whaleActivity > 5) cateScore += 12;
-        else if (whaleActivity > 2) cateScore += 8;
-        else if (whaleActivity > 0) cateScore += 4;
-
-        // BUY PRESSURE (0-15)
-        if (buyRatio > 0.85) cateScore += 15;
-        else if (buyRatio > 0.75) cateScore += 12;
-        else if (buyRatio > 0.65) cateScore += 8;
-        else if (buyRatio > 0.55) cateScore += 4;
-
-        // HOLDER GROWTH (0-10)
-        cateScore += holderGrowthScore * 10;
-
-        // DISTRIBUTION (0-10)
-        cateScore += distributionScore * 10;
-
-        // LIQUIDITY (0-5)
-        const liqRatio = liq / Math.max(1, mcap);
-        if (liqRatio > 0.15) cateScore += 5;
-        else if (liqRatio > 0.08) cateScore += 3;
-        else if (liqRatio > 0.04) cateScore += 1;
-
-        let tier = "📊 WATCH";
-        let emoji = "🔔";
-        if (cateScore >= 90) {
-          tier = "🚀 ELITE";
-          emoji = "⚡";
-        } else if (cateScore >= 75) {
-          tier = "🔥 HOT";
-          emoji = "🔥";
-        } else if (cateScore >= 60) {
-          tier = "⚡ RISING";
-          emoji = "📈";
+        const topHolders = c.topHolders || [];
+        if (topHolders.length >= 5) {
+          const top5Sum = topHolders.slice(0, 5).reduce((sum: number, h: any) => sum + Number(h.pct || 0), 0);
+          if (top5Sum > 0.7) {
+            cateScore -= 50;
+            issues.push("Top 5 holders >70%");
+          }
+        }
+        if (topHolders.length > 0 && topHolders[0].pct > 0.4) {
+          cateScore -= 60;
+          issues.push("Single holder >40%");
         }
 
+        if (c.tokenSupply && Number(c.tokenSupply) > 1e12 && Number(c.decimals || 6) <= 6) {
+          cateScore -= 100;
+          issues.push("Supply manipulation: 1T+ tokens");
+        }
+
+        // FRESHNESS (0-30 points) - only for coins < 6 hours old
+        if (minutesOld < 1) cateScore += 30;
+        else if (minutesOld < 2) cateScore += 28;
+        else if (minutesOld < 3) cateScore += 26;
+        else if (minutesOld < 5) cateScore += 24;
+        else if (minutesOld < 10) cateScore += 20;
+        else if (minutesOld < 15) cateScore += 15;
+        else if (minutesOld < 30) cateScore += 10;
+        else if (minutesOld < 60) cateScore += 5;
+        // ELSE: no freshness points for coins > 1 hour
+
+        // AGE DECAY - coins get exponentially worse as they age
+        // This prevents old coins from staying in ELITE forever
+        if (hoursOld > 6) {
+          cateScore -= 10; // 6h+ = -10
+        }
+        if (hoursOld > 12) {
+          cateScore -= 15; // 12h+ = additional -15 (-25 total)
+        }
+        if (hoursOld > 24) {
+          cateScore -= 30; // 24h+ = additional -30 (-55 total, usually drops below 40)
+        }
+        if (hoursOld > 48) {
+          cateScore -= 50; // 48h+ = hard reject
+        }
+
+        // MARKET CAP TIER (0-35 points)
+        if (mcap > 0 && mcap < 20000) cateScore += 35;
+        else if (mcap < 50000) cateScore += 32;
+        else if (mcap < 100000) cateScore += 28;
+        else if (mcap < 150000) cateScore += 22;
+        else if (mcap < 300000) cateScore += 15;
+        else if (mcap < 500000) cateScore += 8;
+
+        // LIQUIDITY QUALITY (0-35 points)
+        if (mcap > 0) {
+          const liqRatio = liq / mcap;
+          
+          if (liqRatio > 0.30) cateScore += 35;
+          else if (liqRatio > 0.20) cateScore += 32;
+          else if (liqRatio > 0.15) cateScore += 28;
+          else if (liqRatio > 0.10) cateScore += 24;
+          else if (liqRatio > 0.07) cateScore += 18;
+          else if (liqRatio > 0.05) cateScore += 12;
+          else if (liqRatio > 0.02) cateScore += 6;
+          else {
+            cateScore -= 50;
+            issues.push("Liquidity trap: <2%");
+          }
+        }
+
+        // CONTRACT VERIFICATION (0-20 points)
+        if (!c.isVerified) {
+          cateScore -= 15;
+          issues.push("Unverified contract");
+        } else {
+          cateScore += 10;
+        }
+
+        // HOLDER DISTRIBUTION (0-15 points)
+        if (topHolders.length >= 5) {
+          const top5Sum = topHolders.slice(0, 5).reduce((sum: number, h: any) => sum + Number(h.pct || 0), 0);
+          if (top5Sum < 0.3) {
+            cateScore += 15;
+          } else if (top5Sum < 0.4) {
+            cateScore += 10;
+          } else if (top5Sum < 0.5) {
+            cateScore += 5;
+          }
+        }
+
+        // TIME-BASED MOMENTUM (0-20 points)
+        if (minutesOld < 5 && mcap < 30000) {
+          cateScore += 15;
+        } else if (minutesOld < 10 && mcap < 50000) {
+          cateScore += 10;
+        }
+
+        // BUY MOMENTUM ACCELERATION (0-25 points)
+        const txns = txnsMap.get(c.mint);
+        if (txns && txns.m5 && txns.h1 && txns.h6) {
+          const m5Buys = Number(txns.m5.buys || 0);
+          const h1Buys = Number(txns.h1.buys || 0);
+          const h6Buys = Number(txns.h6.buys || 0);
+
+          if (m5Buys > 0 && h1Buys > 0 && h6Buys > 0) {
+            const h1_avg_per_5min = h1Buys / 12;
+            const h6_avg_per_1h = h6Buys / 6;
+            
+            const m5_strength = m5Buys / Math.max(h1_avg_per_5min, 1);
+            const h1_strength = h1Buys / Math.max(h6_avg_per_1h, 1);
+            
+            if (m5_strength > 2.5 && h1_strength > 1.8) {
+              cateScore += 25;
+              momentumBadge = "🚀 EXPLOSIVE";
+            } else if (m5_strength > 2 && h1_strength > 1.5) {
+              cateScore += 20;
+              momentumBadge = "⚡ STRONG";
+            } else if (m5_strength > 1.5 && h1_strength > 1.3) {
+              cateScore += 12;
+              momentumBadge = "📈 MODERATE";
+            } else if (m5_strength > 1.3) {
+              cateScore += 6;
+              momentumBadge = "↗ UPTICK";
+            } else {
+              momentumBadge = "→ STABLE";
+            }
+          }
+        }
+
+        // Floor at minimum viable
+        cateScore = Math.max(25, cateScore);
+
+        let tier = "📊 WATCH";
+        if (cateScore >= 100) tier = "🚀 ELITE";
+        else if (cateScore >= 85) tier = "🔥 HOT";
+        else if (cateScore >= 70) tier = "⚡ RISING";
+
         return {
-          symbol: c.symbol,
+          symbol: c.symbol || "?",
           mint: c.mint,
           minutesOld,
-          mcap,
-          liquidity: liq,
-          holderCount,
-          holderTop10,
-          buyRatio: Math.round(buyRatio * 100),
-          txn1m,
-          txn5m,
-          txnTotal,
-          txnDensity: Number((txnDensity).toFixed(2)),
-          txnVelocity: Number((txnVelocity).toFixed(2)),
-          hypeAccel: Number((hypeAccel).toFixed(2)),
-          whaleActivity: Number((whaleActivity).toFixed(2)),
-          whaleCount: whaleByus5m,
+          hoursOld: Math.round(hoursOld * 10) / 10,
+          mcap: Math.round(mcap),
+          liquidity: Math.round(liq),
           cateScore: Math.round(cateScore),
           tier,
-          emoji,
-          risk: cateScore >= 80 ? "🟢 LOW" : cateScore >= 60 ? "🟡 MEDIUM" : "🔴 HIGH",
+          momentum: momentumBadge,
+          issues: issues.length > 0 ? issues.join(" | ") : null,
         };
       })
-      .sort((a: any, b: any) => b.cateScore - a.cateScore);
+      .filter((c: any) => {
+        if (c.issues?.includes("1T+") || c.issues?.includes("Supply manipulation")) return false;
+        if (c.issues?.includes(">40%")) return false;
+        return c.cateScore >= 40;
+      })
+      .sort((a: any, b: any) => b.cateScore - a.cateScore)
+      .slice(0, 50);
 
     return NextResponse.json(
       {
-        cateCoins: cateSignals.slice(0, 50),
+        cateCoins: cateSignals,
         summary: {
-          elite: cateSignals.filter(c => c.tier === "🚀 ELITE").length,
-          hot: cateSignals.filter(c => c.tier === "🔥 HOT").length,
-          rising: cateSignals.filter(c => c.tier === "⚡ RISING").length,
-          watch: cateSignals.filter(c => c.tier === "📊 WATCH").length,
-          scanned: result.rows.length,
+          elite: cateSignals.filter(c => c.cateScore >= 100).length,
+          hot: cateSignals.filter(c => c.cateScore >= 85 && c.cateScore < 100).length,
+          rising: cateSignals.filter(c => c.cateScore >= 70 && c.cateScore < 85).length,
+          watch: cateSignals.filter(c => c.cateScore >= 40 && c.cateScore < 70).length,
+          scanned: allCandidates.length,
+          safe: candidates.length,
           passed: cateSignals.length,
-        }
+          rejectedBySafety: allCandidates.length - candidates.length,
+        },
       },
       { headers: { "Cache-Control": "no-store" } }
     );
   } catch (err) {
-    console.error("CATE Hunter error:", err);
-    return NextResponse.json({ error: "Failed", cateCoins: [], summary: {} }, { status: 200 });
+    console.error("CATE error:", err);
+    return NextResponse.json({
+      error: String(err),
+      cateCoins: [],
+      summary: { elite: 0, hot: 0, rising: 0, watch: 0, scanned: 0, passed: 0 },
+    });
   }
 }

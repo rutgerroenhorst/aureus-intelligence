@@ -11,41 +11,42 @@ interface Candidate {
   discovered_at: string;
 }
 
-type Tab = "signals" | "positions" | "trends" | "momentum" | "performance" | "elite-s" | "early" | "entry" | "qualified" | "stats";
+type Tab = "cate" | "signals" | "positions" | "trends" | "momentum" | "performance" | "elite-s" | "early" | "entry" | "qualified" | "stats";
 
 export default function RadarPageElite() {
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [eliteCandidates, setEliteCandidates] = useState<any[]>([]);
   const [ultraEarlyCandidates, setUltraEarlyCandidates] = useState<any[]>([]);
+  const [ultraEarlyMomentum, setUltraEarlyMomentum] = useState<any[]>([]);
   const [incubationCandidates, setIncubationCandidates] = useState<any[]>([]);
+  const [cateCoins, setCateCoins] = useState<any[]>([]);
+  const [cateSummary, setCateSummary] = useState<any>(null);
   const [buySignals, setBuySignals] = useState<any[]>([]);
-  const [sellSignals, setSellSignals] = useState<any[]>([]);
   const [positions, setPositions] = useState<any[]>([]);
   const [trends, setTrends] = useState<any[]>([]);
   const [momentum, setMomentum] = useState<any[]>([]);
   const [performance, setPerformance] = useState<any>(null);
   const [networks, setNetworks] = useState<any[]>([]);
   const [selectedChain, setSelectedChain] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<Tab>("signals");
+  const [activeTab, setActiveTab] = useState<Tab>("cate");
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
-
-  const formatMcap = (mcap: number | null | undefined) => {
-    if (!mcap || mcap === 0) return "$0";
-    if (mcap >= 1_000_000) return `$${(mcap / 1_000_000).toFixed(1)}m`;
-    if (mcap >= 1_000) return `$${(mcap / 1_000).toFixed(0)}k`;
-    return `$${mcap.toFixed(0)}`;
-  };
+  const [scrollPositions, setScrollPositions] = useState<{[key in Tab]: number}>({
+    cate: 0, signals: 0, positions: 0, trends: 0, momentum: 0, performance: 0,
+    "elite-s": 0, early: 0, entry: 0, qualified: 0, stats: 0
+  });
 
   useEffect(() => {
     const fetchAll = async () => {
       try {
         setIsRefreshing(true);
-        const [candRes, eliteRes, ultRes, incRes, signalsRes, posRes, trendsRes, momRes, perfRes, netRes] = await Promise.all([
+        const [candRes, eliteRes, ultRes, ultMomRes, incRes, cateRes, signalsRes, posRes, trendsRes, momRes, perfRes, netRes] = await Promise.all([
           fetch("/api/candidates"),
           fetch("/api/elite-validator"),
           fetch("/api/ultra-early"),
+          fetch("/api/ultra-early-momentum"),
           fetch("/api/incubation"),
+          fetch("/api/cate-hunter"),
           fetch("/api/signals"),
           fetch("/api/positions"),
           fetch("/api/trends"),
@@ -57,11 +58,16 @@ export default function RadarPageElite() {
         if (candRes.ok) setCandidates(await candRes.json().then(d => d.candidates || []));
         if (eliteRes.ok) setEliteCandidates(await eliteRes.json().then(d => d.candidates || []));
         if (ultRes.ok) setUltraEarlyCandidates(await ultRes.json().then(d => d.candidates || []));
+        if (ultMomRes.ok) setUltraEarlyMomentum(await ultMomRes.json().then(d => d.candidates || []));
         if (incRes.ok) setIncubationCandidates(await incRes.json().then(d => d.candidates || []));
+        if (cateRes.ok) {
+          const cateData = await cateRes.json();
+          setCateCoins(cateData.cateCoins || []);
+          setCateSummary(cateData.summary || null);
+        }
         if (signalsRes.ok) {
           const sig = await signalsRes.json();
           setBuySignals(sig.buy_signals || []);
-          setSellSignals(sig.sell_signals || []);
         }
         if (posRes.ok) setPositions(await posRes.json().then(d => d.positions || []));
         if (trendsRes.ok) setTrends(await trendsRes.json().then(d => d.candidates || []));
@@ -78,33 +84,25 @@ export default function RadarPageElite() {
     };
 
     fetchAll();
-    const poll = setInterval(fetchAll, 5_000);
+    const poll = setInterval(fetchAll, 10_000);
     return () => clearInterval(poll);
   }, []);
 
-  const isRugged = (c: Candidate) => !c.marketCapUsd || c.marketCapUsd < 5000;
-
-  const isWashTrade = (c: Candidate) => {
-    const mcap = Number(c.marketCapUsd || 0);
-    const liq = Number(c.liquidityUsd || 0);
-    
-    // Only use available data: mcap + liquidity ratio
-    if (mcap > 30000 && liq < 2000) return true;  // High mcap, no liquidity
-    if (mcap > 40000 && liq < 5000) return true;   // Moderate mcap, weak liquidity
-    if (liq === 0 || !liq) return true;             // No liquidity = scam
-    
-    return false;
-  };
-
-  const qualified = candidates.filter((c) => (c.marketCapUsd || 0) >= 10000).sort((a, b) => new Date(b.discovered_at).getTime() - new Date(a.discovered_at).getTime());
-  const earlyEntry = qualified.filter((c) => {
-    const ageHours = (Date.now() - new Date(c.discovered_at).getTime()) / (1000 * 60 * 60);
-    return ageHours < 6 && !isRugged(c) && !isWashTrade(c);
-  }).slice(0, 50);
-
   const TabButton = ({ tab, label, count }: { tab: Tab; label: string; count?: number }) => (
     <button
-      onClick={() => setActiveTab(tab)}
+      onClick={() => {
+        const contentDiv = document.querySelector('[data-tab-content]');
+        if (contentDiv) {
+          setScrollPositions(prev => ({ ...prev, [activeTab]: contentDiv.scrollTop }));
+        }
+        setActiveTab(tab);
+        setTimeout(() => {
+          const newContentDiv = document.querySelector('[data-tab-content]');
+          if (newContentDiv) {
+            newContentDiv.scrollTop = scrollPositions[tab] || 0;
+          }
+        }, 0);
+      }}
       style={{
         padding: "8px 16px",
         background: activeTab === tab ? "#34c759" : "#1a1a1f",
@@ -120,9 +118,19 @@ export default function RadarPageElite() {
     </button>
   );
 
-  const CoinRow = ({ c, color }: { c: any; color: string }) => {
-    const mcap = Number(c.market_cap_usd || 0);
-    const conf = Number(c.confidence || c.buy_ratio || 0);
+  const CoinRow = ({ c, color, score, isBuySignal }: { c: any; color: string; score?: number; isBuySignal?: boolean }) => {
+    const mcap = Number(c.market_cap_usd || c.marketCapUsd || 0);
+    const conf = Number(c.confidence || c.buy_ratio || c.cateScore || c.buy_score || 0);
+    const minutesOld = c.minutesOld || Math.floor((Date.now() - new Date(c.discovered_at).getTime()) / (1000 * 60));
+    
+    const riskBadge = c.risk || "🟡";
+    const riskLevel = c.riskLevel || "MEDIUM";
+    const momentum = c.momentum || "";
+    const actionWindow = c.actionWindow || "";
+    const slippage = c.slippage || "";
+    
+    const timeLabel = minutesOld < 1 ? "🔥 <1m" : minutesOld < 5 ? "⚡ <5m" : minutesOld < 30 ? "🟠 <30m" : `📊 ${minutesOld}m`;
+
     return (
       <div
         style={{
@@ -131,266 +139,272 @@ export default function RadarPageElite() {
           borderRadius: "8px",
           padding: "12px",
           marginBottom: "8px",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
         }}
       >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: "13px", fontWeight: 700, color: "#fff" }}>{c.symbol}</div>
-            <div style={{ fontSize: "10px", color: color, marginTop: "2px" }}>
-              {c.minutes_old || 0}m old • {conf.toFixed(0)}% {c.signal || c.strength || c.phase || ""}
-            </div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: "13px", fontWeight: 700, color: "#fff", display: "flex", alignItems: "center", gap: "8px" }}>
+            {c.symbol}
+            <span style={{ fontSize: "11px", opacity: 0.7 }}>{riskBadge} {riskLevel} {momentum && `• ${momentum}`}</span>
           </div>
-          <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                window.location.href = `https://solscan.io/token/${c.mint}`;
-              }}
-              style={{
-                padding: "4px 8px",
-                fontSize: "10px",
-                background: "#1a1a1f",
-                border: "1px solid #2a2a2f",
-                borderRadius: "4px",
-                color: "#34c759",
-                cursor: "pointer",
-              }}
-            >
-              Solscan
-            </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                window.location.href = `https://dexscreener.com/solana/${c.mint}`;
-              }}
-              style={{
-                padding: "4px 8px",
-                fontSize: "10px",
-                background: "#1a1a1f",
-                border: "1px solid #2a2a2f",
-                borderRadius: "4px",
-                color: "#34c759",
-                cursor: "pointer",
-              }}
-            >
-              Dex
-            </button>
-            <div style={{ textAlign: "right", marginLeft: "12px", whiteSpace: "nowrap" }}>
-              <div style={{ fontSize: "13px", fontWeight: 700, color: color }}>{formatMcap(mcap)}</div>
-            </div>
+          <div style={{ fontSize: "10px", color, marginTop: "4px", display: "flex", gap: "12px", flexWrap: "wrap" }}>
+            <span>{timeLabel}</span>
+            <span>{(c.minutesOld || 0).toFixed(0)}m •</span>
+            <span>{conf.toFixed(0)}% {c.tier || c.strength || c.phase || c.strength || ""}</span>
           </div>
+          {isBuySignal && (
+            <div style={{ fontSize: "10px", marginTop: "6px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
+              <span style={{ color: "#ff9500", fontWeight: 600 }}>{actionWindow}</span>
+              <span style={{ color: "#8a8a8e" }}>•</span>
+              <span style={{ color: "#8a8a8e" }}>{slippage}</span>
+            </div>
+          )}
+        </div>
+        <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+          {score && <span style={{ fontSize: "11px", color: "#fff", fontWeight: 700 }}>{Math.round(score)}</span>}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              window.open(`https://dexscreener.com/solana/${c.mint}`, "_blank");
+            }}
+            style={{
+              padding: "4px 8px",
+              background: "#1a1a1f",
+              color: "#34c759",
+              border: "1px solid #34c759",
+              borderRadius: "4px",
+              fontSize: "10px",
+              fontWeight: 600,
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+            }}
+          >
+            DexScreener
+          </button>
         </div>
       </div>
     );
   };
 
-  const filterByChain = (coins: any[]) => {
-    if (!selectedChain) return coins;
-    return coins.filter((c: any) => c.chain === selectedChain);
+  const renderCATECoins = () => {
+    const elite = cateCoins.filter(c => c.tier === "🚀 ELITE");
+    const hot = cateCoins.filter(c => c.tier === "🔥 HOT");
+    const rising = cateCoins.filter(c => c.tier === "⚡ RISING");
+    const watch = cateCoins.filter(c => c.tier === "📊 WATCH");
+
+    return (
+      <div style={{ padding: "16px" }}>
+        {cateSummary && (
+          <div style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(4, 1fr)",
+            gap: "8px",
+            marginBottom: "24px",
+            fontSize: "12px"
+          }}>
+            <div style={{ background: "#1a1a1f", padding: "12px", borderRadius: "6px", textAlign: "center" }}>
+              <div style={{ color: "#34c759", fontWeight: 700, fontSize: "16px" }}>{cateSummary.elite || 0}</div>
+              <div style={{ color: "#8a8a8e", marginTop: "4px" }}>🚀 Elite</div>
+            </div>
+            <div style={{ background: "#1a1a1f", padding: "12px", borderRadius: "6px", textAlign: "center" }}>
+              <div style={{ color: "#ff9500", fontWeight: 700, fontSize: "16px" }}>{cateSummary.hot || 0}</div>
+              <div style={{ color: "#8a8a8e", marginTop: "4px" }}>🔥 Hot</div>
+            </div>
+            <div style={{ background: "#1a1a1f", padding: "12px", borderRadius: "6px", textAlign: "center" }}>
+              <div style={{ color: "#30b0c0", fontWeight: 700, fontSize: "16px" }}>{cateSummary.rising || 0}</div>
+              <div style={{ color: "#8a8a8e", marginTop: "4px" }}>⚡ Rising</div>
+            </div>
+            <div style={{ background: "#1a1a1f", padding: "12px", borderRadius: "6px", textAlign: "center" }}>
+              <div style={{ color: "#8a8a8e", fontWeight: 700, fontSize: "16px" }}>{cateSummary.watch || 0}</div>
+              <div style={{ color: "#8a8a8e", marginTop: "4px" }}>📊 Watch</div>
+            </div>
+          </div>
+        )}
+
+        {elite.length > 0 && (
+          <>
+            <h3 style={{ color: "#34c759", marginBottom: "12px" }}>🚀 ELITE ({elite.length})</h3>
+            {elite.map((c, i) => <CoinRow key={`elite-${i}`} c={c} color="#34c759" score={c.cateScore} />)}
+          </>
+        )}
+
+        {hot.length > 0 && (
+          <>
+            <h3 style={{ color: "#ff9500", marginBottom: "12px", marginTop: "16px" }}>🔥 HOT ({hot.length})</h3>
+            {hot.map((c, i) => <CoinRow key={`hot-${i}`} c={c} color="#ff9500" score={c.cateScore} />)}
+          </>
+        )}
+
+        {rising.length > 0 && (
+          <>
+            <h3 style={{ color: "#30b0c0", marginBottom: "12px", marginTop: "16px" }}>⚡ RISING ({rising.length})</h3>
+            {rising.map((c, i) => <CoinRow key={`rising-${i}`} c={c} color="#30b0c0" score={c.cateScore} />)}
+          </>
+        )}
+
+        {watch.length > 0 && (
+          <>
+            <h3 style={{ color: "#8a8a8e", marginBottom: "12px", marginTop: "16px" }}>📊 WATCH ({watch.length})</h3>
+            {watch.map((c, i) => <CoinRow key={`watch-${i}`} c={c} color="#8a8a8e" score={c.cateScore} />)}
+          </>
+        )}
+
+        {cateCoins.length === 0 && (
+          <div style={{ textAlign: "center", color: "#8a8a8e", padding: "32px" }}>
+            No CATE signals yet...
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderContent = () => {
+    switch (activeTab) {
+      case "cate":
+        return renderCATECoins();
+      case "signals":
+        return (
+          <div style={{ padding: "16px" }}>
+            <h3 style={{ color: "#34c759", marginBottom: "16px" }}>🎯 Buy Signals - Entry Opportunities ({buySignals.length})</h3>
+            {buySignals.length > 0 ? (
+              buySignals.map((c, i) => <CoinRow key={`buy-${i}`} c={c} color="#34c759" isBuySignal={true} />)
+            ) : (
+              <div style={{ textAlign: "center", color: "#8a8a8e", padding: "32px" }}>
+                No viable buy signals right now. Check back soon! 🔄
+              </div>
+            )}
+          </div>
+        );
+      case "early":
+        return (
+          <div style={{ padding: "16px" }}>
+            <h3 style={{ color: "#ff9500", marginBottom: "16px" }}>🚀 Ultra Early Momentum ({ultraEarlyMomentum.length})</h3>
+            {ultraEarlyMomentum.length > 0 ? (
+              ultraEarlyMomentum.map((c, i) => (
+                <div
+                  key={i}
+                  style={{
+                    background: "#0f1116",
+                    border: "2px solid #ff9500",
+                    borderRadius: "8px",
+                    padding: "12px",
+                    marginBottom: "8px",
+                  }}
+                >
+                  <div style={{ fontSize: "13px", fontWeight: 700, color: "#fff", display: "flex", alignItems: "center", gap: "8px" }}>
+                    {c.symbol}
+                    <span style={{ fontSize: "11px", opacity: 0.7 }}>• {c.signal}</span>
+                  </div>
+                  <div style={{ fontSize: "10px", color: "#ff9500", marginTop: "4px", display: "flex", gap: "12px", flexWrap: "wrap" }}>
+                    <span>🔥 {c.secondsOld}s old</span>
+                    <span>${Math.round(c.mcap).toLocaleString()}</span>
+                    <span>Score: {c.score}</span>
+                  </div>
+                  <div style={{ fontSize: "9px", color: "#8a8a8e", marginTop: "6px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                    {c.reasons.map((r: string, j: number) => (
+                      <span key={j}>{r}</span>
+                    ))}
+                  </div>
+                  <div style={{ marginTop: "8px" }}>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        window.open(`https://dexscreener.com/solana/${c.mint}`, "_blank");
+                      }}
+                      style={{
+                        padding: "4px 8px",
+                        background: "#1a1a1f",
+                        color: "#ff9500",
+                        border: "1px solid #ff9500",
+                        borderRadius: "4px",
+                        fontSize: "10px",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      🔍 DexScreener
+                    </button>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div style={{ textAlign: "center", color: "#8a8a8e", padding: "32px" }}>
+                No ultra-early momentum signals yet. Waiting for net launches... 🚀
+              </div>
+            )}
+          </div>
+        );
+      case "elite-s":
+        return (
+          <div style={{ padding: "16px" }}>
+            <h3 style={{ color: "#34c759", marginBottom: "16px" }}>Elite ({eliteCandidates.length})</h3>
+            {eliteCandidates.map((c, i) => <CoinRow key={i} c={c} color="#34c759" />)}
+          </div>
+        );
+      case "qualified":
+        return (
+          <div style={{ padding: "16px" }}>
+            <h3 style={{ color: "#5ac8fa", marginBottom: "16px" }}>Incubation ({incubationCandidates.length})</h3>
+            {incubationCandidates.map((c, i) => <CoinRow key={i} c={c} color="#5ac8fa" />)}
+          </div>
+        );
+      case "stats":
+        return (
+          <div style={{ padding: "16px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "12px" }}>
+              <div style={{ background: "#1a1a1f", padding: "16px", borderRadius: "8px" }}>
+                <div style={{ fontSize: "11px", color: "#8a8a8e" }}>Total Candidates</div>
+                <div style={{ fontSize: "20px", fontWeight: 700, color: "#fff", marginTop: "8px" }}>{candidates.length}</div>
+              </div>
+              <div style={{ background: "#1a1a1f", padding: "16px", borderRadius: "8px" }}>
+                <div style={{ fontSize: "11px", color: "#8a8a8e" }}>CATE Coins</div>
+                <div style={{ fontSize: "20px", fontWeight: 700, color: "#34c759", marginTop: "8px" }}>{cateCoins.length}</div>
+              </div>
+              <div style={{ background: "#1a1a1f", padding: "16px", borderRadius: "8px" }}>
+                <div style={{ fontSize: "11px", color: "#8a8a8e" }}>Buy Signals</div>
+                <div style={{ fontSize: "20px", fontWeight: 700, color: "#34c759", marginTop: "8px" }}>{buySignals.length}</div>
+              </div>
+              <div style={{ background: "#1a1a1f", padding: "16px", borderRadius: "8px" }}>
+                <div style={{ fontSize: "11px", color: "#8a8a8e" }}>Ultra Early</div>
+                <div style={{ fontSize: "20px", fontWeight: 700, color: "#ff9500", marginTop: "8px" }}>{ultraEarlyCandidates.length}</div>
+              </div>
+            </div>
+          </div>
+        );
+      default:
+        return null;
+    }
   };
 
   return (
-    <ElitePageWrapper title="Radar" subtitle="Elite intelligence system">
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", background: "#0f1116", borderRadius: "6px", marginBottom: "16px", border: "1px solid #1a1a1f" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "12px" }}>
-          <div style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#34c759" }} />
-          <span style={{ color: "#8a8a8e" }}>{isRefreshing ? "Scanning..." : "Live"}</span>
-          {lastUpdate && <span style={{ color: "#6f6f73", fontSize: "11px" }}>{Math.round((Date.now() - lastUpdate.getTime()) / 1000)}s ago</span>}
+    <ElitePageWrapper>
+      <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
+        <div style={{ marginBottom: "24px" }}>
+          <h1 style={{ fontSize: "24px", fontWeight: 700, marginBottom: "16px", color: "#fff" }}>
+            📊 Aureus Radar
+          </h1>
+          
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "16px" }}>
+            <TabButton tab="cate" label="🎯 CATE" count={cateCoins.length} />
+            <TabButton tab="signals" label="💰 Buy Signals" count={buySignals.length} />
+            <TabButton tab="early" label="🚀 Ultra Momentum" count={ultraEarlyMomentum.length} />
+            <TabButton tab="elite-s" label="⭐ Elite" count={eliteCandidates.length} />
+            <TabButton tab="qualified" label="💼 Incubation" count={incubationCandidates.length} />
+            <TabButton tab="stats" label="📋 Stats" />
+          </div>
+
+          <div style={{ fontSize: "12px", color: "#8a8a8e" }}>
+            {isRefreshing ? "🔄 Refreshing..." : "✓ Live"}
+          </div>
         </div>
-        <div style={{ display: "flex", gap: "6px" }}>
-          {networks.slice(0, 5).map((net: any) => (
-            <button
-              key={net.chain}
-              onClick={() => setSelectedChain(selectedChain === net.chain ? null : net.chain)}
-              style={{
-                padding: "6px 12px",
-                fontSize: "11px",
-                background: selectedChain === net.chain ? net.status === "FIRE" ? "#ff0000" : net.status === "HOT" ? "#ff6b00" : "#666" : "#1a1a1f",
-                border: `1px solid ${net.status === "FIRE" ? "#ff0000" : net.status === "HOT" ? "#ff6b00" : net.status === "WARM" ? "#ffa500" : "#2a2a2f"}`,
-                borderRadius: "4px",
-                color: net.status === "FIRE" ? "#ff0000" : net.status === "HOT" ? "#ff6b00" : net.status === "WARM" ? "#ffa500" : "#8a8a8e",
-                cursor: "pointer",
-                fontWeight: 600,
-              }}
-            >
-              {net.chain} {net.status === "FIRE" ? "🔥" : net.status === "HOT" ? "🔥" : ""}
-            </button>
-          ))}
+
+        <div data-tab-content style={{ maxHeight: "calc(100vh - 300px)", overflowY: "auto" }}>
+          {renderContent()}
         </div>
       </div>
-
-      <div style={{ display: "flex", gap: "8px", marginBottom: "16px", flexWrap: "wrap" }}>
-        <TabButton tab="signals" label="🎯 SIGNALS" count={buySignals.length} />
-        <TabButton tab="trends" label="📈 TRENDS" count={trends.length} />
-        <TabButton tab="momentum" label="⚡ MOMENTUM" count={momentum.length} />
-        <TabButton tab="positions" label="💰 POSITIONS" count={positions.length} />
-        <TabButton tab="performance" label="🎖️ PERFORMANCE" />
-        <TabButton tab="elite-s" label="💎 ELITE S" count={eliteCandidates.length} />
-        <TabButton tab="early" label="🚀 EARLY" count={ultraEarlyCandidates.length + incubationCandidates.length} />
-        <TabButton tab="entry" label="🔥 ENTRY" count={earlyEntry.length} />
-        <TabButton tab="qualified" label="✓ QUALIFIED" count={qualified.length} />
-        <TabButton tab="stats" label="📊 STATS" />
-      </div>
-
-      {activeTab === "signals" && (
-        <div>
-          {buySignals.length > 0 ? (
-            buySignals.map((s: any) => (
-              <CoinRow key={s.id} c={s} color="#34c759" />
-            ))
-          ) : (
-            <div style={{ color: "#6f6f73", fontSize: "12px", padding: "20px" }}>No active buy signals</div>
-          )}
-        </div>
-      )}
-
-      {activeTab === "trends" && (
-        <div>
-          {trends.length > 0 ? (
-            trends.slice(0, 20).map((t: any) => (
-              <CoinRow key={t.id} c={t} color={t.signal === "STRONG_REVERSAL" ? "#ff00ff" : t.signal === "BULLISH" ? "#34c759" : "#ff9500"} />
-            ))
-          ) : (
-            <div style={{ color: "#6f6f73", fontSize: "12px", padding: "20px" }}>No trend data</div>
-          )}
-        </div>
-      )}
-
-      {activeTab === "momentum" && (
-        <div>
-          {momentum.length > 0 ? (
-            momentum.slice(0, 20).map((m: any) => (
-              <CoinRow key={m.id} c={m} color={m.strength === "elite" ? "#00ff00" : m.strength === "strong" ? "#34c759" : "#ff9500"} />
-            ))
-          ) : (
-            <div style={{ color: "#6f6f73", fontSize: "12px", padding: "20px" }}>No momentum data</div>
-          )}
-        </div>
-      )}
-
-      {activeTab === "positions" && (
-        <div>
-          {positions.length > 0 ? (
-            <div style={{ color: "#34c759", fontSize: "12px" }}>💰 OPEN POSITIONS: {positions.length}</div>
-          ) : (
-            <div style={{ color: "#6f6f73", fontSize: "12px", padding: "20px" }}>No open positions</div>
-          )}
-        </div>
-      )}
-
-      {activeTab === "performance" && performance && (
-        <div style={{ fontSize: "11px", color: "#8a8a8e", padding: "16px", background: "#0f1116", borderRadius: "6px" }}>
-          <div>💰 Total P&L: ${performance.total_pnl || 0}</div>
-          <div>📈 Realized: ${performance.realized_pnl || 0}</div>
-          <div>📊 Win Rate: {performance.win_rate || 0}%</div>
-          <div>📋 Profit Factor: {performance.profit_factor || 0}</div>
-          <div style={{ marginTop: "8px" }}>🏆 Largest Winner: {performance.largest_winner?.symbol || "N/A"}</div>
-          <div>💣 Largest Loser: {performance.largest_loser?.symbol || "N/A"}</div>
-        </div>
-      )}
-
-      {activeTab === "elite-s" && (
-        <div>
-          {eliteCandidates.length > 0 ? (
-            eliteCandidates.map((c: any) => (
-              <CoinRow key={c.id} c={c} color="#34c759" />
-            ))
-          ) : (
-            <div style={{ color: "#6f6f73", fontSize: "12px", padding: "20px" }}>No S-grade elite coins</div>
-          )}
-        </div>
-
-      )}
-
-      {activeTab === "early" && (
-        <div>
-          {ultraEarlyCandidates.length > 0 || incubationCandidates.length > 0 ? (
-            <div>
-              {filterByChain(ultraEarlyCandidates).map((c: any) => (
-                <CoinRow key={c.id} c={c} color="#ff9500" />
-              ))}
-              {filterByChain(incubationCandidates).map((c: any) => (
-                <CoinRow key={c.id} c={c} color="#ff00ff" />
-              ))}
-            </div>
-          ) : (
-            <div style={{ color: "#6f6f73", fontSize: "12px", padding: "20px" }}>No early opportunities</div>
-          )}
-        </div>
-      )}
-
-      {activeTab === "entry" && (
-        <div>
-          {earlyEntry.length > 0 ? (
-            earlyEntry.map((coin: any) => (
-              <div key={coin.id} style={{ background: "#0f1116", border: "1px solid #1a1a1f", borderRadius: "8px", padding: "12px", marginBottom: "8px" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: "13px", fontWeight: 700, color: "#fff" }}>{coin.symbol || coin.mint.slice(0, 8)}</div>
-                    <div style={{ fontSize: "10px", color: "#8a8a8e", marginTop: "2px" }}>
-                      MCap: ${((coin.marketCapUsd || 0) / 1000).toFixed(1)}k
-                    </div>
-                  </div>
-                  <div style={{ display: "flex", gap: "6px" }}>
-                    <button onClick={(e) => { e.stopPropagation(); window.open(`https://solscan.io/token/${coin.mint}`, "_blank"); }} style={{ padding: "4px 8px", fontSize: "10px", background: "#1a1a1f", border: "1px solid #2a2a2f", borderRadius: "4px", color: "#34c759", cursor: "pointer" }}>Solscan</button>
-                    <button onClick={(e) => { e.stopPropagation(); window.open(`https://dexscreener.com/solana/${coin.mint}`, "_blank"); }} style={{ padding: "4px 8px", fontSize: "10px", background: "#1a1a1f", border: "1px solid #2a2a2f", borderRadius: "4px", color: "#34c759", cursor: "pointer" }}>Dex</button>
-                    <div style={{ textAlign: "right", whiteSpace: "nowrap", marginLeft: "12px" }}>
-                      <div style={{ fontSize: "12px", fontWeight: 700, color: "#fff" }}>
-                        ${((coin.marketCapUsd || 0) / 1000).toFixed(1)}k
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))
-          ) : (
-            <div style={{ color: "#6f6f73", fontSize: "12px", padding: "20px" }}>No early entry candidates</div>
-          )}
-        </div>
-      )}
-
-      {activeTab === "qualified" && (
-        <div>
-          {qualified.length > 0 ? (
-            qualified.slice(0, 50).map((coin: any) => (
-              <div key={coin.id} style={{ background: "#0f1116", border: "1px solid #1a1a1f", borderRadius: "8px", padding: "12px", marginBottom: "8px" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: "13px", fontWeight: 700, color: "#fff" }}>{coin.symbol || coin.mint.slice(0, 8)}</div>
-                    <div style={{ fontSize: "10px", color: "#8a8a8e", marginTop: "2px" }}>
-                      MCap: ${((coin.marketCapUsd || 0) / 1000).toFixed(1)}k
-                    </div>
-                  </div>
-                  <div style={{ display: "flex", gap: "6px" }}>
-                    <button onClick={(e) => { e.stopPropagation(); window.open(`https://solscan.io/token/${coin.mint}`, "_blank"); }} style={{ padding: "4px 8px", fontSize: "10px", background: "#1a1a1f", border: "1px solid #2a2a2f", borderRadius: "4px", color: "#34c759", cursor: "pointer" }}>Solscan</button>
-                    <button onClick={(e) => { e.stopPropagation(); window.open(`https://dexscreener.com/solana/${coin.mint}`, "_blank"); }} style={{ padding: "4px 8px", fontSize: "10px", background: "#1a1a1f", border: "1px solid #2a2a2f", borderRadius: "4px", color: "#34c759", cursor: "pointer" }}>Dex</button>
-                    <div style={{ textAlign: "right", whiteSpace: "nowrap", marginLeft: "12px" }}>
-                      <div style={{ fontSize: "12px", fontWeight: 700, color: "#fff" }}>
-                        ${((coin.marketCapUsd || 0) / 1000).toFixed(1)}k
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))
-          ) : (
-            <div style={{ color: "#6f6f73", fontSize: "12px", padding: "20px" }}>No qualified candidates</div>
-          )}
-        </div>
-      )}
-
-      {activeTab === "stats" && (
-        <div style={{ fontSize: "12px", color: "#8a8a8e", padding: "16px", background: "#0f1116", borderRadius: "6px" }}>
-          <div style={{ marginBottom: "8px" }}>🎯 Signals: {buySignals.length}</div>
-          <div style={{ marginBottom: "8px" }}>📈 Trends: {trends.length}</div>
-          <div style={{ marginBottom: "8px" }}>⚡ Momentum: {momentum.length}</div>
-          <div style={{ marginBottom: "8px" }}>💰 Positions: {positions.length}</div>
-          <div style={{ marginBottom: "8px" }}>💎 Elite S: {eliteCandidates.length}</div>
-          <div style={{ marginBottom: "8px" }}>🚀 Early: {ultraEarlyCandidates.length + incubationCandidates.length}</div>
-          <div style={{ marginBottom: "8px" }}>🔥 Entry: {earlyEntry.length}</div>
-          <div>✓ Qualified: {qualified.length}</div>
-        </div>
-      )}
     </ElitePageWrapper>
   );
 }

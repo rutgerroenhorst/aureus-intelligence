@@ -1,17 +1,18 @@
 {
-  "/api/telemetry/route": "app/api/telemetry/route.js",
-  "/results/page": "app/results/page.js",
   "/radar/page": "app/radar/page.js",
-  "/api/board/route": "app/api/board/route.js",
-  "/stream/page": "app/stream/page.js",
   "/api/candidates/route": "app/api/candidates/route.js",
-  "/api/elite-validator/route": "app/api/elite-validator/route.js",
-  "/api/signals/route": "app/api/signals/route.js",
-  "/api/positions/route": "app/api/positions/route.js",
-  "/api/ultra-early/route": "app/api/ultra-early/route.js",
+  "/results/page": "app/results/page.js",
   "/api/incubation/route": "app/api/incubation/route.js",
+  "/api/cate-hunter/route": "app/api/cate-hunter/route.js",
+  "/api/ultra-early/route": "app/api/ultra-early/route.js",
+  "/api/network-sentiment/route": "app/api/network-sentiment/route.js",
+  "/api/elite-validator/route": "app/api/elite-validator/route.js",
+  "/api/telemetry/route": "app/api/telemetry/route.js",
   "/api/trends/route": "app/api/trends/route.js",
+  "/api/positions/route": "app/api/positions/route.js",
   "/api/momentum/route": "app/api/momentum/route.js",
+  "/api/safety-gate/route": "app/api/safety-gate/route.js",
+  "/api/signals/route": "app/api/signals/route.js",
   "/api/performance/route": "app/api/performance/route.js",
-  "/api/network-sentiment/route": "app/api/network-sentiment/route.js"
+  "/api/ultra-early-momentum/route": "app/api/ultra-early-momentum/route.js"
 }

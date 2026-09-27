@@ -32,6 +32,7 @@ export async function GET() {
         discovered_at: c.discovered_at,
         marketCapUsd: c.market_cap_usd,
         liquidityUsd: c.liquidity_usd,
+        topHolders: [], // Will be populated by CATE hunter separately
         v2StructuralStatus: null,
         v2StructuralConfidence: null,
       }))
