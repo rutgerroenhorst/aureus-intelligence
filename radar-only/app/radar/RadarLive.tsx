@@ -142,12 +142,8 @@ export function RadarLive({ initial }: { initial: BoardView }) {
       ...(board.sections.ENTRY_APPROACHING ?? []),
       ...(board.sections.PRIMARY_WATCH ?? []),
       ...(board.sections.SETUP_FORMING ?? []),
-      ...(board.sections.FUNDAMENTAL_WATCH ?? []),
-      ...(board.sections.TOO_EXTENDED ?? []),
-      ...(board.sections.SECONDARY_WATCH ?? []),
       ...(board.sections.ASSESSING ?? []),
       ...(board.sections.DISCOVERED ?? []),
-      ...(board.sections.INVALID_REJECTED ?? []),
     ];
 
     // Sort: ALL QUALIFIED first (structurally qualified coins), then by confidence score
