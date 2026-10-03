@@ -1,0 +1,275 @@
+/* AUREUS RADAR — PREMIUM MIDNIGHT INTELLIGENCE UI */
+
+:root {
+  --midnight: #0a0f1e;
+  --navy-100: #1a1f35;
+  --navy-200: #252d48;
+  --graphite: #3a4458;
+  --slate: #5a6678;
+  
+  --text: #f0f2f5;
+  --text-secondary: #c8cbd2;
+  --muted: #8892a0;
+  --muted-2: #6b7580;
+  
+  --cyan: #0ea5e9;
+  --cyan-light: #20d9f8;
+  --emerald: #10b981;
+  --amber: #f59e0b;
+  --coral: #ef4444;
+  --violet: #8b5cf6;
+  
+  --bg: var(--midnight);
+  --panel: var(--navy-100);
+  --panel-hover: var(--navy-200);
+  --border: var(--navy-200);
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+}
+
+.page {
+  background: var(--bg);
+}
+
+.page-head {
+  padding: 32px 24px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(to right, var(--panel) 0%, rgba(37, 45, 72, 0.3) 100%);
+}
+
+.page-title {
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 0;
+  color: var(--text);
+}
+
+.page-sub {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 8px 0 0 0;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Command Bar */
+.command-bar {
+  display: flex;
+  gap: 16px;
+  margin: 16px 0;
+  padding: 0 24px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.pill {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  padding: 8px 14px;
+  border-radius: 20px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 150ms ease;
+  white-space: nowrap;
+}
+
+.pill:hover {
+  background: var(--panel-hover);
+  border-color: var(--slate);
+  color: var(--text);
+}
+
+.pill.active {
+  background: var(--cyan);
+  border-color: var(--cyan);
+  color: var(--midnight);
+  font-weight: 600;
+}
+
+/* Candidate Cards */
+.dcard {
+  display: block;
+  padding: 14px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  text-decoration: none;
+  transition: all 150ms ease;
+  cursor: pointer;
+}
+
+.dcard:hover {
+  background: var(--panel-hover);
+  border-color: var(--slate);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  transform: translateY(-1px);
+}
+
+.dcard-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 12px;
+  gap: 12px;
+}
+
+.dcard-symbol {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.dcard-status {
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 3px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.status-qualified {
+  background: rgba(16, 185, 129, 0.1);
+  color: var(--emerald);
+}
+
+.status-waiting {
+  background: rgba(245, 158, 11, 0.1);
+  color: var(--amber);
+}
+
+.status-rejected {
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--coral);
+}
+
+.dcard-metrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 12px;
+}
+
+.metric {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.metric-label {
+  color: var(--muted-2);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.metric-value {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.dcard-confidence {
+  padding: 8px;
+  background: rgba(14, 165, 233, 0.05);
+  border-left: 2px solid var(--cyan);
+  border-radius: 3px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+}
+
+.dcard-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* Grid Layout */
+.rest-rows {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: 16px;
+  padding: 24px;
+}
+
+@media (max-width: 768px) {
+  .rest-rows {
+    grid-template-columns: 1fr;
+  }
+  
+  .page-head {
+    padding: 20px 16px;
+  }
+  
+  .page-title {
+    font-size: 24px;
+  }
+  
+  .command-bar {
+    padding: 0 16px;
+  }
+  
+  .dcard-metrics {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Telemetry Header */
+.telemetry-header {
+  background: linear-gradient(to right, var(--navy-100), var(--panel));
+  border-bottom: 1px solid var(--border);
+  padding: 12px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 24px;
+  flex-wrap: wrap;
+  font-size: 12px;
+}
+
+.telemetry-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.telemetry-metric {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.status-indicator {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  animation: pulse 2s infinite;
+}
+
+.status-live {
+  background: var(--emerald);
+}
+
+.status-degraded {
+  background: var(--amber);
+}
+
+.status-offline {
+  background: var(--coral);
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
