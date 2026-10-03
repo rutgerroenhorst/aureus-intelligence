@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "buildCommand": "pnpm install && pnpm --filter @aureus/web build",
+  "buildCommand": "pnpm install && cd apps/web && pnpm build",
   "installCommand": "pnpm install",
   "env": {
     "NODE_ENV": "production"
