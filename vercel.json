@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "buildCommand": "pnpm install && cd apps/web && pnpm build",
-  "installCommand": "pnpm install",
+  "buildCommand": "npm install && npm run build",
+  "installCommand": "npm install",
   "env": {
     "NODE_ENV": "production"
   }
