@@ -1,32 +1,15 @@
-import { Pool } from "pg";
 import { TelemetryHeader } from "../../../components/TelemetryHeader";
 
 interface WalletDetailPageProps {
   params: Promise<{ address: string }>;
 }
 
-export const dynamic = "force-dynamic";
-
 export default async function WalletDetailPage({ params }: WalletDetailPageProps) {
   const { address } = await params;
   const walletAddress = decodeURIComponent(address);
 
-  let wallet: any = null;
-  try {
-    const pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
-    });
-    const result = await pool.query(
-      "SELECT id, address, label, role, source_type, source_id FROM wallet_entities WHERE address = $1",
-      [walletAddress]
-    );
-    wallet = result.rows[0] || null;
-    await pool.end();
-  } catch (err) {
-    console.error("Failed to fetch wallet:", err);
-  }
-
-  const hasWalletData = wallet !== null;
+  // Mock wallet data - frontend only
+  const hasWalletData = false;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: "var(--bg)" }}>

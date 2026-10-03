@@ -1,0 +1,635 @@
+import "server-only";
+/**
+ * THE canonical candidate decision view.
+ *
+ * Every surface — Today, Action Board, candidate detail, the API, best-candidate,
+ * bucket assignment, transition history, phase snapshots — reads THIS and only this.
+ * No page may recompute status, safety, drain, blocker, priority or plan on its own.
+ *
+ * Authority rules:
+ *  - action status / priority / ranks / plan  → persisted `candidate_action_status`
+ *    (written by the worker; the worker is the only writer).
+ *  - liquidity_drain                          → recomputed LIVE here from the liquidity
+ *    series. The frozen `onchain_enrichment` copy is NEVER authoritative for it.
+ *  - everything else on-chain                 → latest `onchain_enrichment`.
+ */
+import { q } from "./db";
+import { safetyLayers, analyzeLiquidityDrain, analyzeLiveness, ADVANCED_DATASETS } from "@aureus/safety-engine";
+import { roundTripCost, targetViability, maxPositionForCost, type RoundTripCost } from "@aureus/cost-model";
+import { exitPlan, potentialScore, POTENTIAL_BASE_RATE } from "@aureus/watch-engine";
+import { canonicalBlocker, watchPriorityFor, universeStatus, type BlockerInput, type UniverseStatus } from "./decisionRules";
+
+export type ActionStatusV2 =
+  | "DISCOVERED" | "FUNDAMENTAL_WATCH" | "SETUP_FORMING" | "ENTRY_APPROACHING"
+  | "ENTRY_READY" | "TOO_EXTENDED" | "INVALIDATED" | "REJECTED" | "EXPIRED";
+export type WatchPriority = "CRITICAL" | "PRIMARY" | "SECONDARY" | "OBSERVATION" | "DORMANT";
+
+export interface EntryPlanView {
+  provisional: boolean;
+  label: string;
+  triggerType: string;
+  entryAreaLow: number | null;
+  entryAreaHigh: number | null;
+  invalidation: number | null;
+  maxChase: number | null;
+  target: number | null;
+  estSlippagePct: number | null;
+  requiredConfirmation: string;
+  /** false → levels are stale/irrelevant; the UI must NOT show an entry area. */
+  valid: boolean;
+  invalidReasons: string[];
+  structureSource: string;
+  /** Round-trip cost of taking this plan at the nominal size, as a fraction. */
+  roundTripCost: number | null;
+  /** Spot move required just to get the capital back. */
+  breakevenMove: number | null;
+  /** Does the target clear the round trip with margin? */
+  targetViable: boolean;
+  /** Largest position that keeps the round trip under 10% at this depth. */
+  maxPositionUsd: number | null;
+  costNote: string;
+  /** Where to take profit, where the stop moves to, and when to close regardless. */
+  exit: { firstTakeAt: number | null; firstTakePct: number; stopAfterFirst: number | null; timeStopMin: number } | null;
+}
+
+export interface CandidateDecisionView {
+  id: string;
+  code: string;
+  symbol: string | null;
+  mint: string;
+  pool: string | null;
+
+  status: ActionStatusV2;
+  priority: WatchPriority;
+  proximity: string;
+  trend: string;
+  prevStatus: string | null;
+  sinceMs: number | null;
+  scans: number;
+
+  coreSafety: string;          // PASS | FAIL | INCOMPLETE | NA
+  advanced: string;            // COMPLETE | INCOMPLETE | UNKNOWN
+  advancedMissing: string[];
+  coreMissing: string[];
+
+  qualityRank: number | null;
+  entryRank: number | null;
+
+  priceUsd: number | null;
+  marketCapUsd: number | null;
+  liquidityUsd: number | null;
+  volumeUsd: number | null;
+  buys: number | null;
+  sells: number | null;
+  holderTop10: number | null;
+  insiderPct: number | null;
+  sellClass: string | null;
+  mintAuthorityActive: boolean | null;
+  freezeAuthorityActive: boolean | null;
+
+  /** LIVE drain — recomputed every request, never the frozen enrichment copy. */
+  drainStatus: string;
+  drainSeverity: string;
+  /** LIVE market liveness: ACTIVE | THIN | FROZEN | POOL_GONE | UNKNOWN. */
+  liveness: string;
+  livenessReason: string;
+  drainHorizons: Record<string, number | null>;
+  /** Largest hole between consecutive observations — a drain inside a hole is invisible. */
+  observationGapMs: number;
+  /** Horizons we refused to compute because their baseline sat across a gap. */
+  unmeasuredHorizons: string[];
+
+  priceChange: { m5: number | null; m15: number | null; m30: number | null };
+  liqTrend: { m5: number | null; m15: number | null; m30: number | null; sinceDiscovery: number | null };
+
+  freshnessMs: number | null;
+  fresh: boolean;
+  pairAgeMs: number | null;
+  lastScanAt: string | null;
+  nextScanAt: string | null;
+
+  primaryBlocker: string;
+  secondaryBlockers: string[];
+  knownRisks: string[];
+  unknownRisks: string[];
+  positives: string[];
+  waiting: string[];
+  confirmed: string[];
+  bestEntryType: string | null;
+  plan: EntryPlanView | null;
+  /** Which price-change window the trend read came from ("m5" | "h1" | "h6" | "none"). */
+  trendHorizon: string | null;
+  /** True when the feed's 6h/24h windows are copies of a shorter one (young pair). */
+  degenerateHorizons: boolean;
+  /** Which ENTRY_READY preconditions are currently false. Empty ⟺ entry-ready. */
+  entryReadyBlockers: string[];
+  /** REAL | THIN | PARKED | DUST_WASH | UNKNOWN — is this market genuine? */
+  activity: string | null;
+  /** Whether this still belongs on the active board, and why not if it does not. */
+  universe: UniverseStatus;
+  universeReason: string;
+  /** Our own observed price points over the last 6h, oldest first. */
+  priceSeries: Array<{ t: number; p: number }>;
+  turnover: number | null;
+  avgTradeUsd: number | null;
+  /** CLEAN | WATCH | DANGER | UNKNOWN from the launch-stage rug checks. */
+  rugVerdict: string | null;
+  largestHolderPct: number | null;
+  top5Pct: number | null;
+  rugBlocking: string[];
+  rugConcerns: string[];
+  /** Measured chance of becoming a clean runner (peak ≥+25%, never halved). */
+  potential: number | null;
+  /** How many times the 20% base rate that is. */
+  potentialLift: number | null;
+  potentialHelps: Array<{ label: string; lift: number; n: number }>;
+  potentialHurts: Array<{ label: string; lift: number; n: number }>;
+  /** Market cap the FIRST time we saw it — shows whether you are early or chasing. */
+  marketCapFirstSeen: number | null;
+  /** How far it has run since we found it, as a multiple. */
+  runSinceFound: number | null;
+
+  // === V2 Phase 1 Verification (Conservative Model) ===
+  /** STRUCTURALLY_QUALIFIED | INSUFFICIENT_DATA | FATAL_REJECT */
+  v2StructuralStatus: string | null;
+  /** Confidence in accuracy/freshness of structural signals evaluated (0-100) */
+  v2StructuralConfidence: number | null;
+  /** Percentage of intended full verification stack currently available (0-100) */
+  v2VerificationCoverage: number | null;
+  /** Percentage of alpha/narrative/smart-money intelligence available (0-100) */
+  v2OpportunityCoverage: number | null;
+  /** Gate IDs that failed evaluation */
+  v2FailedGates: string[];
+  /** Field names or descriptions of missing critical data */
+  v2MissingFields: string[];
+  /** When V2 was last evaluated */
+  v2ComputedAt: string | null;
+  /** V2 model version for audit trail */
+  v2ModelVersion: string | null;
+}
+
+interface Row {
+  id: string; candidate_code: string; symbol_label: string | null; mint: string; pool_address: string | null;
+  price_usd: string | null; market_cap_usd: string | null; fdv_usd: string | null; liquidity_usd: string | null;
+  volume_usd: string | null; buys: number | null; sells: number | null;
+  price_at: string | null; p5: string | null; p15: string | null; p30: string | null;
+  liq5: string | null; liq15: string | null; liq30: string | null; liq_disc: string | null;
+  pair_age_ms: string | null; last_scan_at: string | null; next_scan_at: string | null;
+  mcap_first: string | null;
+  top10: string | null; mint_auth: boolean | null; freeze_auth: boolean | null;
+  datasets: Record<string, { status: string; value?: number; classification?: string }> | null;
+  v2_status: string | null; v2_proximity: string | null; v2_quality: number | null; v2_entry_rank: number | null;
+  v2_since: string | null; v2_scans: number | null; v2_trend: string | null; v2_prev: string | null;
+  v2_reasons: Record<string, unknown> | null; v2_plan: Record<string, unknown> | null;
+  // V2 Phase 1 verification fields
+  v2_structural_status: string | null; v2_structural_confidence: number | null;
+  v2_verification_coverage: number | null; v2_opportunity_coverage: number | null;
+  v2_failed_gates_raw: string | string[] | null; v2_missing_fields_raw: string | string[] | null;
+  v2_computed_at: string | null; v2_model_version: string | null;
+  pool_id: string | null;
+  liq_series: Array<{ t: number; l: number }> | null;
+  tx_series: Array<{ t: number; b: number | null; s: number | null; v: number | null }> | null;
+  rules: Array<{ rule_id: string; family: string; result: string }> | null;
+}
+
+const num = (v: string | null | undefined): number | null =>
+  v == null ? null : Number.isFinite(Number(v)) ? Number(v) : null;
+const pctChange = (now: number | null, then: number | null): number | null =>
+  now == null || then == null || then === 0 ? null : (now - then) / then;
+
+const FRESH_MS = 15 * 60_000;
+
+/** Nominal position the cost model prices every plan against. Must match the
+ *  worker's ENTRY_TRADE_SIZE_USD so the slippage the card shows and the cost the
+ *  card shows describe the same trade. */
+const NOMINAL_TRADE_USD = Number(process.env.ENTRY_TRADE_SIZE_USD ?? 10);
+
+
+/**
+ * Latest rule result per candidate, for many candidates in ONE scan.
+ *
+ * Measured: the correlated version cost 4.85s of a ~6s page — the single largest item
+ * on it. Not because the index was missing (it is there and it is the right one) but
+ * because rule_evaluations keeps EVERY re-evaluation: 5,550 rows per candidate for 18
+ * distinct rules, rewritten on every scan. DISTINCT ON therefore walked 5,550 rows to
+ * return 18, once per candidate, and grew a little worse every hour.
+ *
+ * Batching alone was not enough — even as one query it still scanned 92,069 rows to
+ * return 5,984, and /today swung between 2.5s and 7.2s against a 10s timeout. The log
+ * carries a forbid_mutation() trigger and is append-only ON PURPOSE, so pruning it
+ * would have meant disabling an integrity guard to win a page load.
+ *
+ * Migration 0013 adds a current-state projection instead: the log stays immutable and
+ * complete, and this reads one row per (candidate, rule).
+ */
+async function rulesByCandidate(ids: string[]): Promise<Map<string, Array<{ rule_id: string; family: string; result: string }>>> {
+  const out = new Map<string, Array<{ rule_id: string; family: string; result: string }>>();
+  if (ids.length === 0) return out;
+  const rows = await q<{ candidate_id: string; rule_id: string; family: string; result: string }>(
+    `SELECT candidate_id, rule_id, family, result
+       FROM rule_evaluations_current WHERE candidate_id = ANY($1::uuid[])`,
+    [ids],
+  );
+  for (const r of rows) {
+    let arr = out.get(r.candidate_id);
+    if (!arr) { arr = []; out.set(r.candidate_id, arr); }
+    arr.push({ rule_id: r.rule_id, family: r.family, result: r.result });
+  }
+  return out;
+}
+
+/**
+ * Price series for many pools in ONE scan.
+ *
+ * The obvious version — a correlated subquery inside the board query — timed the whole
+ * page out. It ran once per candidate, against a partitioned table whose partitions
+ * cannot be pruned because `now() - interval` is not a plan-time constant, on top of a
+ * query that already carries a dozen LATERAL joins. Profiling it alone over 100 rows
+ * said 22ms, which was simply the wrong thing to measure.
+ *
+ * row_number() gets the last N per pool in a single pass.
+ */
+async function priceSeriesByPool(poolIds: string[], perPool = 60): Promise<Map<string, Array<{ t: number; p: number }>>> {
+  const out = new Map<string, Array<{ t: number; p: number }>>();
+  if (poolIds.length === 0) return out;
+  const rows = await q<{ pool_id: string; t: string; p: string }>(
+    `SELECT pool_id, extract(epoch FROM observed_at)*1000 AS t, price_usd AS p FROM (
+       SELECT pool_id, observed_at, price_usd,
+              row_number() OVER (PARTITION BY pool_id ORDER BY observed_at DESC) rn
+         FROM prices
+        WHERE pool_id = ANY($1::uuid[]) AND price_usd IS NOT NULL
+          AND observed_at > now() - interval '6 hours'
+     ) s WHERE rn <= $2
+     ORDER BY pool_id, t ASC`,
+    [poolIds, perPool],
+  );
+  for (const r of rows) {
+    const t = Number(r.t), p = Number(r.p);
+    if (!Number.isFinite(t) || !Number.isFinite(p) || p <= 0) continue;
+    let arr = out.get(r.pool_id);
+    if (!arr) { arr = []; out.set(r.pool_id, arr); }
+    arr.push({ t, p });
+  }
+  return out;
+}
+
+/** Load the canonical decision view for all active candidates. ONE query. */
+export async function getDecisionViews(nowMs = Date.now()): Promise<CandidateDecisionView[]> {
+  const rows = await q<Row>(`
+    SELECT c.id, c.candidate_code, t.symbol_label, t.mint, p.pool_address, c.pool_id,
+      pr.price_usd, pr.market_cap_usd, pr.fdv_usd, pr.observed_at AS price_at,
+      lq.liquidity_usd, tx.buys, tx.sells, tx.volume_usd,
+      extract(epoch FROM (now() - c.discovered_at))*1000 AS pair_age_ms,
+      c.last_scan_at, c.next_scan_at,
+      (oe.intel->'onChain'->>'holderTop10Pct') AS top10,
+      (oe.intel->'flags'->>'mintAuthorityActive')::boolean AS mint_auth,
+      (oe.intel->'flags'->>'freezeAuthorityActive')::boolean AS freeze_auth,
+      oe.datasets,
+      cas.status AS v2_status, cas.entry_proximity AS v2_proximity,
+      cas.quality_rank AS v2_quality, cas.entry_rank AS v2_entry_rank, cas.since AS v2_since,
+      cas.confirming_scans AS v2_scans, cas.trend AS v2_trend, cas.prev_status AS v2_prev,
+      cas.reasons AS v2_reasons, cas.plan AS v2_plan,
+      ivs.v2_status AS v2_structural_status, ivs.v2_confidence AS v2_structural_confidence,
+      CASE WHEN ivs.result_json IS NOT NULL THEN 100 ELSE NULL END AS v2_verification_coverage,
+      NULL::integer AS v2_opportunity_coverage,
+      (ivs.result_json->'failedGates') AS v2_failed_gates_raw,
+      (ivs.result_json->'missingCriticalFields') AS v2_missing_fields_raw,
+      ivs.computed_at AS v2_computed_at,
+      ivs.score_version AS v2_model_version,
+      (SELECT market_cap_usd FROM prices WHERE pool_id=c.pool_id AND market_cap_usd IS NOT NULL ORDER BY observed_at ASC LIMIT 1) AS mcap_first,
+      (SELECT price_usd FROM prices WHERE pool_id=c.pool_id AND observed_at <= now()-interval '5 min'  ORDER BY observed_at DESC LIMIT 1) AS p5,
+      (SELECT price_usd FROM prices WHERE pool_id=c.pool_id AND observed_at <= now()-interval '15 min' ORDER BY observed_at DESC LIMIT 1) AS p15,
+      (SELECT price_usd FROM prices WHERE pool_id=c.pool_id AND observed_at <= now()-interval '30 min' ORDER BY observed_at DESC LIMIT 1) AS p30,
+      (SELECT liquidity_usd FROM liquidity_snapshots WHERE pool_id=c.pool_id AND observed_at <= now()-interval '5 min'  ORDER BY observed_at DESC LIMIT 1) AS liq5,
+      (SELECT liquidity_usd FROM liquidity_snapshots WHERE pool_id=c.pool_id AND observed_at <= now()-interval '15 min' ORDER BY observed_at DESC LIMIT 1) AS liq15,
+      (SELECT liquidity_usd FROM liquidity_snapshots WHERE pool_id=c.pool_id AND observed_at <= now()-interval '30 min' ORDER BY observed_at DESC LIMIT 1) AS liq30,
+      (SELECT liquidity_usd FROM liquidity_snapshots WHERE pool_id=c.pool_id ORDER BY observed_at ASC LIMIT 1) AS liq_disc,
+      (SELECT json_agg(json_build_object('t', extract(epoch from observed_at)*1000, 'l', liquidity_usd) ORDER BY observed_at)
+         FROM liquidity_snapshots WHERE pool_id=c.pool_id AND observed_at > now()-interval '6 hours') AS liq_series,
+
+      (SELECT json_agg(json_build_object('t', extract(epoch from observed_at)*1000, 'b', buys, 's', sells, 'v', volume_usd) ORDER BY observed_at)
+         FROM (SELECT observed_at, buys, sells, volume_usd FROM transaction_aggregates
+               WHERE pool_id=c.pool_id ORDER BY observed_at DESC LIMIT 8) tl) AS tx_series
+    FROM candidates c
+    JOIN tokens t ON t.id=c.token_id
+    LEFT JOIN pools p ON p.id=c.pool_id
+    LEFT JOIN LATERAL (SELECT price_usd, market_cap_usd, fdv_usd, observed_at FROM prices WHERE pool_id=c.pool_id ORDER BY observed_at DESC LIMIT 1) pr ON true
+    LEFT JOIN LATERAL (SELECT liquidity_usd FROM liquidity_snapshots WHERE pool_id=c.pool_id ORDER BY observed_at DESC LIMIT 1) lq ON true
+    LEFT JOIN LATERAL (SELECT buys, sells, volume_usd FROM transaction_aggregates WHERE pool_id=c.pool_id ORDER BY observed_at DESC LIMIT 1) tx ON true
+    LEFT JOIN onchain_enrichment oe ON oe.candidate_id=c.id
+    LEFT JOIN candidate_action_status cas ON cas.candidate_id=c.id
+    LEFT JOIN LATERAL (
+      SELECT v2_status, v2_confidence, result_json, computed_at, score_version
+      FROM intelligence_v2_scores
+      WHERE candidate_id = c.id::text
+      ORDER BY computed_at DESC
+      LIMIT 1
+    ) ivs ON true
+    WHERE c.discovery_source NOT IN ('mock','manual')
+      AND c.current_state <> 'EXPIRED'
+      AND pr.price_usd IS NOT NULL
+    -- The cap MUST be applied to a deterministic, decision-ordered set. An
+    -- unordered LIMIT returns an arbitrary slice, which is how 3 FUNDAMENTAL_WATCH
+    -- candidates vanished from a board that was showing 129 rejected ones: the
+    -- watchlist became a lottery, and an ENTRY_READY coin could have been invisible.
+    -- Ordering by decision importance means the cap can only ever drop the least
+    -- important rows.
+    ORDER BY
+      CASE cas.status
+        WHEN 'ENTRY_READY'       THEN 0
+        WHEN 'ENTRY_APPROACHING' THEN 1
+        WHEN 'SETUP_FORMING'     THEN 2
+        WHEN 'FUNDAMENTAL_WATCH' THEN 3
+        WHEN 'TOO_EXTENDED'      THEN 4
+        WHEN 'DISCOVERED'        THEN 5
+        WHEN 'INVALIDATED'       THEN 6
+        WHEN 'REJECTED'          THEN 7
+        ELSE 8
+      END,
+      COALESCE(cas.entry_rank, 0) DESC,
+      COALESCE(cas.quality_rank, 0) DESC,
+      c.discovered_at DESC
+    LIMIT 400
+  `);
+
+  // Second query, not a correlated subquery — see priceSeriesByPool().
+  const [priceByPool, rulesById] = await Promise.all([
+    priceSeriesByPool([...new Set(rows.map((r) => r.pool_id).filter((x): x is string => !!x))]),
+    rulesByCandidate(rows.map((r) => r.id)),
+  ]);
+  const views = rows.map((r) => buildView({ ...r, rules: rulesById.get(r.id) ?? null }, nowMs, priceByPool));
+  // Priority depends on cross-candidate ranking → assign after all are built.
+  return assignPriorities(views);
+}
+
+function buildView(r: Row, nowMs: number, priceByPool?: Map<string, Array<{ t: number; p: number }>>): CandidateDecisionView {
+  const ds = r.datasets ?? {};
+  const dsStatus: Record<string, string> = {};
+  for (const [k, v] of Object.entries(ds)) dsStatus[k] = v?.status;
+
+  // ── LIVE liquidity drain — overrides the frozen enrichment copy everywhere ──
+  const series = (r.liq_series ?? []).map((x) => ({ atMs: Number(x.t), liquidityUsd: Number(x.l) }));
+  const drain = analyzeLiquidityDrain(series, nowMs);
+  dsStatus.liquidity_drain = drain.status;
+
+
+
+  const rules = (r.rules ?? []).map((x) => ({ ruleId: x.rule_id, family: x.family, result: x.result }));
+  const safetyRules = rules.filter((x) => x.family === "SAFETY").map((x) => ({ ruleId: x.ruleId, result: x.result }));
+  const layers = safetyLayers(safetyRules, dsStatus);
+
+  const price = num(r.price_usd);
+  const liq = num(r.liquidity_usd);
+
+  // ── LIVE market liveness — catches "pretty chart, dead pool". Dexscreener echoes
+  // the last values after trading stops, so timestamp-freshness alone is not enough.
+  const txSeries = (r.tx_series ?? []).map((x) => ({ atMs: Number(x.t), buys: x.b, sells: x.s, volumeUsd: x.v }));
+  const live = analyzeLiveness(txSeries, liq, nowMs);
+  const freshnessMs = r.price_at ? nowMs - Date.parse(r.price_at) : null;
+  const fresh = freshnessMs != null && freshnessMs < FRESH_MS;
+  const sellClass = ds.sellability?.classification ?? null;
+  const insiderPct = ds.insider_concentration?.value ?? null;
+  // Rug verdict from the launch-stage checks: single largest wallet, top-5 float,
+  // authorities. A top-10 aggregate cannot see the wallet that ends a coin alone.
+  const rugEv = (ds.rug_risk as { evidence?: { verdict?: string; largestHolderPct?: number | null; top5Pct?: number | null; blocking?: string[]; concerns?: string[] } } | undefined)?.evidence;
+  const rugVerdict = rugEv?.verdict ?? null;
+  const largestHolderPct = rugEv?.largestHolderPct ?? null;
+  const top5Pct = rugEv?.top5Pct ?? null;
+  const rugBlocking = rugEv?.blocking ?? [];
+  const rugConcerns = rugEv?.concerns ?? [];
+
+  const reasons = (r.v2_reasons ?? {}) as {
+    positives?: string[]; waiting?: string[]; confirmed?: string[]; blocker?: string; best?: { type?: string };
+    marketQuality?: { trendHorizon?: string; degenerateHorizons?: boolean; entryQuality?: boolean; spentMove?: boolean };
+    entryReadyBlockers?: string[];
+    wash?: { activity?: string; turnover?: number | null; avgTradeUsd?: number | null };
+  };
+  // Which price-change window the trend read actually came from. On a pair younger
+  // than 6h the feed copies h1 into h6/h24, so a "6h trend" there is a duplicate,
+  // not history — the user has to be able to see that.
+  // Which ENTRY_READY preconditions are false right now. Recorded by the worker from
+  // the same input deriveStatus() uses, so this cannot drift from the decision. It was
+  // only reachable through a CLI report until now — the question "why does nothing ever
+  // become ready" belongs on the card, not in a terminal.
+  const entryReadyBlockers = reasons.entryReadyBlockers ?? [];
+  // Manufactured activity. Holder concentration cannot see this — bundling exists to
+  // defeat that check — but a pool that barely turns over cannot hide it.
+  const activity = reasons.wash?.activity ?? null;
+  const turnover = reasons.wash?.turnover ?? null;
+  const avgTradeUsd = reasons.wash?.avgTradeUsd ?? null;
+  const trendHorizon = reasons.marketQuality?.trendHorizon ?? null;
+  const degenerateHorizons = reasons.marketQuality?.degenerateHorizons ?? false;
+  const rawPlan = (r.v2_plan ?? null) as Partial<EntryPlanView> | null;
+  const status = (r.v2_status ?? "DISCOVERED") as ActionStatusV2;
+
+  const liqTrend = {
+    m5: pctChange(liq, num(r.liq5)), m15: pctChange(liq, num(r.liq15)),
+    m30: pctChange(liq, num(r.liq30)), sinceDiscovery: pctChange(liq, num(r.liq_disc)),
+  };
+  const priceChange = {
+    m5: pctChange(price, num(r.p5)), m15: pctChange(price, num(r.p15)), m30: pctChange(price, num(r.p30)),
+  };
+
+  // ── plan validation (§6) — hide levels that aren't real/relevant ──
+  const plan = validatePlan(rawPlan, price, status, drain.status, r.v2_proximity ?? "NO_STRUCTURE", liq);
+
+  // ── known / unknown risks ──
+  const knownRisks: string[] = [];
+  if (sellClass === "CONFIRMED_SELLABILITY_FAIL") knownRisks.push("confirmed sellability failure");
+  else if (sellClass === "HIGH_IMPACT") knownRisks.push("high sell price-impact");
+  if (r.mint_auth) knownRisks.push("mint authority active");
+  if (r.freeze_auth) knownRisks.push("freeze authority active");
+  if (drain.status === "FAIL") knownRisks.push(`liquidity ${drain.severity.replace(/_/g, " ")}`);
+  if (live.status === "FAIL") knownRisks.push(live.liveness === "POOL_GONE" ? "pool liquidity removed" : "market frozen — no new trades");
+  if (insiderPct != null && insiderPct >= 0.5) knownRisks.push(`insider concentration ${(insiderPct * 100).toFixed(0)}%`);
+  if (!fresh) knownRisks.push("market data stale");
+  for (const b of rugBlocking) knownRisks.push(b);
+  // A hole in the series means a drain-and-refill could have happened unobserved.
+  // This is a real risk even when every current reading looks clean.
+  if (drain.maxGapMs > 20 * 60_000) {
+    knownRisks.push(`${Math.round(drain.maxGapMs / 60_000)}m gap in observation history — unwatched period`);
+  }
+
+  // ── canonical blocker (§4) — exactly one primary ──
+  const bi: BlockerInput = {
+    anySafetyFail: layers.failingRules.length > 0, failingRules: layers.failingRules,
+    fresh, sellClass, drainStatus: drain.status, drainSeverity: drain.severity,
+    liveness: live.liveness, livenessReason: live.reason,
+    coreSafety: layers.core, coreMissing: layers.requiredMissing, coreReason: layers.coreBlocker,
+    proximity: r.v2_proximity ?? "NO_STRUCTURE", status,
+    planValid: plan?.valid ?? false, planInvalidReasons: plan?.invalidReasons ?? [],
+    scans: r.v2_scans ?? 0, estSlippagePct: rawPlan?.estSlippagePct ?? null,
+  };
+  const { primary, secondary } = canonicalBlocker(bi);
+
+  return {
+    id: r.id, code: r.candidate_code, symbol: r.symbol_label, mint: r.mint, pool: r.pool_address,
+    status, priority: "OBSERVATION", proximity: r.v2_proximity ?? "NO_STRUCTURE",
+    trend: r.v2_trend ?? "NEW", prevStatus: r.v2_prev,
+    sinceMs: r.v2_since ? nowMs - Date.parse(r.v2_since) : null, scans: r.v2_scans ?? 0,
+    coreSafety: layers.core, advanced: layers.advanced,
+    advancedMissing: layers.advancedMissing, coreMissing: layers.requiredMissing,
+    qualityRank: r.v2_quality, entryRank: r.v2_entry_rank,
+    priceUsd: price, marketCapUsd: num(r.market_cap_usd) ?? num(r.fdv_usd), liquidityUsd: liq,
+    volumeUsd: num(r.volume_usd), buys: r.buys, sells: r.sells,
+    holderTop10: num(r.top10), insiderPct, sellClass,
+    mintAuthorityActive: r.mint_auth, freezeAuthorityActive: r.freeze_auth,
+    drainStatus: drain.status, drainSeverity: drain.severity, drainHorizons: drain.horizons,
+    observationGapMs: drain.maxGapMs, unmeasuredHorizons: drain.unmeasured,
+    liveness: live.liveness, livenessReason: live.reason,
+    priceChange, liqTrend,
+    freshnessMs, fresh, pairAgeMs: num(r.pair_age_ms),
+    lastScanAt: r.last_scan_at, nextScanAt: r.next_scan_at,
+    primaryBlocker: primary, secondaryBlockers: secondary,
+    knownRisks, unknownRisks: layers.advancedMissing.map((d) => d.replace(/_/g, " ")),
+    positives: reasons.positives ?? [], waiting: reasons.waiting ?? [], confirmed: reasons.confirmed ?? [],
+    bestEntryType: reasons.best?.type ?? null, plan,
+    trendHorizon, degenerateHorizons, entryReadyBlockers,
+    activity, turnover, avgTradeUsd,
+    rugVerdict, largestHolderPct, top5Pct, rugBlocking, rugConcerns,
+    ...(() => {
+      const first = num(r.mcap_first);
+      const nowMc = num(r.market_cap_usd) ?? num(r.fdv_usd);
+      return {
+        marketCapFirstSeen: first,
+        runSinceFound: first != null && first > 0 && nowMc != null ? nowMc / first : null,
+      };
+    })(),
+    ...(() => {
+      const ps = potentialScore({
+        turnover, fdvToLiq: liq != null && liq > 0 && num(r.fdv_usd) != null ? num(r.fdv_usd)! / liq : null,
+        liquidityUsd: liq, marketCapUsd: num(r.market_cap_usd),
+        proximity: r.v2_proximity ?? null, activity,
+      });
+      return {
+        potential: ps.estimate, potentialLift: ps.lift,
+        potentialHelps: ps.helps.map((f) => ({ label: f.label, lift: f.lift, n: f.n })),
+        potentialHurts: ps.hurts.map((f) => ({ label: f.label, lift: f.lift, n: f.n })),
+      };
+    })(),
+    ...(() => { const u = universeStatus({ liquidityUsd: liq, pairAgeMs: num(r.pair_age_ms), activity });
+                return { universe: u.status, universeReason: u.reason }; })(),
+    priceSeries: (r.pool_id ? priceByPool?.get(r.pool_id) : undefined) ?? [],
+    // V2 Verification Fields
+    v2StructuralStatus: (r.v2_structural_status ?? null) as ("STRUCTURALLY_QUALIFIED" | "INSUFFICIENT_DATA" | "FATAL_REJECT") | null,
+    v2StructuralConfidence: r.v2_structural_confidence != null ? num(r.v2_structural_confidence) : null,
+    v2VerificationCoverage: r.v2_verification_coverage != null ? num(r.v2_verification_coverage) : null,
+    v2OpportunityCoverage: r.v2_opportunity_coverage != null ? num(r.v2_opportunity_coverage) : null,
+    v2FailedGates: (() => {
+      const raw = r.v2_failed_gates_raw;
+      if (!raw) return [];
+      try {
+        if (typeof raw === "string") return JSON.parse(raw);
+        if (Array.isArray(raw)) return raw;
+        return [];
+      } catch {
+        return [];
+      }
+    })(),
+    v2MissingFields: (() => {
+      const raw = r.v2_missing_fields_raw;
+      if (!raw) return [];
+      try {
+        if (typeof raw === "string") return JSON.parse(raw);
+        if (Array.isArray(raw)) return raw;
+        return [];
+      } catch {
+        return [];
+      }
+    })(),
+    v2ComputedAt: r.v2_computed_at ? new Date(r.v2_computed_at).toISOString() : null,
+    v2ModelVersion: r.v2_model_version ?? null,
+  };
+}
+
+/** §6 — a provisional plan is only shown when every level is real and relevant. */
+function validatePlan(
+  raw: Partial<EntryPlanView> | null, price: number | null, status: ActionStatusV2, drainStatus: string,
+  proximity: string, liquidityUsd: number | null,
+): EntryPlanView | null {
+  if (!raw || !raw.triggerType) return null;
+  const invalid: string[] = [];
+  // No structure ⇒ no entry area. The range that produced these numbers isn't a
+  // tradable structure, so showing levels would imply a setup that doesn't exist.
+  if (proximity === "NO_STRUCTURE") invalid.push("no entry structure — levels not meaningful yet");
+  if (raw.triggerType === "none yet") invalid.push("no trigger type identified");
+  const { entryAreaLow, entryAreaHigh, invalidation, maxChase, target, estSlippagePct } = raw;
+
+  if (invalidation == null) invalid.push("no invalidation level");
+  if (entryAreaLow == null) invalid.push("no entry area from observed structure");
+  if (maxChase != null && entryAreaLow != null && maxChase <= entryAreaLow) invalid.push("max chase not above entry area");
+  if (price != null && entryAreaLow != null) {
+    // Entry area must be relevant to the current price (not a stale structure).
+    const dist = (price - entryAreaLow) / entryAreaLow;
+    if (dist < -0.35) invalid.push("price far below entry area (stale structure)");
+    if (maxChase != null && price > maxChase) invalid.push("price above maximum chase");
+  }
+  if (invalidation != null && price != null && invalidation >= price) invalid.push("invalidation not below price");
+  if (target == null && raw.provisional === false) invalid.push("no target while R:R shown");
+  if (drainStatus === "FAIL") invalid.push("liquidity draining — structure unreliable");
+
+  // A plan whose target cannot clear the cost of entering and exiting is not an
+  // opportunity, however clean the structure is. On these pool depths the round
+  // trip is routinely larger than the target, so this is a first-class check.
+  const cost = roundTripCost({ tradeSizeUsd: NOMINAL_TRADE_USD, liquidityUsd });
+  const tv = targetViability(price, target ?? null, cost);
+  if (target != null && cost.total != null && !tv.viable) invalid.push(tv.reason);
+
+  const ready = status === "ENTRY_READY";
+  return {
+    provisional: !ready,
+    label: ready ? "ENTRY PLAN" : "PROVISIONAL — NOT AN ENTRY YET",
+    triggerType: raw.triggerType, entryAreaLow: entryAreaLow ?? null, entryAreaHigh: entryAreaHigh ?? null,
+    invalidation: invalidation ?? null, maxChase: maxChase ?? null, target: target ?? null,
+    estSlippagePct: estSlippagePct ?? null,
+    requiredConfirmation: raw.requiredConfirmation ?? "structure confirmation",
+    valid: invalid.length === 0, invalidReasons: invalid,
+    structureSource: "observed price series (no candles fabricated)",
+    roundTripCost: cost.total, breakevenMove: cost.breakevenMove,
+    targetViable: tv.viable,
+    // Sized against a 5% round-trip budget, not 10%. The median peak in this band is
+    // +13.8%; a ceiling that lets a tenth of the move go to fees is not a ceiling worth
+    // showing next to a suggested position of ten dollars.
+    maxPositionUsd: maxPositionForCost(liquidityUsd, 0.05),
+    exit: (() => {
+      const e = exitPlan({ entryPrice: entryAreaLow ?? null, invalidation: invalidation ?? null, target: target ?? null });
+      if (!e.steps.length) return null;
+      return { firstTakeAt: e.steps[0]!.at, firstTakePct: e.steps[0]!.takePct,
+               stopAfterFirst: e.stopAfterFirst, timeStopMin: Math.round(e.timeStopMs / 60_000) };
+    })(),
+    costNote: cost.total != null
+      ? `at $${NOMINAL_TRADE_USD} this pool costs ${(cost.total * 100).toFixed(1)}% to round-trip (needs +${((cost.breakevenMove ?? 0) * 100).toFixed(1)}% just to break even)`
+      : (cost.reasons[0] ?? "round-trip cost unknown"),
+  };
+}
+
+/** §7 — priority must follow status; ENTRY_APPROACHING + OBSERVATION is impossible. */
+function assignPriorities(views: CandidateDecisionView[]): CandidateDecisionView[] {
+  const combined = (v: CandidateDecisionView) => (v.qualityRank ?? 0) + (v.entryRank ?? 0);
+  // Watch-pool candidates compete for the 5 PRIMARY slots.
+  const pool = views
+    .filter((v) => v.status === "FUNDAMENTAL_WATCH" || v.status === "SETUP_FORMING")
+    .filter((v) => meetsPrimaryQualityFloor(v))
+    .sort((a, b) => combined(b) - combined(a));
+  const primaryIds = new Set(pool.slice(0, 5).map((v) => v.id));
+
+  for (const v of views) v.priority = watchPriorityFor(v.status, primaryIds.has(v.id));
+  return views;
+}
+
+/** §9 — a candidate must earn PRIMARY, not just rank highest. */
+export function meetsPrimaryQualityFloor(v: CandidateDecisionView): boolean {
+  if (!v.fresh) return false;
+  if (v.coreSafety === "FAIL") return false;
+  if (v.sellClass !== "SELLABLE" && v.sellClass !== "HIGH_IMPACT") return false;
+  if ((v.liquidityUsd ?? 0) < 8_000) return false;
+  if (v.drainStatus === "FAIL") return false;
+  if (v.liqTrend.m30 != null && v.liqTrend.m30 <= -0.2) return false; // significant contraction
+  if ((v.volumeUsd ?? 0) < 1_500) return false;                        // meaningful activity
+  const tx = (v.buys ?? 0) + (v.sells ?? 0);
+  if (tx > 0 && (v.buys ?? 0) / tx < 0.25) return false;               // severe sell imbalance
+  if (v.plan && !v.plan.valid && v.status === "SETUP_FORMING") return false;
+  return true;
+}
+
+export { ADVANCED_DATASETS };

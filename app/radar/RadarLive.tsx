@@ -54,7 +54,7 @@ function CandidateCard({ v }: { v: any }) {
       {isQualified && v.v2PassedGates && v.v2PassedGates.length > 0 && (
         <div style={{ fontSize: "11px", gap: "4px", display: "flex", flexDirection: "column", padding: "8px", backgroundColor: "rgba(34, 197, 94, 0.08)", borderRadius: "4px" }}>
           <span style={{ color: "var(--go)", fontWeight: "600" }}>Qualified via:</span>
-          {v.v2PassedGates.slice(0, 3).map((g) => (
+          {v.v2PassedGates.slice(0, 3).map((g: any) => (
             <div key={g.gateId} style={{ color: "var(--muted)", lineHeight: "1.3" }}>
               • {g.reason}
             </div>

@@ -1,0 +1,19 @@
+{
+  "/_not-found/page": "app/_not-found/page.js",
+  "/alerts/page": "app/alerts/page.js",
+  "/discover/page": "app/discover/page.js",
+  "/diagnostics/page": "app/diagnostics/page.js",
+  "/forensics/page": "app/forensics/page.js",
+  "/page": "app/page.js",
+  "/ops/page": "app/ops/page.js",
+  "/radar/page": "app/radar/page.js",
+  "/system/page": "app/system/page.js",
+  "/stream/page": "app/stream/page.js",
+  "/signals/page": "app/signals/page.js",
+  "/results/page": "app/results/page.js",
+  "/wallets/[address]/page": "app/wallets/[address]/page.js",
+  "/wallets/page": "app/wallets/page.js",
+  "/today/page": "app/today/page.js",
+  "/watchlist/page": "app/watchlist/page.js",
+  "/wallets/wallet-detail/page": "app/wallets/wallet-detail/page.js"
+}
