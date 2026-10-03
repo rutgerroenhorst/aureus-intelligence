@@ -1,33 +1,12 @@
-"use client";
-
-import { RadarLive } from "./RadarLive";
-
-const MOCK_DATA = {
-  CATE: [
-    {
-      mint: "Coin1",
-      symbol: "CATE",
-      marketCapUsd: 45000,
-      liquidityUsd: 12000,
-      volumeUsd: 8500,
-      discoveredAt: new Date(Date.now() - 3600000).toISOString(),
-      code: "C001",
-      v2StructuralStatus: "STRUCTURALLY_QUALIFIED",
-      v2PassedGates: [
-        { gateId: "G1", reason: "Liquidity threshold passed" },
-        { gateId: "G2", reason: "Volume spike detected" }
-      ]
-    }
-  ]
-};
-
 export default function RadarPage() {
   return (
-    <div style={{ width: "100%", minHeight: "100vh" }}>
-      <RadarLive initial={{
-        sectionTotals: {},
-        generatedAt: new Date().toISOString(),
-        worker: { online: true, status: "OK", heliusMode: "UNKNOWN", lastCycleAt: null, lastEnrichmentAt: null },
+    <div style={{ padding: "40px", background: "#0a0908", color: "#fff", minHeight: "100vh", fontFamily: "sans-serif" }}>
+      <h1 style={{ margin: "0 0 20px 0" }}>🚀 Aureus Intelligence</h1>
+      <p style={{ margin: "10px 0", fontSize: "16px" }}>Radar Dashboard is Live!</p>
+      <p style={{ margin: "10px 0", color: "#888" }}>Testing deployment on Vercel...</p>
+      <hr style={{ margin: "30px 0", border: "1px solid #333" }} />
+      <p style={{ fontSize: "14px", color: "#888" }}>Build Status: <span style={{ color: "#0f0" }}>✓ SUCCESS</span></p>
+      <p style={{ fontSize: "14px", color: "#888" }}>Website is online and accessible!</p>
         counts: {} as any,
         best: null,
         sections: {} as any
