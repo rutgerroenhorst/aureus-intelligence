@@ -3,7 +3,6 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "packageManager": "pnpm@9.15.0",
   "engines": {
     "node": ">=20"
   },
@@ -44,17 +43,6 @@
     "vitest": "^2.1.8"
   },
   "dependencies": {
-    "@aureus/alert-engine": "workspace:*",
-    "@aureus/config": "workspace:*",
-    "@aureus/contracts": "workspace:*",
-    "@aureus/db": "workspace:*",
-    "@aureus/feature-engine": "workspace:*",
-    "@aureus/ingestion": "workspace:*",
-    "@aureus/legacy-import": "workspace:*",
-    "@aureus/notifications": "workspace:*",
-    "@aureus/outcome-engine": "workspace:*",
-    "@aureus/rule-engine": "workspace:*",
-    "@aureus/snapshot-engine": "workspace:*",
     "ioredis": "^5.4.2",
     "pg": "^8.13.1",
     "xlsx": "^0.18.5",
