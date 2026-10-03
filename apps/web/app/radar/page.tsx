@@ -35,6 +35,7 @@ export default function RadarPageElite() {
     cate: 0, signals: 0, positions: 0, trends: 0, momentum: 0, performance: 0,
     "elite-s": 0, early: 0, entry: 0, qualified: 0, stats: 0
   });
+  const [enteredCoins, setEnteredCoins] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const fetchAll = async () => {
@@ -119,17 +120,38 @@ export default function RadarPageElite() {
   );
 
   const CoinRow = ({ c, color, score, isBuySignal }: { c: any; color: string; score?: number; isBuySignal?: boolean }) => {
+    const [entered, setEntered] = useState(false);
     const mcap = Number(c.market_cap_usd || c.marketCapUsd || 0);
     const conf = Number(c.confidence || c.buy_ratio || c.cateScore || c.buy_score || 0);
     const minutesOld = c.minutesOld || Math.floor((Date.now() - new Date(c.discovered_at).getTime()) / (1000 * 60));
-    
+
     const riskBadge = c.risk || "🟡";
     const riskLevel = c.riskLevel || "MEDIUM";
     const momentum = c.momentum || "";
     const actionWindow = c.actionWindow || "";
     const slippage = c.slippage || "";
-    
+
     const timeLabel = minutesOld < 1 ? "🔥 <1m" : minutesOld < 5 ? "⚡ <5m" : minutesOld < 30 ? "🟠 <30m" : `📊 ${minutesOld}m`;
+
+    const markEntered = async () => {
+      try {
+        const entryMcap = Number(c.marketCapUsd || c.market_cap_usd || 50000);
+        await fetch('/api/my-trades', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            symbol: c.symbol,
+            mint: c.mint,
+            entryMcap,
+            action: 'add-entry'
+          })
+        });
+        setEntered(true);
+        setTimeout(() => setEntered(false), 3000);
+      } catch (err) {
+        console.error('Entry track error:', err);
+      }
+    };
 
     return (
       <div
@@ -164,25 +186,70 @@ export default function RadarPageElite() {
         </div>
         <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
           {score && <span style={{ fontSize: "11px", color: "#fff", fontWeight: 700 }}>{Math.round(score)}</span>}
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              window.open(`https://dexscreener.com/solana/${c.mint}`, "_blank");
-            }}
-            style={{
-              padding: "4px 8px",
-              background: "#1a1a1f",
-              color: "#34c759",
-              border: "1px solid #34c759",
-              borderRadius: "4px",
-              fontSize: "10px",
-              fontWeight: 600,
-              cursor: "pointer",
-              whiteSpace: "nowrap",
-            }}
-          >
-            DexScreener
-          </button>
+          <div style={{ display: "flex", gap: "6px", flexDirection: "column" }}>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                markEntered();
+              }}
+              style={{
+                padding: "4px 8px",
+                background: entered ? "#34c759" : "#1a1a1f",
+                color: entered ? "#000" : "#34c759",
+                border: `1px solid #34c759`,
+                borderRadius: "4px",
+                fontSize: "10px",
+                fontWeight: 600,
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {entered ? "✅ Entered" : "✔ Enter"}
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                window.open(`https://dexscreener.com/solana/${c.mint}`, "_blank");
+              }}
+              style={{
+                padding: "4px 8px",
+                background: "#1a1a1f",
+                color: "#34c759",
+                border: "1px solid #34c759",
+                borderRadius: "4px",
+                fontSize: "10px",
+                fontWeight: 600,
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              DexScreener
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                navigator.clipboard.writeText(c.mint);
+                alert(`Copied: ${c.mint}`);
+              }}
+              title={c.mint}
+              style={{
+                padding: "4px 8px",
+                background: "#1a1a1f",
+                color: "#8a8a8e",
+                border: "1px solid #8a8a8e",
+                borderRadius: "4px",
+                fontSize: "9px",
+                fontWeight: 600,
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+                maxWidth: "150px",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              📋 Copy Mint
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -282,54 +349,99 @@ export default function RadarPageElite() {
           <div style={{ padding: "16px" }}>
             <h3 style={{ color: "#ff9500", marginBottom: "16px" }}>🚀 Ultra Early Momentum ({ultraEarlyMomentum.length})</h3>
             {ultraEarlyMomentum.length > 0 ? (
-              ultraEarlyMomentum.map((c, i) => (
-                <div
-                  key={i}
-                  style={{
-                    background: "#0f1116",
-                    border: "2px solid #ff9500",
-                    borderRadius: "8px",
-                    padding: "12px",
-                    marginBottom: "8px",
-                  }}
-                >
-                  <div style={{ fontSize: "13px", fontWeight: 700, color: "#fff", display: "flex", alignItems: "center", gap: "8px" }}>
-                    {c.symbol}
-                    <span style={{ fontSize: "11px", opacity: 0.7 }}>• {c.signal}</span>
+              ultraEarlyMomentum.map((c, i) => {
+                const markEntered = async () => {
+                  try {
+                    await fetch('/api/my-trades', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        symbol: c.symbol,
+                        mint: c.mint,
+                        entryMcap: c.mcap,
+                        action: 'add-entry'
+                      })
+                    });
+                    setEnteredCoins(prev => new Set([...prev, c.mint]));
+                    setTimeout(() => setEnteredCoins(prev => {
+                      const next = new Set(prev);
+                      next.delete(c.mint);
+                      return next;
+                    }), 3000);
+                  } catch (err) {
+                    console.error('Entry track error:', err);
+                  }
+                };
+                const isEntered = enteredCoins.has(c.mint);
+
+                return (
+                  <div
+                    key={i}
+                    style={{
+                      background: "#0f1116",
+                      border: "2px solid #ff9500",
+                      borderRadius: "8px",
+                      padding: "12px",
+                      marginBottom: "8px",
+                    }}
+                  >
+                    <div style={{ fontSize: "13px", fontWeight: 700, color: "#fff", display: "flex", alignItems: "center", gap: "8px" }}>
+                      {c.symbol}
+                      <span style={{ fontSize: "11px", opacity: 0.7 }}>• {c.signal}</span>
+                    </div>
+                    <div style={{ fontSize: "10px", color: "#ff9500", marginTop: "4px", display: "flex", gap: "12px", flexWrap: "wrap" }}>
+                      <span>🔥 {c.secondsOld}s old</span>
+                      <span>${Math.round(c.mcap).toLocaleString()}</span>
+                      <span>Score: {c.score}</span>
+                    </div>
+                    <div style={{ fontSize: "9px", color: "#8a8a8e", marginTop: "6px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                      {c.reasons.map((r: string, j: number) => (
+                        <span key={j}>{r}</span>
+                      ))}
+                    </div>
+                    <div style={{ marginTop: "8px", display: "flex", gap: "6px" }}>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          markEntered();
+                        }}
+                        style={{
+                          padding: "4px 8px",
+                          background: isEntered ? "#34c759" : "#1a1a1f",
+                          color: isEntered ? "#000" : "#34c759",
+                          border: "1px solid #34c759",
+                          borderRadius: "4px",
+                          fontSize: "10px",
+                          fontWeight: 600,
+                          cursor: "pointer",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {isEntered ? "✅ Entered" : "✔ Enter"}
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          window.open(`https://dexscreener.com/solana/${c.mint}`, "_blank");
+                        }}
+                        style={{
+                          padding: "4px 8px",
+                          background: "#1a1a1f",
+                          color: "#ff9500",
+                          border: "1px solid #ff9500",
+                          borderRadius: "4px",
+                          fontSize: "10px",
+                          fontWeight: 600,
+                          cursor: "pointer",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        🔍 DexScreener
+                      </button>
+                    </div>
                   </div>
-                  <div style={{ fontSize: "10px", color: "#ff9500", marginTop: "4px", display: "flex", gap: "12px", flexWrap: "wrap" }}>
-                    <span>🔥 {c.secondsOld}s old</span>
-                    <span>${Math.round(c.mcap).toLocaleString()}</span>
-                    <span>Score: {c.score}</span>
-                  </div>
-                  <div style={{ fontSize: "9px", color: "#8a8a8e", marginTop: "6px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                    {c.reasons.map((r: string, j: number) => (
-                      <span key={j}>{r}</span>
-                    ))}
-                  </div>
-                  <div style={{ marginTop: "8px" }}>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        window.open(`https://dexscreener.com/solana/${c.mint}`, "_blank");
-                      }}
-                      style={{
-                        padding: "4px 8px",
-                        background: "#1a1a1f",
-                        color: "#ff9500",
-                        border: "1px solid #ff9500",
-                        borderRadius: "4px",
-                        fontSize: "10px",
-                        fontWeight: 600,
-                        cursor: "pointer",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      🔍 DexScreener
-                    </button>
-                  </div>
-                </div>
-              ))
+                );
+              })
             ) : (
               <div style={{ textAlign: "center", color: "#8a8a8e", padding: "32px" }}>
                 No ultra-early momentum signals yet. Waiting for net launches... 🚀

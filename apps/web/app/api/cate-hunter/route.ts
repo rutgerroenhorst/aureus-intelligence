@@ -91,30 +91,46 @@ export async function GET() {
         const discoveredAt = new Date(c.discovered_at).getTime();
         const minutesOld = Math.floor((now - discoveredAt) / (1000 * 60));
         const hoursOld = minutesOld / 60;
+        const ageDays = hoursOld / 24;
 
         let cateScore = 0;
         const issues: string[] = [];
         let momentumBadge = "—";
 
         const topHolders = c.topHolders || [];
+        
+        // === HARD SCAM CHECKS ===
+        if (topHolders.length > 0 && topHolders[0].pct > 0.45) {
+          cateScore -= 100;
+          issues.push("SCAM: Mega whale >45%");
+        } else if (topHolders.length > 0 && topHolders[0].pct > 0.35) {
+          cateScore -= 80;
+          issues.push("High whale risk >35%");
+        }
+
         if (topHolders.length >= 5) {
           const top5Sum = topHolders.slice(0, 5).reduce((sum: number, h: any) => sum + Number(h.pct || 0), 0);
-          if (top5Sum > 0.7) {
+          if (top5Sum > 0.75) {
+            cateScore -= 70;
+            issues.push("SCAM: Top 5 >75% (rug)");
+          } else if (top5Sum > 0.65) {
             cateScore -= 50;
-            issues.push("Top 5 holders >70%");
+            issues.push("Extreme concentration >65%");
           }
-        }
-        if (topHolders.length > 0 && topHolders[0].pct > 0.4) {
-          cateScore -= 60;
-          issues.push("Single holder >40%");
         }
 
         if (c.tokenSupply && Number(c.tokenSupply) > 1e12 && Number(c.decimals || 6) <= 6) {
           cateScore -= 100;
-          issues.push("Supply manipulation: 1T+ tokens");
+          issues.push("SCAM: 1T+ tokens (inflation)");
         }
 
-        // FRESHNESS (0-30 points) - only for coins < 6 hours old
+        // Dead liquidity = delisted (ALWAYS reject)
+        if (liq < 100 && ageDays > 0.5) {
+          cateScore -= 150;
+          issues.push("DEAD: Liquidity dried up");
+        }
+
+        // FRESHNESS (0-30 points)
         if (minutesOld < 1) cateScore += 30;
         else if (minutesOld < 2) cateScore += 28;
         else if (minutesOld < 3) cateScore += 26;
@@ -123,21 +139,21 @@ export async function GET() {
         else if (minutesOld < 15) cateScore += 15;
         else if (minutesOld < 30) cateScore += 10;
         else if (minutesOld < 60) cateScore += 5;
-        // ELSE: no freshness points for coins > 1 hour
+        else {
+          cateScore -= 5; // Penalize >1h but don't kill it
+        }
 
-        // AGE DECAY - coins get exponentially worse as they age
-        // This prevents old coins from staying in ELITE forever
-        if (hoursOld > 6) {
-          cateScore -= 10; // 6h+ = -10
-        }
-        if (hoursOld > 12) {
-          cateScore -= 15; // 12h+ = additional -15 (-25 total)
-        }
-        if (hoursOld > 24) {
-          cateScore -= 30; // 24h+ = additional -30 (-55 total, usually drops below 40)
-        }
-        if (hoursOld > 48) {
-          cateScore -= 50; // 48h+ = hard reject
+        // GRADUAL AGE DECAY (only penalty, no hard reject)
+        if (ageDays > 7) {
+          cateScore -= 80; // >7 days = harsh but not instant-reject
+          issues.push("AGE: >7 days old");
+        } else if (ageDays > 5) {
+          cateScore -= 50;
+          issues.push("AGE: >5 days");
+        } else if (ageDays > 3) {
+          cateScore -= 25; // Gentle decay, not -100!
+        } else if (ageDays > 1) {
+          cateScore -= 10; // Very gentle for 1-3 days
         }
 
         // MARKET CAP TIER (0-35 points)
@@ -160,39 +176,39 @@ export async function GET() {
           else if (liqRatio > 0.05) cateScore += 12;
           else if (liqRatio > 0.02) cateScore += 6;
           else {
-            cateScore -= 50;
-            issues.push("Liquidity trap: <2%");
+            cateScore -= 60;
+            issues.push("SCAM: Liquidity trap <2%");
           }
         }
 
-        // CONTRACT VERIFICATION (0-20 points)
+        // CONTRACT VERIFICATION
         if (!c.isVerified) {
-          cateScore -= 15;
+          cateScore -= 25;
           issues.push("Unverified contract");
         } else {
           cateScore += 10;
         }
 
-        // HOLDER DISTRIBUTION (0-15 points)
-        if (topHolders.length >= 5) {
-          const top5Sum = topHolders.slice(0, 5).reduce((sum: number, h: any) => sum + Number(h.pct || 0), 0);
-          if (top5Sum < 0.3) {
-            cateScore += 15;
-          } else if (top5Sum < 0.4) {
-            cateScore += 10;
-          } else if (top5Sum < 0.5) {
-            cateScore += 5;
+        // SAFE HOLDER DISTRIBUTION (0-10 points)
+        if (!issues.some(i => i.includes("whale") || i.includes("concentration"))) {
+          if (topHolders.length >= 5) {
+            const top5Sum = topHolders.slice(0, 5).reduce((sum: number, h: any) => sum + Number(h.pct || 0), 0);
+            if (top5Sum < 0.3) {
+              cateScore += 10;
+            } else if (top5Sum < 0.4) {
+              cateScore += 6;
+            }
           }
         }
 
-        // TIME-BASED MOMENTUM (0-20 points)
+        // TIME-BASED MOMENTUM
         if (minutesOld < 5 && mcap < 30000) {
           cateScore += 15;
         } else if (minutesOld < 10 && mcap < 50000) {
           cateScore += 10;
         }
 
-        // BUY MOMENTUM ACCELERATION (0-25 points)
+        // BUY MOMENTUM
         const txns = txnsMap.get(c.mint);
         if (txns && txns.m5 && txns.h1 && txns.h6) {
           const m5Buys = Number(txns.m5.buys || 0);
@@ -224,9 +240,6 @@ export async function GET() {
           }
         }
 
-        // Floor at minimum viable
-        cateScore = Math.max(25, cateScore);
-
         let tier = "📊 WATCH";
         if (cateScore >= 100) tier = "🚀 ELITE";
         else if (cateScore >= 85) tier = "🔥 HOT";
@@ -243,11 +256,17 @@ export async function GET() {
           tier,
           momentum: momentumBadge,
           issues: issues.length > 0 ? issues.join(" | ") : null,
+          isScam: issues.some(i => i.includes("SCAM")),
+          isDead: issues.some(i => i.includes("DEAD")),
         };
       })
       .filter((c: any) => {
-        if (c.issues?.includes("1T+") || c.issues?.includes("Supply manipulation")) return false;
-        if (c.issues?.includes(">40%")) return false;
+        // HARD REJECT only SCAMS and DEAD coins
+        if (c.isScam || c.isDead) return false;
+        if (c.issues?.includes("SCAM")) return false;
+        if (c.issues?.includes("DEAD")) return false;
+        
+        // Score gate: >= 40 (lowered from 50, allows aging coins to still show)
         return c.cateScore >= 40;
       })
       .sort((a: any, b: any) => b.cateScore - a.cateScore)
