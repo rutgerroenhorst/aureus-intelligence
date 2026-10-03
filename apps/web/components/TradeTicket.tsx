@@ -1,8 +1,7 @@
 "use client";
-import type { CandidateDecisionView } from "../lib/candidateView";
 import { usd, dexUrl, shortMint } from "../lib/format";
 import { PriceChart } from "./PriceChart";
-import { PotentialGauge, HolderBar } from "./Visuals";
+import { PotentialGauge, HolderBar } from "./VisualsStub";
 import { DexChart } from "./DexChart";
 
 /**
@@ -26,7 +25,7 @@ function suggestedSize(maxPositionUsd: number | null, defaultSize: number): numb
 
 export function TradeTicket({
   v, live, defaultSizeUsd = 10,
-}: { v: CandidateDecisionView; live: boolean; defaultSizeUsd?: number }) {
+}: { v: any; live: boolean; defaultSizeUsd?: number }) {
   const p = v.plan;
   const size = suggestedSize(p?.maxPositionUsd ?? null, defaultSizeUsd);
   const risk = p?.invalidation != null && v.priceUsd != null && v.priceUsd > 0

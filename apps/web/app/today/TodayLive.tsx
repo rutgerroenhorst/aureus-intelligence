@@ -1,8 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import type { BoardView } from "../../lib/boardSections";
-import type { CandidateDecisionView } from "../../lib/candidateView";
+import type { BoardView } from "../../lib/boardTypes";
 import { TradeTicket } from "../../components/TradeTicket";
 import { PriceChart } from "../../components/PriceChart";
 import { ago, usd, shortMint, dexUrl } from "../../lib/format";

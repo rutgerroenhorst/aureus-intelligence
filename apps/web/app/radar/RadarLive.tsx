@@ -1,8 +1,7 @@
 "use client";
 import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
-import type { BoardView } from "../../lib/boardSections";
-import type { CandidateDecisionView } from "../../lib/candidateView";
+import type { BoardView } from "../../lib/boardTypes";
 import { ago, usd, dexUrl } from "../../lib/format";
 import { formatConfidence } from "../../lib/confidenceFormatter";
 import { formatRelativeTime } from "../../lib/telemetry-utils";
@@ -23,7 +22,7 @@ function V2StatusBadge({ status }: { status: string | null }) {
   );
 }
 
-function CandidateCard({ v }: { v: CandidateDecisionView }) {
+function CandidateCard({ v }: { v: any }) {
   const mcap = v.marketCapUsd;
   const liq = v.liquidityUsd;
   const isQualified = v.v2StructuralStatus === "STRUCTURALLY_QUALIFIED";
