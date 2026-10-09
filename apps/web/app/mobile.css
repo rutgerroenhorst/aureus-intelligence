@@ -232,6 +232,24 @@ html {
     border-top: 1px solid #2a2a3e !important;
   }
 
+  /* Self-Optimizer: four summary cards and five-column grids become 2 and 3 columns */
+  .learn-head {
+    padding: 16px 14px !important;
+  }
+  .learn-head h2 {
+    font-size: 22px !important;
+  }
+  .learn-body {
+    padding: 14px !important;
+  }
+  .learn-summary {
+    grid-template-columns: 1fr 1fr !important;
+  }
+  .learn-metrics,
+  .learn-buckets {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+
   /* One wide table or grid must never push the whole page sideways */
   .ae-content table {
     display: block;

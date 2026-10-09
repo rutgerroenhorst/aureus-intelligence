@@ -32,6 +32,7 @@ export default function RadarPageElite() {
   const [selectedChain, setSelectedChain] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>("early");
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+  const [failedSources, setFailedSources] = useState<string[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [scrollPositions, setScrollPositions] = useState<{[key in Tab]: number}>({
     cate: 0, signals: 0, positions: 0, trends: 0, momentum: 0, performance: 0,
@@ -46,7 +47,8 @@ export default function RadarPageElite() {
       setIsRefreshing(true);
       const res = await fetch("/api/radar-bundle", { cache: "no-store" });
       if (!res.ok) throw new Error(`radar-bundle ${res.status}`);
-      const { data: d } = await res.json();
+      const { data: d, failed } = await res.json();
+      setFailedSources(Array.isArray(failed) ? failed : []);
 
       if (d.candidates) setCandidates(d.candidates.candidates || []);
       if (d.elite) setEliteCandidates(d.elite.candidates || []);
@@ -501,7 +503,7 @@ export default function RadarPageElite() {
               {isRefreshing
                 ? "🔄 Refreshing..."
                 : lastUpdate
-                  ? `✓ Screen refreshed ${lastUpdate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`
+                  ? `${failedSources.length ? "⚠ Partly refreshed" : "✓ Screen refreshed"} ${lastUpdate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`
                   : "Loading..."}
             </span>
             <button
@@ -513,6 +515,11 @@ export default function RadarPageElite() {
               ↻ Refresh
             </button>
           </div>
+          {failedSources.length > 0 && (
+            <div style={{ marginTop: "8px", fontSize: "12px", color: "#ff9f0a" }}>
+              ⚠ {failedSources.length} of 12 data sources could not be loaded just now ({failedSources.join(", ")}). Lists may be incomplete or out of date; the next refresh tries again.
+            </div>
+          )}
           {safety && safety.unverified > 0 && (
             <div style={{ marginTop: "8px", fontSize: "12px", color: "#ff9f0a" }}>
               ⚠ {safety.unverified} of {safety.total} coins could not be live-checked right now (DexScreener busy) — they are NOT confirmed safe.

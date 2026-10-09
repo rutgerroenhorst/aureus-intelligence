@@ -78,7 +78,7 @@ export default function LearningPage() {
 
   return (
     <>
-      <div style={{ padding: "24px 32px", borderBottom: "1px solid #2a2a3e" }}>
+      <div className="learn-head" style={{ padding: "24px 32px", borderBottom: "1px solid #2a2a3e" }}>
         <h2 style={{ fontSize: "28px", fontWeight: 700, margin: "0 0 8px 0", color: "#fff" }}>
           Self-Optimizer
         </h2>
@@ -87,7 +87,7 @@ export default function LearningPage() {
         </p>
       </div>
 
-      <div style={{ flex: 1, overflow: "auto", padding: "24px 32px" }}>
+      <div className="learn-body" style={{ flex: 1, overflow: "auto", padding: "24px 32px" }}>
         {loading ? (
           <div style={{ color: "#8a8a9e", textAlign: "center", padding: "60px" }}>
             Loading learning data...
@@ -100,7 +100,7 @@ export default function LearningPage() {
           <>
             {/* Summary Cards */}
             <div style={{ marginBottom: "32px" }}>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "14px", marginBottom: "12px" }}>
+              <div className="learn-summary" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "14px", marginBottom: "12px" }}>
                 <div style={{ padding: "16px", background: "rgba(52, 199, 89, 0.1)", border: "1px solid rgba(52, 199, 89, 0.3)", borderRadius: "8px" }}>
                   <div style={{ fontSize: "11px", fontWeight: 700, color: "#8a8a9e", marginBottom: "8px", textTransform: "uppercase" }}>
                     Overall Win Rate
@@ -198,7 +198,7 @@ export default function LearningPage() {
                   </div>
 
                   {/* Metrics Grid */}
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: "12px", marginBottom: "16px" }}>
+                  <div className="learn-metrics" style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: "12px", marginBottom: "16px" }}>
                     <div style={{ padding: "12px", background: "rgba(0,0,0,0.3)", borderRadius: "6px", border: "1px solid #2a2a3e" }}>
                       <div style={{ fontSize: "10px", color: "#8a8a9e", marginBottom: "4px" }}>WIN RATE</div>
                       <div style={{ fontSize: "18px", fontWeight: 700, color: tab.total_coins === tab.pending ? "#8a8a9e" : tab.win_rate > 40 ? "#34c759" : "#ff3b30" }}>
@@ -241,7 +241,7 @@ export default function LearningPage() {
                       <div style={{ fontSize: "11px", fontWeight: 600, color: "#8a8a9e", marginBottom: "8px", textTransform: "uppercase" }}>
                         Performance by Age Bucket
                       </div>
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: "8px" }}>
+                      <div className="learn-buckets" style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: "8px" }}>
                         {Object.entries(tab.by_age_bucket).map(([bucket, stats]: [string, any]) => (
                           <div key={bucket} style={{ padding: "8px", background: "rgba(0,0,0,0.2)", borderRadius: "4px", border: "1px solid #2a2a3e" }}>
                             <div style={{ fontSize: "9px", fontWeight: 700, color: "#30b0c0", marginBottom: "2px" }}>

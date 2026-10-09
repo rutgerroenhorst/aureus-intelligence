@@ -54,9 +54,13 @@ async function build(): Promise<void> {
   } catch {
     safety = null;
   }
+  // A source that failed comes back as null. Say so: the page used to print "refreshed" over lists that were
+  // actually empty because the database was busy.
+  const failed = entries.filter(([, v]) => v == null).map(([k]) => k);
   memo = {
-    at: Date.now(),
-    body: JSON.stringify({ at: new Date().toISOString(), data: { ...Object.fromEntries(entries), safety } }),
+    // A mostly failed answer must not be served for the next 15 s: back-date it so the next request retries.
+    at: failed.length > entries.length / 2 ? 0 : Date.now(),
+    body: JSON.stringify({ at: new Date().toISOString(), failed, data: { ...Object.fromEntries(entries), safety } }),
   };
 }
 

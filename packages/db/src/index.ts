@@ -15,48 +15,58 @@ export type { PoolClient, QueryResult } from "pg";
 
 import os from "node:os";
 
-// One pool per PROCESS, kept on globalThis. `next dev` re-evaluates modules on every hot reload and
+// One pool per PROCESS (per name), kept on globalThis. `next dev` re-evaluates modules on every hot reload and
 // every copy used to open its own pool; the old ones were never closed, so a local Postgres with the
 // default max_connections=100 ran out of connections ("53300 too many clients") and the Radar
 // showed empty lists.
-const holder = globalThis as unknown as { __aureusPgPool?: pg.Pool };
+const holder = globalThis as unknown as { __aureusPgPool?: pg.Pool; __aureusNamedPools?: Record<string, pg.Pool> };
 
-export function getPool(connectionString?: string): pg.Pool {
-  if (!holder.__aureusPgPool) {
-    const cs = connectionString ?? getConfig().env.DATABASE_URL;
-    // Serverless (Vercel) instances multiply: keep each pool tiny so the shared pooler is not exhausted.
-    const serverless = Boolean(process.env.VERCEL);
-    const maxConnections =
-      Number(process.env.DB_POOL_MAX) ||
-      (serverless ? 3 : Math.min(25, Math.max(10, os.cpus().length * 2)));
-    const minConnections =
-      process.env.DB_POOL_MIN !== undefined ? Number(process.env.DB_POOL_MIN) : serverless ? 0 : 2;
-    const pool = new Pool({
-      connectionString: cs,
-      max: maxConnections,  // 10-25 based on CPU cores (3 on Vercel; DB_POOL_MAX overrides)
-      min: minConnections,  // 2 locally, 0 on Vercel; DB_POOL_MIN overrides
-      idleTimeoutMillis: 30000,
-      // A cold serverless instance opens its first TLS connection while still loading code; 2 s was not always enough.
-      connectionTimeoutMillis: Number(process.env.DB_CONNECT_TIMEOUT_MS) || (serverless ? 8000 : 2000),
-      statement_timeout: 5000,
-      query_timeout: 10000
-    });
+function createPool(connectionString?: string): pg.Pool {
+  const cs = connectionString ?? getConfig().env.DATABASE_URL;
+  // Serverless (Vercel) instances multiply: keep each pool tiny so the shared pooler is not exhausted.
+  const serverless = Boolean(process.env.VERCEL);
+  const maxConnections =
+    Number(process.env.DB_POOL_MAX) ||
+    (serverless ? 3 : Math.min(25, Math.max(10, os.cpus().length * 2)));
+  const minConnections =
+    process.env.DB_POOL_MIN !== undefined ? Number(process.env.DB_POOL_MIN) : serverless ? 0 : 2;
+  const pool = new Pool({
+    connectionString: cs,
+    max: maxConnections,  // 10-25 based on CPU cores (3 on Vercel; DB_POOL_MAX overrides)
+    min: minConnections,  // 2 locally, 0 on Vercel; DB_POOL_MIN overrides
+    idleTimeoutMillis: 30000,
+    // A cold serverless instance opens its first TLS connection while still loading code; 2 s was not always enough.
+    connectionTimeoutMillis: Number(process.env.DB_CONNECT_TIMEOUT_MS) || (serverless ? 8000 : 2000),
+    statement_timeout: 5000,
+    query_timeout: 10000
+  });
 
-    // Log warnings on connection issues
-    pool.on("error", (err) => {
-      console.error("[DB] Unexpected pool error:", err);
-    });
-    holder.__aureusPgPool = pool;
-  }
-  return holder.__aureusPgPool;
+  // Log warnings on connection issues
+  pool.on("error", (err) => {
+    console.error("[DB] Unexpected pool error:", err);
+  });
+  return pool;
 }
 
-export async function closePool(): Promise<void> {
-  const pool = holder.__aureusPgPool;
-  if (pool) {
-    holder.__aureusPgPool = undefined;
-    await pool.end();
+/**
+ * The shared pool. A `name` gives a separate pool of its own: the scan that runs inside the web app uses one, so its
+ * queries can never use up the connections the pages are waiting for (a scan with 5 coins in flight emptied a pool of 3
+ * and every page request behind it timed out).
+ */
+export function getPool(connectionString?: string, name?: string): pg.Pool {
+  if (name && name !== "default") {
+    const named = (holder.__aureusNamedPools ??= {});
+    return (named[name] ??= createPool(connectionString));
   }
+  return (holder.__aureusPgPool ??= createPool(connectionString));
+}
+
+/** Close every pool of this process (scripts call this before exiting). */
+export async function closePool(): Promise<void> {
+  const pools = [holder.__aureusPgPool, ...Object.values(holder.__aureusNamedPools ?? {})].filter(Boolean) as pg.Pool[];
+  holder.__aureusPgPool = undefined;
+  holder.__aureusNamedPools = {};
+  await Promise.all(pools.map((p) => p.end()));
 }
 
 // Export cache utilities

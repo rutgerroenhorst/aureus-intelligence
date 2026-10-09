@@ -30,7 +30,8 @@ const WORKER_ID = process.env.WORKER_ID ?? `worker-${process.pid}`;
 const log = (msg: string, extra: Record<string, unknown> = {}) =>
   console.log(JSON.stringify({ t: new Date().toISOString(), worker: WORKER_ID, msg, ...extra }));
 
-const pool = getPool();
+// Run inside the web app (AUREUS_EMBEDDED), the scan gets a pool of its own so it cannot starve the pages' queries.
+const pool = getPool(undefined, process.env.AUREUS_EMBEDDED === "1" ? "scan" : undefined);
 const cfg = loadConfig();
 const dex = new DexScreenerAdapter(cfg.env.DEXSCREENER_BASE_URL);
 const helius = new HeliusAdapter({ apiKey: cfg.env.HELIUS_API_KEY });
