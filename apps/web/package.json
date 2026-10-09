@@ -18,6 +18,7 @@
     "@aureus/rule-engine": "workspace:*",
     "@aureus/safety-engine": "workspace:*",
     "@aureus/watch-engine": "workspace:*",
+    "@vercel/functions": "^3.9.11",
     "ioredis": "^5.4.2",
     "next": "14.2.15",
     "pg": "^8.13.1",

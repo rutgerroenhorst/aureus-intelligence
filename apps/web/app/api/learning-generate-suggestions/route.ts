@@ -1,209 +1,113 @@
 import { NextResponse } from "next/server";
 import { getPool } from "@aureus/db";
+import { AGE_BUCKETS, bestThreshold, bucketCaseSql, type Direction } from "@/lib/learning-stats";
 
 export const dynamic = "force-dynamic";
 
-// Analyzes winner vs loser patterns and generates filter suggestions
+// Each metric is tested as "a coin should have at least / at most this much at qualification". Price momentum has
+// no obvious direction (chasing a pump vs buying a dip), so both are tried; the confidence correction pays for it.
+const METRICS: Array<{ name: string; column: string; direction: Direction }> = [
+  { name: "buy_ratio", column: "buy_ratio_at_qualification", direction: "higher" },
+  { name: "holder_top10", column: "holder_top10_at_qualification", direction: "lower" },
+  { name: "danger_score", column: "danger_score_at_qualification", direction: "lower" },
+  { name: "volume_velocity", column: "volume_velocity_at_qualification", direction: "higher" },
+  { name: "price_velocity", column: "price_velocity_at_qualification", direction: "higher" },
+  { name: "price_velocity", column: "price_velocity_at_qualification", direction: "lower" },
+  { name: "score", column: "score_at_qualification", direction: "higher" },
+  { name: "liquidity_usd", column: "liquidity_usd_at_qualification", direction: "higher" },
+];
+
+const round = (n: number, digits = 4) => Math.round(n * 10 ** digits) / 10 ** digits;
+
+/**
+ * Looks for a cut-off on each metric that would have improved a tab's win rate within an age bucket.
+ * Everything that is not a winner (loser, rugpull, dead) counts against it, and the comparison is against the
+ * group's own win rate, i.e. "what you get with no extra filter". Suggestions are only proposals (pending_review).
+ */
 async function generateSuggestions() {
   const pool = getPool();
+  const { rows } = await pool.query(
+    `SELECT tab_name, ${bucketCaseSql("age_minutes_at_qualification")} AS bucket,
+            (outcome_status = 'winner') AS win,
+            ${[...new Set(METRICS.map((m) => m.column))].join(", ")}
+       FROM coin_qualifications
+      WHERE outcome_status IN ('winner', 'loser', 'rugpull', 'dead')`,
+  );
 
-  const suggestions: any[] = [];
+  const groups = new Map<string, any[]>();
+  for (const r of rows) {
+    const key = `${r.tab_name}|${r.bucket}`;
+    groups.set(key, [...(groups.get(key) ?? []), r]);
+  }
 
-  // Get all tabs with sufficient historical data
-  const tabsWithData = await pool.query(`
-    SELECT DISTINCT tab_name
-    FROM coin_qualifications
-    WHERE outcome_status IN ('winner', 'loser')
-    GROUP BY tab_name
-    HAVING COUNT(*) >= 10
-  `);
+  const found: any[] = [];
+  let considered = 0;
+  for (const [key, members] of groups) {
+    const [tab, bucketName] = key.split("|") as [string, string];
+    const bucket = AGE_BUCKETS.find((b) => b.name === bucketName)!;
+    for (const metric of METRICS) {
+      considered++;
+      const samples = members
+        .filter((m) => m[metric.column] != null)
+        .map((m) => ({ value: Number(m[metric.column]), win: Boolean(m.win) }));
+      const s = bestThreshold(samples, metric.direction);
+      const dir = metric.direction === "higher" ? "increase" : "decrease";
+      const threshold = s ? round(s.threshold) : null;
 
-  for (const { tab_name } of tabsWithData.rows) {
-    // Analyze each age bucket separately
-    const ageBuckets = [
-      { name: "0-1d", min: 0, max: 1 },
-      { name: "1-3d", min: 1, max: 3 },
-      { name: "3-8d", min: 3, max: 8 },
-      { name: "8-30d", min: 8, max: 30 },
-      { name: "30d+", min: 30, max: 999 },
-    ];
-
-    for (const bucket of ageBuckets) {
-      // Get winners and losers in this bucket
-      const bucketsResult = await pool.query(
-        `
-        SELECT
-          outcome_status,
-          buy_ratio_at_qualification,
-          holder_top10_at_qualification,
-          danger_score_at_qualification,
-          volume_velocity_at_qualification,
-          price_velocity_at_qualification
-        FROM coin_qualifications
-        WHERE tab_name = $1
-          AND age_days_at_qualification >= $2
-          AND age_days_at_qualification < $3
-          AND outcome_status IN ('winner', 'loser')
-        `,
-        [tab_name, bucket.min, bucket.max]
+      // Whatever was suggested earlier for this combination and is no longer the current answer is retired,
+      // not deleted: the table is append-only for this role, and the history is worth keeping.
+      await pool.query(
+        `UPDATE filter_suggestions SET status = 'superseded', last_updated_at = now()
+          WHERE tab_name = $1 AND age_bucket_min = $2 AND age_bucket_max = $3 AND metric_name = $4
+            AND suggested_direction = $5 AND status = 'pending_review'
+            AND ($6::numeric IS NULL OR suggested_threshold <> $6::numeric)`,
+        [tab, bucket.minH, bucket.maxH, metric.name, dir, threshold],
       );
+      // The columns are NUMERIC(10,4): a value outside that range would fail the insert, so skip it rather than lose the run.
+      if (!s || Math.abs(s.threshold) >= 999_999 || Math.abs(s.currentEdge) >= 999_999) continue;
 
-      if (bucketsResult.rows.length < 10) continue; // Not enough data
-
-      const winners = bucketsResult.rows.filter(
-        (r: any) => r.outcome_status === "winner"
+      await pool.query(
+        `INSERT INTO filter_suggestions (
+            tab_name, age_bucket_min, age_bucket_max, metric_name, current_threshold, suggested_threshold,
+            suggested_direction, confidence_score, win_rate_with_suggestion, win_rate_without_suggestion,
+            sample_size, status)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'pending_review')
+         ON CONFLICT (tab_name, age_bucket_min, age_bucket_max, metric_name, suggested_threshold)
+           DO UPDATE SET last_updated_at = now(), confidence_score = EXCLUDED.confidence_score,
+                         suggested_direction = EXCLUDED.suggested_direction,
+                         win_rate_with_suggestion = EXCLUDED.win_rate_with_suggestion,
+                         win_rate_without_suggestion = EXCLUDED.win_rate_without_suggestion,
+                         sample_size = EXCLUDED.sample_size, current_threshold = EXCLUDED.current_threshold,
+                         status = CASE WHEN filter_suggestions.status = 'superseded' THEN 'pending_review' ELSE filter_suggestions.status END`,
+        [
+          tab, bucket.minH, bucket.maxH, metric.name, round(s.currentEdge), threshold, dir,
+          Math.round(s.confidence), round(s.passRate, 1), round(s.baseRate, 1), s.passers,
+        ],
       );
-      const losers = bucketsResult.rows.filter(
-        (r: any) => r.outcome_status === "loser"
-      );
-
-      if (winners.length < 5 || losers.length < 5) continue;
-
-      // Analyze each metric
-      const metrics = [
-        {
-          name: "buy_ratio_at_qualification",
-          field: "buy_ratio_at_qualification",
-          direction: "higher",
-        },
-        {
-          name: "holder_top10_at_qualification",
-          field: "holder_top10_at_qualification",
-          direction: "lower",
-        },
-        {
-          name: "danger_score_at_qualification",
-          field: "danger_score_at_qualification",
-          direction: "lower",
-        },
-        {
-          name: "volume_velocity_at_qualification",
-          field: "volume_velocity_at_qualification",
-          direction: "higher",
-        },
-      ];
-
-      for (const metric of metrics) {
-        const winnerValues = winners
-          .map((w: any) => parseFloat(w[metric.field]))
-          .filter((v: number) => !isNaN(v));
-        const loserValues = losers
-          .map((l: any) => parseFloat(l[metric.field]))
-          .filter((v: number) => !isNaN(v));
-
-        if (winnerValues.length === 0 || loserValues.length === 0) continue;
-
-        const winnerAvg =
-          winnerValues.reduce((a: number, b: number) => a + b, 0) /
-          winnerValues.length;
-        const loserAvg =
-          loserValues.reduce((a: number, b: number) => a + b, 0) /
-          loserValues.length;
-
-        // Calculate optimal threshold (midpoint between winner and loser average)
-        const optimalThreshold = (winnerAvg + loserAvg) / 2;
-        const currentThreshold =
-          metric.name === "buy_ratio_at_qualification" ? 0.6 :
-          metric.name === "holder_top10_at_qualification" ? 10 :
-          metric.name === "danger_score_at_qualification" ? 40 :
-          1.5;
-
-        // Estimate win rate improvement
-        const winnersAboveThreshold = winnerValues.filter((v: number) =>
-          metric.direction === "higher" ? v > optimalThreshold : v < optimalThreshold
-        ).length;
-        const losersAboveThreshold = loserValues.filter((v: number) =>
-          metric.direction === "higher" ? v > optimalThreshold : v < optimalThreshold
-        ).length;
-
-        const winRateWithSuggestion =
-          winnersAboveThreshold / Math.max(1, winnersAboveThreshold + losersAboveThreshold);
-
-        const winnersAboveCurrentThreshold = winnerValues.filter((v: number) =>
-          metric.direction === "higher" ? v > currentThreshold : v < currentThreshold
-        ).length;
-        const losersAboveCurrentThreshold = loserValues.filter((v: number) =>
-          metric.direction === "higher" ? v > currentThreshold : v < currentThreshold
-        ).length;
-
-        const winRateWithoutSuggestion =
-          winnersAboveCurrentThreshold /
-          Math.max(1, winnersAboveCurrentThreshold + losersAboveCurrentThreshold);
-
-        // Only suggest if improvement is significant (>10%) and confidence is high
-        const improvement = winRateWithSuggestion - winRateWithoutSuggestion;
-        const confidence = Math.min(
-          100,
-          (winnersAboveThreshold / winners.length) * 100
-        );
-
-        if (improvement > 0.1 && confidence > 50) {
-          suggestions.push({
-            tab_name,
-            age_bucket_min: bucket.min,
-            age_bucket_max: bucket.max,
-            metric_name: metric.name,
-            current_threshold: currentThreshold,
-            suggested_threshold: optimalThreshold,
-            suggested_direction: metric.direction === "higher" ? "increase" : "decrease",
-            confidence_score: Math.round(confidence),
-            win_rate_with_suggestion: Math.round(winRateWithSuggestion * 100),
-            win_rate_without_suggestion: Math.round(winRateWithoutSuggestion * 100),
-            sample_size: winnersAboveThreshold + losersAboveThreshold,
-          });
-        }
-      }
+      found.push({
+        tab_name: tab, age_bucket: bucket.name, metric_name: metric.name, direction: dir,
+        suggested_threshold: threshold, win_rate_with: round(s.passRate, 1), win_rate_without: round(s.baseRate, 1),
+        coins_passing: s.passers, coins_total: s.total, confidence: Math.round(s.confidence),
+      });
     }
   }
 
-  // Store top suggestions (dedup by tab + bucket + metric)
-  for (const suggestion of suggestions.slice(0, 20)) {
-    await pool.query(
-      `
-      INSERT INTO filter_suggestions (
-        tab_name, age_bucket_min, age_bucket_max, metric_name,
-        current_threshold, suggested_threshold, suggested_direction,
-        confidence_score, win_rate_with_suggestion, win_rate_without_suggestion,
-        sample_size, status
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'pending_review')
-      ON CONFLICT (tab_name, age_bucket_min, age_bucket_max, metric_name, suggested_threshold)
-        DO UPDATE SET
-          last_updated_at = now(),
-          confidence_score = EXCLUDED.confidence_score,
-          sample_size = EXCLUDED.sample_size
-      `,
-      [
-        suggestion.tab_name,
-        suggestion.age_bucket_min,
-        suggestion.age_bucket_max,
-        suggestion.metric_name,
-        suggestion.current_threshold,
-        suggestion.suggested_threshold,
-        suggestion.suggested_direction,
-        suggestion.confidence_score,
-        suggestion.win_rate_with_suggestion,
-        suggestion.win_rate_without_suggestion,
-        suggestion.sample_size,
-      ]
-    );
-  }
-
+  found.sort((a, b) => b.confidence - a.confidence);
   return {
-    generated_count: suggestions.length,
-    suggestions: suggestions.slice(0, 10),
+    generated_count: found.length,
+    suggestions: found.slice(0, 10),
+    groups_checked: groups.size,
+    combinations_checked: considered,
+    graded_coins: rows.length,
     analysis_timestamp: new Date().toISOString(),
   };
 }
 
-export async function POST(request: Request) {
+export async function POST() {
   try {
-    const result = await generateSuggestions();
-    return NextResponse.json(result);
+    return NextResponse.json(await generateSuggestions());
   } catch (err) {
     console.error("[learning-generate-suggestions] Error:", err);
-    return NextResponse.json(
-      { error: "Failed to generate suggestions", details: String(err) },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to generate suggestions", details: String(err) }, { status: 500 });
   }
 }

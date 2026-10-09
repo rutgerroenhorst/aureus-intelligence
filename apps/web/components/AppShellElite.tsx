@@ -1,8 +1,8 @@
 "use client";
-import React, { ReactNode, useEffect, useState } from "react";
+import React, { ReactNode, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { usePolling } from "@/lib/usePolling";
+import { usePolling, SCAN_DONE_EVENT } from "@/lib/usePolling";
 
 interface AppShellEliteProps {
   children: ReactNode;
@@ -55,7 +55,7 @@ const NavIcon = ({ type }: { type: string }) => {
   }
 };
 
-type HealthLevel = "unknown" | "ok" | "stale" | "down";
+type HealthLevel = "unknown" | "ok" | "scanning" | "stale" | "down";
 interface Health {
   level: HealthLevel;
   label: string;
@@ -64,20 +64,30 @@ interface Health {
 const HEALTH_COLOR: Record<HealthLevel, string> = {
   unknown: "#8a8a8e",
   ok: "#34c759",
+  scanning: "#30b0c0",
   stale: "#ff9f0a",
   down: "#ff3b30",
 };
 
 const formatAge = (min: number) => (min < 90 ? `${min} min` : min < 60 * 48 ? `${Math.round(min / 60)} h` : `${Math.round(min / 1440)} d`);
 
-// "Live" must mean the data is actually fresh, not that a worker ran once at some point.
-function describeHealth(t: { status?: string; lastWorkerCycleAt?: string | null }): Health {
+interface JobInfo { running: boolean; due: boolean }
+interface Telemetry {
+  lastWorkerCycleAt?: string | null;
+  scan?: { lastScanAt: string | null; scan: JobInfo; learning: JobInfo } | null;
+}
+
+// "Live" must mean the market was actually scanned recently, not that a worker ran once at some point.
+// The age shown is the age of the last SCAN. The Radar's own "Refreshed" time is only when the screen last
+// asked for data, which is a different clock; the two used to be mixed up.
+function describeHealth(t: Telemetry, scanning: boolean): Health {
+  if (scanning) return { level: "scanning", label: "Scanning…" };
   const last = t.lastWorkerCycleAt ? new Date(t.lastWorkerCycleAt).getTime() : NaN;
-  if (t.status === "OFFLINE" || Number.isNaN(last)) return { level: "down", label: "No data feed" };
+  if (Number.isNaN(last)) return { level: "down", label: "No scan yet" };
   const min = Math.max(0, Math.round((Date.now() - last) / 60_000));
-  if (min <= 20) return { level: "ok", label: "Live" };
-  if (min <= 90) return { level: "stale", label: `Data ${formatAge(min)} old` };
-  return { level: "down", label: `Feed stopped ${formatAge(min)} ago` };
+  if (min <= 20) return { level: "ok", label: min < 1 ? "Live · just scanned" : `Live · scan ${formatAge(min)} ago` };
+  if (min <= 90) return { level: "stale", label: `Scan ${formatAge(min)} ago` };
+  return { level: "down", label: `Last scan ${formatAge(min)} ago` };
 }
 
 const primaryNav = [
@@ -100,17 +110,42 @@ export default function AppShellElite({ children }: AppShellEliteProps) {
   const pathname = usePathname();
   const [health, setHealth] = useState<Health>({ level: "unknown", label: "" });
   const [moreOpen, setMoreOpen] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const wasScanning = useRef(false);
+  const askedAt = useRef(0);
 
-  // Once a minute, and only while the screen is visible (was every 10 s, always).
-  usePolling(async () => {
-    try {
-      const res = await fetch("/api/telemetry", { cache: "no-store" });
-      if (!res.ok) throw new Error(String(res.status));
-      setHealth(describeHealth(await res.json()));
-    } catch {
-      setHealth({ level: "down", label: "Offline" });
-    }
-  }, 60_000);
+  // Once a minute, and only while the screen is visible (was every 10 s, always). While a scan is running it
+  // checks every few seconds so the dot flips to "Live" as soon as the new data is in.
+  usePolling(
+    async () => {
+      try {
+        const res = await fetch("/api/telemetry", { cache: "no-store" });
+        if (!res.ok) throw new Error(String(res.status));
+        const t: Telemetry = await res.json();
+        let busy = Boolean(t.scan?.scan.running);
+        // The site scans the market itself, but only while someone has it open: when the data is due, ask for a
+        // tick. The server decides (lease) whether anything really starts, so asking from every device is safe.
+        if (t.scan && !busy && (t.scan.scan.due || t.scan.learning.due) && Date.now() - askedAt.current > 30_000) {
+          askedAt.current = Date.now();
+          try {
+            const r = await fetch("/api/scan", { method: "POST" });
+            const started: string[] = r.ok ? (await r.json()).started ?? [] : [];
+            busy = started.includes("scan");
+          } catch {
+            /* the next minute tries again */
+          }
+        }
+        if (wasScanning.current && !busy) window.dispatchEvent(new Event(SCAN_DONE_EVENT));
+        wasScanning.current = busy;
+        setScanning(busy);
+        setHealth(describeHealth(t, busy));
+      } catch {
+        setHealth({ level: "down", label: "Offline" });
+      }
+    },
+    scanning ? 6_000 : 60_000,
+    scanning ? { idleIntervalMs: 6_000 } : {},
+  );
 
   useEffect(() => {
     setMoreOpen(false);
@@ -240,7 +275,7 @@ export default function AppShellElite({ children }: AppShellEliteProps) {
               height: "6px",
               borderRadius: "50%",
               background: healthColor,
-              animation: health.level === "ok" ? "pulse 2s infinite" : "none",
+              animation: health.level === "ok" || health.level === "scanning" ? "pulse 2s infinite" : "none",
             }} />
             <span style={{ fontWeight: 500 }}>{health.label}</span>
           </div>

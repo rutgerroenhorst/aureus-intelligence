@@ -16,6 +16,8 @@ interface TabLearning {
 
 interface FilterSuggestion {
   tab_name: string;
+  age_bucket_min: number;
+  age_bucket_max: number;
   metric_name: string;
   current_threshold: number;
   suggested_threshold: number;
@@ -33,6 +35,14 @@ interface AnalysisSummary {
   overall_win_rate: number;
   active_suggestions: number;
 }
+
+const fmtAge = (h: number) => (h >= 1000 ? "∞" : h >= 48 ? `${Math.round(h / 24)}d` : `${h}h`);
+
+const ago = (iso: string | null | undefined) => {
+  if (!iso) return "never";
+  const min = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60_000));
+  return min < 1 ? "just now" : min < 90 ? `${min} min ago` : min < 2880 ? `${Math.round(min / 60)} h ago` : `${Math.round(min / 1440)} d ago`;
+};
 
 export default function LearningPage() {
   const [analysis, setAnalysis] = useState<any>(null);
@@ -96,7 +106,7 @@ export default function LearningPage() {
                     Overall Win Rate
                   </div>
                   <div style={{ fontSize: "24px", fontWeight: 700, color: "#34c759" }}>
-                    {analysis.analysis_summary.overall_win_rate.toFixed(1)}%
+                    {analysis.analysis_summary.total_graded > 0 ? `${analysis.analysis_summary.overall_win_rate.toFixed(1)}%` : "—"}
                   </div>
                   <div style={{ fontSize: "10px", color: "#8a8a9e", marginTop: "4px" }}>
                     {analysis.analysis_summary.total_coins_tracked} coins tracked
@@ -145,12 +155,28 @@ export default function LearningPage() {
               </div>
             </div>
 
+            {/* What is tracked and how coins are graded */}
+            <div style={{ marginBottom: "24px", padding: "14px 16px", background: "rgba(48, 176, 192, 0.06)", border: "1px solid rgba(48, 176, 192, 0.25)", borderRadius: "8px", fontSize: "12px", lineHeight: 1.6, color: "#b0b0be" }}>
+              <div style={{ color: "#fff", fontWeight: 600, marginBottom: "4px" }}>
+                {analysis.analysis_summary.total_coins_tracked} coins tracked · {analysis.analysis_summary.total_graded ?? 0} graded · {analysis.analysis_summary.total_pending ?? 0} still being watched
+              </div>
+              Last coin added {ago(analysis.analysis_summary.last_tracked_at)}, last check {ago(analysis.analysis_summary.last_checked_at)}.
+              A coin counts as a <b style={{ color: "#34c759" }}>winner</b> when it reaches 2× its market cap from the moment it appeared on a tab,
+              a <b style={{ color: "#ff3b30" }}>rugpull</b> when it falls below 0.5× or its liquidity is pulled, and a loser when it is still between 0.5× and 2× after {analysis.rules?.watch_hours ?? 6} hours.
+              Coins are measured while Aureus is open (or while the 24/7 scanner runs), so a spike that comes and goes between two checks can be missed. Filter suggestions appear once a tab and age group has about 10 graded coins with at least 5 winners and 5 non-winners.
+            </div>
+
             {/* Per-Tab Learning */}
             <div style={{ marginBottom: "32px" }}>
               <h3 style={{ fontSize: "13px", fontWeight: 700, marginBottom: "16px", textTransform: "uppercase" }}>
                 Per-Tab Performance
               </h3>
 
+              {Object.keys(analysis.per_tab).length === 0 && (
+                <div style={{ color: "#8a8a9e", padding: "24px", textAlign: "center", border: "1px dashed #2a2a3e", borderRadius: "8px", fontSize: "13px" }}>
+                  No coins tracked yet. They are added automatically after a scan finishes while Aureus is open; check back in a few minutes.
+                </div>
+              )}
               {Object.entries(analysis.per_tab).map(([tabName, tab]: [string, any]) => (
                 <div
                   key={tabName}
@@ -175,15 +201,15 @@ export default function LearningPage() {
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: "12px", marginBottom: "16px" }}>
                     <div style={{ padding: "12px", background: "rgba(0,0,0,0.3)", borderRadius: "6px", border: "1px solid #2a2a3e" }}>
                       <div style={{ fontSize: "10px", color: "#8a8a9e", marginBottom: "4px" }}>WIN RATE</div>
-                      <div style={{ fontSize: "18px", fontWeight: 700, color: tab.win_rate > 40 ? "#34c759" : "#ff3b30" }}>
-                        {tab.win_rate.toFixed(1)}%
+                      <div style={{ fontSize: "18px", fontWeight: 700, color: tab.total_coins === tab.pending ? "#8a8a9e" : tab.win_rate > 40 ? "#34c759" : "#ff3b30" }}>
+                        {tab.total_coins === tab.pending ? "—" : `${tab.win_rate.toFixed(1)}%`}
                       </div>
                     </div>
 
                     <div style={{ padding: "12px", background: "rgba(0,0,0,0.3)", borderRadius: "6px", border: "1px solid #2a2a3e" }}>
                       <div style={{ fontSize: "10px", color: "#8a8a9e", marginBottom: "4px" }}>AVG RETURN</div>
                       <div style={{ fontSize: "18px", fontWeight: 700, color: tab.avg_return > 1.5 ? "#34c759" : "#8a8a9e" }}>
-                        {tab.avg_return.toFixed(2)}x
+                        {tab.total_coins === tab.pending ? "—" : `${tab.avg_return.toFixed(2)}x`}
                       </div>
                     </div>
 
@@ -280,20 +306,20 @@ export default function LearningPage() {
                       </div>
 
                       <div style={{ fontSize: "12px", color: "#8a8a9e", marginBottom: "8px" }}>
-                        Current: {suggestion.current_threshold.toFixed(2)} → Suggested: {suggestion.suggested_threshold.toFixed(2)}
+                        Coins aged {fmtAge(suggestion.age_bucket_min)}–{fmtAge(suggestion.age_bucket_max)}: now accepted from {Number(suggestion.current_threshold).toFixed(2)} → try {suggestion.suggested_direction === "increase" ? "at least" : "at most"} {Number(suggestion.suggested_threshold).toFixed(2)}
                       </div>
 
                       <div style={{ display: "flex", gap: "24px", fontSize: "11px" }}>
                         <div>
                           <span style={{ color: "#8a8a9e" }}>Without:</span> {" "}
                           <span style={{ color: "#ff9500", fontWeight: 600 }}>
-                            {suggestion.win_rate_without_suggestion.toFixed(1)}% win rate
+                            {Number(suggestion.win_rate_without_suggestion).toFixed(1)}% win rate
                           </span>
                         </div>
                         <div>
                           <span style={{ color: "#8a8a9e" }}>With:</span> {" "}
                           <span style={{ color: "#34c759", fontWeight: 600 }}>
-                            {suggestion.win_rate_with_suggestion.toFixed(1)}% win rate
+                            {Number(suggestion.win_rate_with_suggestion).toFixed(1)}% win rate
                           </span>
                         </div>
                         <div>
@@ -308,11 +334,11 @@ export default function LearningPage() {
                         style={{
                           fontSize: "24px",
                           fontWeight: 700,
-                          color: suggestion.confidence_score > 75 ? "#34c759" : suggestion.confidence_score > 50 ? "#ff9500" : "#8a8a9e",
+                          color: Number(suggestion.confidence_score) > 75 ? "#34c759" : Number(suggestion.confidence_score) > 50 ? "#ff9500" : "#8a8a9e",
                           textAlign: "center"
                         }}
                       >
-                        {suggestion.confidence_score.toFixed(0)}%
+                        {Number(suggestion.confidence_score).toFixed(0)}%
                       </div>
                       <div style={{ fontSize: "10px", color: "#8a8a9e", textAlign: "center", marginTop: "4px" }}>
                         confidence

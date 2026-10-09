@@ -25,6 +25,17 @@ const nextConfig = {
     outputFileTracingRoot: path.join(here, "../.."),
     // pg / ioredis are server-only deps — keep them external to the bundle.
     serverComponentsExternalPackages: ["pg", "ioredis"],
+    // The site runs the scanner itself (lib/cloudScan.ts imports apps/worker/src/run.ts), which lives outside this app.
+    externalDir: true,
+  },
+  webpack(config) {
+    // The worker is written for tsx/Node ESM, where "./pipeline.js" means pipeline.ts. Teach webpack the same rule.
+    config.resolve.extensionAlias = {
+      ...config.resolve.extensionAlias,
+      ".js": [".ts", ".tsx", ".js"],
+      ".mjs": [".mts", ".mjs"],
+    };
+    return config;
   },
 };
 export default nextConfig;

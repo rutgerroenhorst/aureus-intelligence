@@ -1,5 +1,10 @@
 # Self-Learning System: Quick Start
 
+> **Superseded (2026-10-09).** Coins are now tracked and graded **on the server**, not by the browser, and age buckets
+> are in hours. See [docs/CLOUD_SCAN_AND_LEARNING.md](docs/CLOUD_SCAN_AND_LEARNING.md). The text below describes the
+> original browser-driven design (`trackCoinQualification` in `apps/web/lib/learning-integration.ts` is not called by anything).
+
+
 ## What You Just Built
 
 A real-time system that **learns which coins are winners and which are rugpulls**, then automatically suggests better filter thresholds.

@@ -30,6 +30,8 @@ export async function POST(request: Request) {
     const pool = getPool();
     const age_days = age_minutes_at_qualification / (60 * 24);
 
+    // The unique key includes qualified_at (= now()), so ON CONFLICT never fired and every call added a row.
+    // One row per coin and tab per day, the same rule the server-side tracker uses.
     const result = await pool.query(
       `
       INSERT INTO coin_qualifications (
@@ -38,8 +40,12 @@ export async function POST(request: Request) {
         volume_velocity_at_qualification, price_velocity_at_qualification,
         mcap_usd_at_qualification, liquidity_usd_at_qualification, danger_score_at_qualification,
         outcome_status
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'pending')
-      ON CONFLICT (mint, tab_name, qualified_at) DO NOTHING
+      )
+      SELECT $1::text, $2::text, $3::text, $4::int, $5::numeric, $6::numeric, $7::numeric, $8::numeric, $9::numeric,
+             $10::numeric, $11::numeric, $12::numeric, $13::numeric, 'pending'
+       WHERE NOT EXISTS (
+         SELECT 1 FROM coin_qualifications
+          WHERE mint = $1 AND tab_name = $3 AND qualified_at > now() - interval '24 hours')
       RETURNING id, qualified_at
       `,
       [

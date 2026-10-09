@@ -1,4 +1,5 @@
 import { getFeedTelemetry } from "../../../lib/telemetry";
+import { getScanState } from "../../../lib/cloudScan";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -6,8 +7,10 @@ export const revalidate = 0;
 
 export async function GET() {
   try {
-    const telemetry = await getFeedTelemetry();
-    return NextResponse.json(telemetry, {
+    // `scan` tells the shell when the data is from and whether it should ask for a fresh scan; it is optional
+    // so the health dot still works if the lease table is unreachable.
+    const [telemetry, scan] = await Promise.all([getFeedTelemetry(), getScanState().catch(() => null)]);
+    return NextResponse.json({ ...telemetry, scan }, {
       headers: {
         "Cache-Control": "no-store, max-age=0",
       },

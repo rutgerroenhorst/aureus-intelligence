@@ -36,7 +36,8 @@ export function getPool(connectionString?: string): pg.Pool {
       max: maxConnections,  // 10-25 based on CPU cores (3 on Vercel; DB_POOL_MAX overrides)
       min: minConnections,  // 2 locally, 0 on Vercel; DB_POOL_MIN overrides
       idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 2000,
+      // A cold serverless instance opens its first TLS connection while still loading code; 2 s was not always enough.
+      connectionTimeoutMillis: Number(process.env.DB_CONNECT_TIMEOUT_MS) || (serverless ? 8000 : 2000),
       statement_timeout: 5000,
       query_timeout: 10000
     });

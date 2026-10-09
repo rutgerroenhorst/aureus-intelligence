@@ -43,13 +43,20 @@ const MAX_ENRICH_PER_CYCLE = Number(process.env.MAX_ENRICH_PER_CYCLE ?? 5);
 const MAX_REEVAL_PER_CYCLE = Number(process.env.MAX_REEVAL_PER_CYCLE ?? 10);
 
 // Redis-backed enrichment queue (falls back to in-memory if Redis is unavailable).
+// On Vercel the web app runs scans through scanOnce(): there is no Redis there, and a client that keeps
+// retrying localhost:6379 every second only burns CPU, so serverless always uses the in-memory queue.
+const SERVERLESS = Boolean(process.env.VERCEL) || process.env.AUREUS_NO_REDIS === "1";
 let redis: Redis | null = null;
 let queue: EnrichmentQueue;
-try {
-  redis = new Redis(cfg.env.REDIS_URL, { lazyConnect: true, maxRetriesPerRequest: 1, retryStrategy: () => 1000 });
-  queue = new RedisQueue(redis);
-} catch {
+if (SERVERLESS) {
   queue = new InMemoryQueue();
+} else {
+  try {
+    redis = new Redis(cfg.env.REDIS_URL, { lazyConnect: true, maxRetriesPerRequest: 1, retryStrategy: () => 1000 });
+    queue = new RedisQueue(redis);
+  } catch {
+    queue = new InMemoryQueue();
+  }
 }
 
 let cycleCount = 0;
@@ -460,8 +467,17 @@ async function drainEnrichment(nowMs: number): Promise<{ enriched: number; reeva
 let lastPartitionCheckMs = 0;
 const PARTITION_CHECK_INTERVAL_MS = 60 * 60_000;
 
-async function runCycle(): Promise<void> {
-  if (inCycle) return;
+interface CycleStats {
+  candidates: number;
+  fresh: number;
+  errors: number;
+  discovered: number;
+  due: number;
+  ms: number;
+}
+
+async function runCycle(): Promise<CycleStats | null> {
+  if (inCycle) return null;
   inCycle = true;
   const start = Date.now();
   cycleErrors = [];
@@ -564,6 +580,7 @@ async function runCycle(): Promise<void> {
       });
     }
     log("cycle done", { ms, candidates: bounded.length, fresh: freshTaken, errors: cycleErrors.length, enriched: enrich.enriched, reeval: enrich.reeval, shadow, phases, verdicts, queueDepth, byType: depthByType, oldestJobAgeMs: oldestAge, stats: qs, breaker: breaker.state });
+    return { candidates: bounded.length, fresh: freshTaken, errors: cycleErrors.length, discovered: discovered.length, due: due.length, ms };
   } finally {
     inCycle = false;
   }
@@ -604,28 +621,56 @@ async function loop(): Promise<void> {
   }
 }
 
-const mode = process.argv[2] ?? "once";
-try {
-  // Boot check. Without a partition for the current month every write fails, so
-  // starting up "successfully" would be a lie.
-  const made = await ensurePartitions(pool);
-  if (made.length) log("partitions created", { partitions: made });
-  if (!(await currentMonthWritable(pool))) {
-    log("FATAL", { error: "no partition for the current month — market data cannot be written" });
+async function main(): Promise<void> {
+  const mode = process.argv[2] ?? "once";
+  try {
+    // Boot check. Without a partition for the current month every write fails, so
+    // starting up "successfully" would be a lie.
+    const made = await ensurePartitions(pool);
+    if (made.length) log("partitions created", { partitions: made });
+    if (!(await currentMonthWritable(pool))) {
+      log("FATAL", { error: "no partition for the current month — market data cannot be written" });
+      await closePool();
+      process.exit(1);
+    }
+    if (mode === "start" || mode === "watch") {
+      await loop();
+    } else {
+      if (redis) await redis.connect().catch(() => undefined);
+      await runCycle();
+      await writeHeartbeat(pool, WORKER_ID, { status: "IDLE", cycleCount });
+      if (redis) redis.disconnect();
+      await closePool();
+    }
+  } catch (err) {
+    log("FATAL", { error: (err as Error).message });
     await closePool();
-    process.exit(1);
+    process.exitCode = 1;
   }
-  if (mode === "start" || mode === "watch") {
-    await loop();
-  } else {
-    if (redis) await redis.connect().catch(() => undefined);
-    await runCycle();
+}
+
+/**
+ * One bounded scan for the web app (Vercel). The same cycle as `once`, without the parts that only make
+ * sense for a process of its own: it does not close the shared pool and never calls process.exit.
+ */
+export async function scanOnce(): Promise<{ ok: boolean; reason?: string; stats?: CycleStats }> {
+  try {
+    if (!(await currentMonthWritable(pool))) {
+      return { ok: false, reason: "no partition for the current month - market data cannot be written" };
+    }
+    const stats = await runCycle();
+    if (!stats) return { ok: false, reason: "a scan is already running in this instance" };
     await writeHeartbeat(pool, WORKER_ID, { status: "IDLE", cycleCount });
-    if (redis) redis.disconnect();
-    await closePool();
+    return { ok: true, stats };
+  } catch (err) {
+    log("scan failed", { error: (err as Error).message });
+    return { ok: false, reason: (err as Error).message };
   }
-} catch (err) {
-  log("FATAL", { error: (err as Error).message });
-  await closePool();
-  process.exitCode = 1;
+}
+
+// Run as a command (tsx apps/worker/src/run.ts once|watch|start). When the web app imports this file,
+// process.argv[1] is Next's own entry point, so nothing starts on import; AUREUS_EMBEDDED=1 (set by the
+// web app before it imports this module) makes that explicit instead of relying on the file name.
+if (process.env.AUREUS_EMBEDDED !== "1" && /[\\/]run\.(ts|js|mjs|cjs)$/.test(process.argv[1] ?? "")) {
+  void main();
 }

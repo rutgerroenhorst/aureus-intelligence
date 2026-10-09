@@ -1,6 +1,20 @@
 "use client";
 import { useEffect, useRef } from "react";
 
+/** Fired on window by the shell when a scan has just finished, so open pages can refetch at once. */
+export const SCAN_DONE_EVENT = "aureus:scan-done";
+
+/** Run `fn` whenever the shell reports that fresh scan data is in. */
+export function useOnScanDone(fn: () => void) {
+  const fnRef = useRef(fn);
+  fnRef.current = fn;
+  useEffect(() => {
+    const handler = () => fnRef.current();
+    window.addEventListener(SCAN_DONE_EVENT, handler);
+    return () => window.removeEventListener(SCAN_DONE_EVENT, handler);
+  }, []);
+}
+
 interface PollOptions {
   /** After this long without a touch/click/key/wheel the interval stretches to idleIntervalMs. */
   idleAfterMs?: number;

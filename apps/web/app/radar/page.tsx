@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import ElitePageWrapper from "@/components/ElitePageWrapper";
-import { usePolling } from "@/lib/usePolling";
+import { usePolling, useOnScanDone } from "@/lib/usePolling";
 
 interface Candidate {
   id: string;
@@ -74,6 +74,8 @@ export default function RadarPageElite() {
   };
 
   usePolling(fetchAll, 20_000);
+  // A scan has just finished: show its coins now instead of at the next 20 s tick.
+  useOnScanDone(() => void fetchAll());
 
   const TabButton = ({ tab, label, count }: { tab: Tab; label: string; count?: number }) => (
     <button
@@ -499,7 +501,7 @@ export default function RadarPageElite() {
               {isRefreshing
                 ? "🔄 Refreshing..."
                 : lastUpdate
-                  ? `✓ Updated ${lastUpdate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`
+                  ? `✓ Screen refreshed ${lastUpdate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`
                   : "Loading..."}
             </span>
             <button
