@@ -1,26 +1,22 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { usePolling } from "../lib/usePolling";
 import { formatLatency, formatRelativeTime, type FeedTelemetry } from "../lib/telemetry-utils";
 
 export function TelemetryHeader() {
   const [telemetry, setTelemetry] = useState<FeedTelemetry | null>(null);
 
-  useEffect(() => {
-    const fetchTelemetry = async () => {
-      try {
-        const res = await fetch("/api/telemetry");
-        const data = await res.json();
-        setTelemetry(data);
-      } catch (err) {
-        console.error("Telemetry fetch failed:", err);
-      }
-    };
-
-    fetchTelemetry();
-    const interval = setInterval(() => fetchTelemetry(), 5000);
-    return () => clearInterval(interval);
-  }, []);
+  // Was every 5 s, always. Now every 30 s while in use, paused while hidden, slower when untouched.
+  usePolling(async () => {
+    try {
+      const res = await fetch("/api/telemetry");
+      const data = await res.json();
+      setTelemetry(data);
+    } catch (err) {
+      console.error("Telemetry fetch failed:", err);
+    }
+  }, 30_000);
 
   if (!telemetry) {
     return (

@@ -88,3 +88,30 @@ describe("bestThreshold", () => {
     expect(() => bestThreshold(samples, "higher")).not.toThrow();
   });
 });
+
+// ── polling back-off (lib/usePolling.ts) ──────────────────────────────────────────────────────────────────────
+import { pollDelay } from "./usePolling";
+
+describe("pollDelay", () => {
+  const S = 1000, M = 60 * S;
+  it("keeps the normal interval while somebody is using the screen", () => {
+    expect(pollDelay(0, 20 * S)).toBe(20 * S);
+    expect(pollDelay(2 * M, 20 * S)).toBe(20 * S);
+  });
+  it("backs off to a minute after 3 minutes without a touch", () => {
+    expect(pollDelay(3 * M + 1, 20 * S)).toBe(60 * S);
+  });
+  it("backs off to five minutes after 15 minutes without a touch (a forgotten iPad)", () => {
+    expect(pollDelay(15 * M + 1, 20 * S)).toBe(5 * M);
+    expect(pollDelay(10 * 60 * M, 15 * S)).toBe(5 * M);
+  });
+  it("never polls faster than the caller asked for", () => {
+    expect(pollDelay(0, 10 * M)).toBe(10 * M);
+    expect(pollDelay(4 * M, 2 * M)).toBe(2 * M);
+    expect(pollDelay(20 * M, 8 * M)).toBe(8 * M);
+  });
+  it("honours custom tiers", () => {
+    expect(pollDelay(5 * S, 1 * S, { idleAfterMs: 2 * S, idleIntervalMs: 7 * S, deepIdleAfterMs: 60 * S })).toBe(7 * S);
+    expect(pollDelay(61 * S, 1 * S, { idleAfterMs: 2 * S, idleIntervalMs: 7 * S, deepIdleAfterMs: 60 * S, deepIdleIntervalMs: 30 * S })).toBe(30 * S);
+  });
+});

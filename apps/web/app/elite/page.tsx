@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { usePolling } from "@/lib/usePolling";
 
 interface EliteDashboard {
   system_stats: any;
@@ -14,25 +15,20 @@ export default function ElitePage() {
   const [dashboard, setDashboard] = useState<EliteDashboard | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const fetchDashboard = async () => {
-      try {
-        const res = await fetch("/api/elite-dashboard", { cache: "no-store" });
-        if (res.ok) {
-          const data = await res.json();
-          setDashboard(data);
-        }
-      } catch (err) {
-        console.error("Failed to fetch elite dashboard:", err);
-      } finally {
-        setLoading(false);
+  // Pauses while the screen is hidden and backs off when untouched (a plain setInterval ran 24/7 on a forgotten tab).
+  usePolling(async () => {
+    try {
+      const res = await fetch("/api/elite-dashboard", { cache: "no-store" });
+      if (res.ok) {
+        const data = await res.json();
+        setDashboard(data);
       }
-    };
-
-    fetchDashboard();
-    const interval = setInterval(fetchDashboard, 30000);
-    return () => clearInterval(interval);
-  }, []);
+    } catch (err) {
+      console.error("Failed to fetch elite dashboard:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, 30_000);
 
   return (
     <>

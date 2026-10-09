@@ -5,6 +5,7 @@ import type { BoardView, SectionKey } from "../../lib/boardSections";
 import type { CandidateDecisionView } from "../../lib/candidateView";
 import { DecisionCard, StatusPill, dur, price, pctSigned } from "../../components/DecisionCard";
 import { ago, shortMint, dexUrl } from "../../lib/format";
+import { usePolling } from "../../lib/usePolling";
 
 const LADDER = ["DISCOVERED", "FUNDAMENTAL_WATCH", "SETUP_FORMING", "ENTRY_APPROACHING", "ENTRY_READY"];
 type Flash = "promoted" | "downgraded" | "newly-ready" | "invalidated";
@@ -38,35 +39,30 @@ export function BoardLive({ initial }: { initial: BoardView }) {
     prev.current = seed;
   }, [initial]);
 
-  useEffect(() => {
-    let alive = true;
-    const poll = async () => {
-      try {
-        const res = await fetch("/api/action-board", { cache: "no-store" });
-        if (!res.ok) return;
-        const next: BoardView = await res.json();
-        if (!alive) return;
-        const f: Record<string, Flash> = {};
-        for (const s of SECTIONS) for (const c of next.sections[s.key]) {
-          const before = prev.current[c.id];
-          if (before && before !== c.status) {
-            if (c.status === "ENTRY_READY") f[c.id] = "newly-ready";
-            else if (c.status === "INVALIDATED" || c.status === "REJECTED") f[c.id] = "invalidated";
-            else if (LADDER.indexOf(c.status) > LADDER.indexOf(before)) f[c.id] = "promoted";
-            else f[c.id] = "downgraded";
-          }
-          prev.current[c.id] = c.status;
+  // Every 10 s while in use; pauses while the screen is hidden and backs off when untouched.
+  usePolling(async () => {
+    try {
+      const res = await fetch("/api/action-board", { cache: "no-store" });
+      if (!res.ok) return;
+      const next: BoardView = await res.json();
+      const f: Record<string, Flash> = {};
+      for (const s of SECTIONS) for (const c of next.sections[s.key]) {
+        const before = prev.current[c.id];
+        if (before && before !== c.status) {
+          if (c.status === "ENTRY_READY") f[c.id] = "newly-ready";
+          else if (c.status === "INVALIDATED" || c.status === "REJECTED") f[c.id] = "invalidated";
+          else if (LADDER.indexOf(c.status) > LADDER.indexOf(before)) f[c.id] = "promoted";
+          else f[c.id] = "downgraded";
         }
-        setBoard(next);
-        if (Object.keys(f).length) {
-          setFlashes((p) => ({ ...p, ...f }));
-          setTimeout(() => { if (alive) setFlashes((p) => { const c = { ...p }; for (const k of Object.keys(f)) delete c[k]; return c; }); }, 14_000);
-        }
-      } catch { /* keep last good board */ }
-    };
-    const iv = setInterval(poll, 10_000);
-    return () => { alive = false; clearInterval(iv); };
-  }, []);
+        prev.current[c.id] = c.status;
+      }
+      setBoard(next);
+      if (Object.keys(f).length) {
+        setFlashes((p) => ({ ...p, ...f }));
+        setTimeout(() => { setFlashes((p) => { const c = { ...p }; for (const k of Object.keys(f)) delete c[k]; return c; }); }, 14_000);
+      }
+    } catch { /* keep last good board */ }
+  }, 10_000);
 
   const w = board.worker;
   const c = board.counts;

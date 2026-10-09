@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { PageHeader, EmptyState, StatusBadge } from "@/components/PremiumUI";
+import { usePolling } from "@/lib/usePolling";
 
 interface StreamEvent {
   id: string;
@@ -65,46 +66,41 @@ export default function StreamPage() {
     return () => clearInterval(timer);
   }, []);
 
-  useEffect(() => {
-    const fetchEvents = async () => {
-      try {
-        const res = await fetch("/api/board", { cache: "no-store" });
-        if (res.ok) {
-          const data = await res.json();
-          const allEvents: StreamEvent[] = [];
-          const seen = new Set<string>();
-          const sections = Object.values(data.sections || {}) as any[];
-          sections.forEach((section: any) => {
-            if (Array.isArray(section)) {
-              section.forEach((c: any) => {
-                const symbol = c.symbol || c.mint;
-                if (!seen.has(symbol)) {
-                  seen.add(symbol);
-                  allEvents.push({
-                    id: c.id,
-                    symbol: c.symbol,
-                    status: c.v2StructuralStatus || "UNKNOWN",
-                    timestamp: c.discoveredAt ? new Date(c.discoveredAt).getTime() : Date.now(),
-                    marketCapUsd: c.marketCapUsd,
-                    eventType: "Discovery",
-                  });
-                }
-              });
-            }
-          });
-          setEvents(allEvents.sort((a, b) => b.timestamp - a.timestamp).slice(0, 100));
-        }
-      } catch (err) {
-        console.error("Failed to fetch events:", err);
-      } finally {
-        setLoading(false);
+  // Pauses while the screen is hidden and backs off when untouched.
+  usePolling(async () => {
+    try {
+      const res = await fetch("/api/board", { cache: "no-store" });
+      if (res.ok) {
+        const data = await res.json();
+        const allEvents: StreamEvent[] = [];
+        const seen = new Set<string>();
+        const sections = Object.values(data.sections || {}) as any[];
+        sections.forEach((section: any) => {
+          if (Array.isArray(section)) {
+            section.forEach((c: any) => {
+              const symbol = c.symbol || c.mint;
+              if (!seen.has(symbol)) {
+                seen.add(symbol);
+                allEvents.push({
+                  id: c.id,
+                  symbol: c.symbol,
+                  status: c.v2StructuralStatus || "UNKNOWN",
+                  timestamp: c.discoveredAt ? new Date(c.discoveredAt).getTime() : Date.now(),
+                  marketCapUsd: c.marketCapUsd,
+                  eventType: "Discovery",
+                });
+              }
+            });
+          }
+        });
+        setEvents(allEvents.sort((a, b) => b.timestamp - a.timestamp).slice(0, 100));
       }
-    };
-
-    fetchEvents();
-    const poll = setInterval(fetchEvents, 30_000);
-    return () => clearInterval(poll);
-  }, []);
+    } catch (err) {
+      console.error("Failed to fetch events:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, 30_000);
 
   const getTimeAgo = (timestamp: number) => {
     const diff = now - timestamp;

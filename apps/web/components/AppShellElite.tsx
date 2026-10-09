@@ -2,7 +2,7 @@
 import React, { ReactNode, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { usePolling, SCAN_DONE_EVENT } from "@/lib/usePolling";
+import { usePolling, msSinceTouch, DEFAULT_DEEP_IDLE_AFTER_MS, SCAN_DONE_EVENT } from "@/lib/usePolling";
 
 interface AppShellEliteProps {
   children: ReactNode;
@@ -126,7 +126,10 @@ export default function AppShellElite({ children }: AppShellEliteProps) {
         let busy = Boolean(t.scan?.scan.running);
         // The site scans the market itself, but only while someone has it open: when the data is due, ask for a
         // tick. The server decides (lease) whether anything really starts, so asking from every device is safe.
-        if (t.scan && !busy && (t.scan.scan.due || t.scan.learning.due) && Date.now() - askedAt.current > 30_000) {
+        // Not for a screen that has been on but untouched for 15 minutes (an iPad on a stand): it would keep the market
+        // scanned for nobody, and scanning is what spends the free CPU. Touching the screen brings it back at once.
+        const attended = msSinceTouch() < DEFAULT_DEEP_IDLE_AFTER_MS;
+        if (attended && t.scan && !busy && (t.scan.scan.due || t.scan.learning.due) && Date.now() - askedAt.current > 30_000) {
           askedAt.current = Date.now();
           try {
             const r = await fetch("/api/scan", { method: "POST" });

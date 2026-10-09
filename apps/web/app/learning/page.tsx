@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useRef, useState } from "react";
+import { usePolling } from "@/lib/usePolling";
 
 interface TabLearning {
   tab_name: string;
@@ -65,16 +66,14 @@ export default function LearningPage() {
     }
   };
 
-  useEffect(() => {
-    fetchAnalysis();
-  }, []);
-
-  // Auto-refresh every 30 seconds
-  useEffect(() => {
-    if (!autoRefresh) return;
-    const interval = setInterval(fetchAnalysis, 30000);
-    return () => clearInterval(interval);
-  }, [autoRefresh]);
+  // First load always; after that every 30 s while "Auto" is on. Pauses while the screen is hidden and backs off when
+  // untouched (a plain setInterval ran 24/7 on a forgotten tab).
+  const loadedOnce = useRef(false);
+  usePolling(async () => {
+    if (loadedOnce.current && !autoRefresh) return;
+    loadedOnce.current = true;
+    await fetchAnalysis();
+  }, 30_000);
 
   return (
     <>

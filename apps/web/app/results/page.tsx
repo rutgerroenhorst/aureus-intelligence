@@ -1,5 +1,6 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import { usePolling } from '@/lib/usePolling';
 
 interface ResultsCoin {
   symbol: string;
@@ -35,35 +36,31 @@ export default function ResultsPage() {
   const [activeTab, setActiveTab] = useState<'system' | 'trades'>('system');
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const sysRes = await fetch('/api/results-detailed', { cache: 'no-store' });
-        const tradesRes = await fetch('/api/my-trades', { cache: 'no-store' });
+  // Every 15 s while in use. Pauses while the screen is hidden and backs off when untouched: a plain setInterval here
+  // was 11,500 requests a day (350k a month, a third of Vercel's free 1M) from one forgotten tab.
+  usePolling(async () => {
+    try {
+      const sysRes = await fetch('/api/results-detailed', { cache: 'no-store' });
+      const tradesRes = await fetch('/api/my-trades', { cache: 'no-store' });
 
-        if (sysRes && sysRes.ok) {
-          const data = await sysRes.json();
-          setSystemWins(data.systemWins || []);
-          setStats(data.stats);
-          setDetectorBreakdown(data.detectorBreakdown);
-        }
-
-        if (tradesRes && tradesRes.ok) {
-          const data = await tradesRes.json();
-          setMyTrades(data.myTrades || []);
-          setTradeStats(data.stats);
-        }
-      } catch (err) {
-        console.error('Fetch error:', err);
-      } finally {
-        setLoading(false);
+      if (sysRes && sysRes.ok) {
+        const data = await sysRes.json();
+        setSystemWins(data.systemWins || []);
+        setStats(data.stats);
+        setDetectorBreakdown(data.detectorBreakdown);
       }
-    };
 
-    fetchData();
-    const interval = setInterval(fetchData, 15000); // Refresh every 15s
-    return () => clearInterval(interval);
-  }, []);
+      if (tradesRes && tradesRes.ok) {
+        const data = await tradesRes.json();
+        setMyTrades(data.myTrades || []);
+        setTradeStats(data.stats);
+      }
+    } catch (err) {
+      console.error('Fetch error:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, 15_000);
 
   if (loading) {
     return <div style={{ padding: '40px', textAlign: 'center' }}>Loading...</div>;
