@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { waitUntil } from "@vercel/functions";
-import { claim, getScanState, runLearning, runScan } from "@/lib/cloudScan";
+import { RETENTION_DAYS, claim, getScanState, runLearning, runRetention, runScan } from "@/lib/cloudScan";
 
 export const dynamic = "force-dynamic";
 // A scan has to fit in here: waitUntil() work counts against the function's maximum duration.
@@ -33,6 +33,8 @@ async function tick(force: boolean, only?: string | null) {
         } else {
           await runLearning();
         }
+        // Housekeeping for the small hosted database; only when this deployment is configured for it.
+        if (RETENTION_DAYS >= 2 && !only && (await claim("retention", force))) await runRetention();
       } catch (err) {
         console.error("[scan] tick failed", err);
       }

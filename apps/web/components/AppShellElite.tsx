@@ -74,7 +74,7 @@ const formatAge = (min: number) => (min < 90 ? `${min} min` : min < 60 * 48 ? `$
 interface JobInfo { running: boolean; due: boolean }
 interface Telemetry {
   lastWorkerCycleAt?: string | null;
-  scan?: { lastScanAt: string | null; scan: JobInfo; learning: JobInfo } | null;
+  scan?: { lastScanAt: string | null; scan: JobInfo; learning: JobInfo; storage?: { full: boolean } } | null;
 }
 
 // "Live" must mean the market was actually scanned recently, not that a worker ran once at some point.
@@ -82,6 +82,7 @@ interface Telemetry {
 // asked for data, which is a different clock; the two used to be mixed up.
 function describeHealth(t: Telemetry, scanning: boolean): Health {
   if (scanning) return { level: "scanning", label: "Scanning…" };
+  if (t.scan?.storage?.full) return { level: "down", label: "Scan paused: storage full" };
   const last = t.lastWorkerCycleAt ? new Date(t.lastWorkerCycleAt).getTime() : NaN;
   if (Number.isNaN(last)) return { level: "down", label: "No scan yet" };
   const min = Math.max(0, Math.round((Date.now() - last) / 60_000));

@@ -474,6 +474,8 @@ interface CycleStats {
   errors: number;
   discovered: number;
   due: number;
+  /** most coins one cycle takes; a due list this long means more are still waiting */
+  cap: number;
   ms: number;
 }
 
@@ -581,7 +583,7 @@ async function runCycle(): Promise<CycleStats | null> {
       });
     }
     log("cycle done", { ms, candidates: bounded.length, fresh: freshTaken, errors: cycleErrors.length, enriched: enrich.enriched, reeval: enrich.reeval, shadow, phases, verdicts, queueDepth, byType: depthByType, oldestJobAgeMs: oldestAge, stats: qs, breaker: breaker.state });
-    return { candidates: bounded.length, fresh: freshTaken, errors: cycleErrors.length, discovered: discovered.length, due: due.length, ms };
+    return { candidates: bounded.length, fresh: freshTaken, errors: cycleErrors.length, discovered: discovered.length, due: due.length, cap, ms };
   } finally {
     inCycle = false;
   }

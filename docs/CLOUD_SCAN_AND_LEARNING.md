@@ -35,12 +35,31 @@ AppShellElite (every open screen, once a minute)
 browser; `?only=scan|learning` narrows it, `?force=1` ignores the minimum interval. Behind Vercel Authentication an
 outside caller also needs the protection-bypass header. Without `CRON_SECRET` nothing outside can trigger a tick.
 
-### Limits to keep in mind
+### Free-tier limits and what protects them
 
-Vercel Hobby: 1M invocations, 4 CPU-hours, 300 s per function per month. A scan measured 1.0 to 1.3 s of CPU locally,
-so a screen open 24/7 costs roughly 2 CPU-hours a month. Raise `SCAN_EVERY_MINUTES` if the CPU budget gets tight.
-The `/api/scan` function is limited to 300 s in `apps/web/vercel.json` (first matching pattern wins, so it is listed
-before the generic 60 s entry).
+| limit (free plan) | what uses it | protection |
+| --- | --- | --- |
+| Vercel 1M invocations / month | page polling (Radar 1 request per 20-60 s, telemetry 1 per minute, one tick request per 10 min) | about 90k a month for a screen open 24/7 |
+| Vercel 4 CPU-hours / month (blocked for 30 days beyond) | the scans (about 0.5-1 s of CPU per 25 coins) and the pages | scans count their own CPU per UTC day (`scan_lease` rows named `usage:YYYY-MM-DD`). Past `SCAN_CPU_BUDGET_S_PER_DAY` (300 s) the interval stretches 4x and catch-up rounds stop until the next day |
+| Supabase 500 MB database (read-only beyond) | every coin evaluation writes about 8 KB, mostly into six append-only history tables | `RETENTION_DAYS=7` (set on Vercel only): `prune_history()` removes older history every 6 h and keeps the newest row per pool/candidate/feature. Last resort: scanning pauses at `SCAN_STORAGE_LIMIT_MB` (440) and the shell says "Scan paused: storage full" |
+| Supabase pauses after ~7 days without activity | nothing, if the site is opened at least weekly | opening the site queries the database |
+| DexScreener about 300 requests a minute per IP | one scan makes 30-90 calls | scans are 10 minutes apart; calls are batched 30 coins per request |
+
+`/api/telemetry` shows `scan.budget` and `scan.storage`, so both can be read at any time.
+
+Measured (2026-10-09): a scan of 20 coins on Vercel took 1.8 s wall and 0.74 s CPU; 25 coins locally 0.6-0.9 s CPU;
+growth 7.7-9.7 KB per evaluated coin. The `/api/scan` function is limited to 300 s in `apps/web/vercel.json` (the first
+matching pattern wins, so it is listed before the generic 60 s entry).
+
+### Retention (`prune_history`, migration 0026)
+
+Deletes rows older than `RETENTION_DAYS` from `raw_events` (+ `observations`), `prices`, `liquidity_snapshots`,
+`transaction_aggregates`, `intelligence_v2_scores` and `feature_values`, always keeping the newest row of each pool,
+candidate and feature, and any raw event a discovery snapshot/event or OHLCV row points at. Decision records, snapshots,
+outcomes, the research notebook and `coin_qualifications` are never touched. The two "immutable" tables have their guard
+lifted inside that single transaction only (the lock keeps every other session out meanwhile) and switched back on before
+it returns; the web role still cannot `DELETE` from them directly. Never set `RETENTION_DAYS` on the laptop: that database
+is the full research record. Deleted space is reused by new rows, so the database plateaus instead of shrinking.
 
 ## 2. The learning loop
 
