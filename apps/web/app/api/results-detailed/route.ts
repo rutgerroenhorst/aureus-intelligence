@@ -1,4 +1,5 @@
 import { internalFetch } from "@/lib/internalFetch";
+import { getPool } from "@aureus/db";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -6,7 +7,8 @@ export const dynamic = "force-dynamic";
 interface ResultsCoin {
   symbol: string;
   mint: string;
-  detector: "CATE" | "Elite" | "Buy Signal" | "Ultra Momentum";
+  /** the Radar tab(s) that listed the coin, from the learning tracker; "Not tracked" when it predates the tracker */
+  detector: string;
   entryScore: number;
   entryMcap: number;
   currentMcap: number;
@@ -43,26 +45,11 @@ export async function GET() {
 
     const systemWins: ResultsCoin[] = allCoins
       .map((c: any) => {
-        let detector: "CATE" | "Elite" | "Buy Signal" | "Ultra Momentum" =
-          "CATE";
-        let entryScore = 50;
-
-        if (c.section?.includes("elite")) {
-          detector = "Elite";
-          entryScore = c.score || 100;
-        } else if (
-          c.section?.includes("buy") ||
-          c.section?.includes("signal")
-        ) {
-          detector = "Buy Signal";
-          entryScore = c.buy_score || c.cateScore || 70;
-        } else if (c.section?.includes("momentum")) {
-          detector = "Ultra Momentum";
-          entryScore = c.score || 60;
-        } else if (c.cateScore) {
-          detector = "CATE";
-          entryScore = c.cateScore;
-        }
+        // The detector used to be guessed from the board section's NAME, which never contains "elite"/"buy"/"momentum"
+        // (the sections are ENTRY_READY, PRIMARY_WATCH, ...), so every coin was labelled "CATE" with score 50. It is
+        // filled in below from what the learning tracker actually recorded.
+        const detector = "Not tracked";
+        const entryScore = 0;
 
         const entryMcap = c.marketCapFirstSeen || c.marketCapUsd || 50000;
         const currentMcap = c.marketCapUsd || entryMcap;
@@ -110,15 +97,33 @@ export async function GET() {
           : 0,
     };
 
-    const detectorBreakdown = {
-      CATE: systemWins.filter((c) => c.detector === "CATE").length,
-      Elite: systemWins.filter((c) => c.detector === "Elite").length,
-      "Buy Signal": systemWins.filter((c) => c.detector === "Buy Signal")
-        .length,
-      "Ultra Momentum": systemWins.filter(
-        (c) => c.detector === "Ultra Momentum"
-      ).length,
-    };
+    // Real attribution: the tab(s) that listed each winner, and the score it had then, as recorded by the learning tracker.
+    // Coins found before the tracker started (2026-10-09) have no record, and say so instead of getting a default label.
+    const TAB_LABEL: Record<string, string> = { cate: "CATE", buy_signals: "Buy Signal", ultra_momentum: "Ultra Momentum", elite: "Elite", incubation: "Incubation" };
+    const found = new Map<string, { tabs: string[]; score: number | null }>();
+    if (systemWins.length > 0) {
+      try {
+        const { rows } = await getPool().query(
+          `SELECT mint, array_agg(DISTINCT tab_name) AS tabs,
+                  (array_agg(score_at_qualification ORDER BY qualified_at ASC) FILTER (WHERE score_at_qualification IS NOT NULL))[1] AS score
+             FROM coin_qualifications WHERE mint = ANY($1) GROUP BY mint`,
+          [systemWins.map((c) => c.mint)],
+        );
+        for (const r of rows) found.set(r.mint, { tabs: r.tabs, score: r.score != null ? Number(r.score) : null });
+      } catch (err) {
+        console.error("Results attribution failed:", err);
+      }
+    }
+    const breakdown: Record<string, number> = { CATE: 0, Elite: 0, "Buy Signal": 0, "Ultra Momentum": 0, Incubation: 0, "Not tracked": 0 };
+    for (const c of systemWins) {
+      const f = found.get(c.mint);
+      if (!f) { breakdown["Not tracked"]++; continue; }
+      const labels = f.tabs.map((t) => TAB_LABEL[t] ?? t);
+      c.detector = labels.join(" + ");
+      c.entryScore = f.score ?? 0;
+      for (const l of labels) breakdown[l] = (breakdown[l] ?? 0) + 1;
+    }
+    const detectorBreakdown = breakdown;
 
     return NextResponse.json(
       {
@@ -139,6 +144,8 @@ export async function GET() {
         Elite: 0,
         "Buy Signal": 0,
         "Ultra Momentum": 0,
+        Incubation: 0,
+        "Not tracked": 0,
       },
       myTrades: [],
     });

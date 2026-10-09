@@ -14,6 +14,15 @@ interface Candidate {
 
 type Tab = "cate" | "signals" | "positions" | "trends" | "momentum" | "performance" | "elite-s" | "early" | "entry" | "qualified" | "stats";
 
+// The name the learning system and the trade journal use for each Radar tab.
+const JOURNAL_TAB: Partial<Record<Tab, string>> = {
+  cate: "cate",
+  signals: "buy_signals",
+  early: "ultra_momentum",
+  "elite-s": "elite",
+  qualified: "incubation",
+};
+
 export default function RadarPageElite() {
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [eliteCandidates, setEliteCandidates] = useState<any[]>([]);
@@ -111,6 +120,7 @@ export default function RadarPageElite() {
 
   const CoinRow = ({ c, color, score, isBuySignal }: { c: any; color: string; score?: number; isBuySignal?: boolean }) => {
     const [entered, setEntered] = useState(false);
+    const [saveFailed, setSaveFailed] = useState(false);
     const mcap = Number(c.market_cap_usd || c.marketCapUsd || 0);
     const conf = Number(c.confidence || c.buy_ratio || c.cateScore || c.buy_score || 0);
     const minutesOld = c.minutesOld || Math.floor((Date.now() - new Date(c.discovered_at).getTime()) / (1000 * 60));
@@ -126,20 +136,25 @@ export default function RadarPageElite() {
     const markEntered = async () => {
       try {
         const entryMcap = Number(c.marketCapUsd || c.market_cap_usd || 50000);
-        await fetch('/api/my-trades', {
+        const res = await fetch('/api/my-trades', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             symbol: c.symbol,
             mint: c.mint,
             entryMcap,
+            tab: JOURNAL_TAB[activeTab] ?? null,
             action: 'add-entry'
           })
         });
+        // Say so when it was NOT saved: a green "Entered" over a failed save is a false record.
+        if (!res.ok) throw new Error(`my-trades ${res.status}`);
         setEntered(true);
         setTimeout(() => setEntered(false), 3000);
       } catch (err) {
         console.error('Entry track error:', err);
+        setSaveFailed(true);
+        setTimeout(() => setSaveFailed(false), 4000);
       }
     };
 
@@ -185,8 +200,8 @@ export default function RadarPageElite() {
               style={{
                 padding: "4px 8px",
                 background: entered ? "#34c759" : "#1a1a1f",
-                color: entered ? "#000" : "#34c759",
-                border: `1px solid #34c759`,
+                color: entered ? "#000" : saveFailed ? "#ff9f0a" : "#34c759",
+                border: `1px solid ${saveFailed ? "#ff9f0a" : "#34c759"}`,
                 borderRadius: "4px",
                 fontSize: "10px",
                 fontWeight: 600,
@@ -194,7 +209,7 @@ export default function RadarPageElite() {
                 whiteSpace: "nowrap",
               }}
             >
-              {entered ? "✅ Entered" : "✔ Enter"}
+              {entered ? "✅ Entered" : saveFailed ? "⚠ Not saved" : "✔ Enter"}
             </button>
             <button
               onClick={(e) => {
@@ -342,16 +357,18 @@ export default function RadarPageElite() {
               ultraEarlyMomentum.map((c, i) => {
                 const markEntered = async () => {
                   try {
-                    await fetch('/api/my-trades', {
+                    const res = await fetch('/api/my-trades', {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({
                         symbol: c.symbol,
                         mint: c.mint,
                         entryMcap: c.mcap,
+                        tab: JOURNAL_TAB[activeTab] ?? null,
                         action: 'add-entry'
                       })
                     });
+                    if (!res.ok) throw new Error(`my-trades ${res.status}`);
                     setEnteredCoins(prev => new Set([...prev, c.mint]));
                     setTimeout(() => setEnteredCoins(prev => {
                       const next = new Set(prev);
@@ -360,6 +377,7 @@ export default function RadarPageElite() {
                     }), 3000);
                   } catch (err) {
                     console.error('Entry track error:', err);
+                    window.alert('Not saved: the trade could not be recorded. Try again.');
                   }
                 };
                 const isEntered = enteredCoins.has(c.mint);

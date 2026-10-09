@@ -264,9 +264,12 @@ export function runScan(): Promise<Record<string, unknown>> {
 export function runLearning(): Promise<Record<string, unknown>> {
   return guarded("learning", async () => {
     const { trackQualified, updateOutcomes } = await import("./learning-engine");
+    const { refreshActiveTrades } = await import("./my-trades");
     // Outcomes first: a failed tracking step must not stop open coins from being graded.
     const outcomes = await updateOutcomes().catch((e) => ({ error: String(e?.message ?? e) }));
     const tracked = await trackQualified().catch((e) => ({ error: String(e?.message ?? e) }));
+    // The entered coins' highest/lowest point since entry is only as good as how often they are looked at.
+    const journal = await refreshActiveTrades().catch((e) => ({ error: String(e?.message ?? e) }));
     let suggestions: Record<string, unknown> | undefined;
     if (await claim("suggestions")) {
       suggestions = await guarded("suggestions", async () => {
@@ -275,7 +278,7 @@ export function runLearning(): Promise<Record<string, unknown>> {
       });
     }
     if ("error" in outcomes && "error" in tracked) throw new Error(`${outcomes.error}; ${tracked.error}`);
-    return { tracked, outcomes, suggestions };
+    return { tracked, outcomes, journal, suggestions };
   });
 }
 

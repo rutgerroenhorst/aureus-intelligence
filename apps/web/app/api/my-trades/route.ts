@@ -1,57 +1,25 @@
-import { internalFetch } from "@/lib/internalFetch";
 import { NextResponse } from "next/server";
+import { addTrade, exitTrade, listTrades } from "@/lib/my-trades";
 
-interface MyTrade {
-  id: string;
-  symbol: string;
-  mint: string;
-  enteredAt: string;
-  entryMcap: number;
-  currentMcap: number;
-  multiplier: number;
-  status: "active" | "exited";
-  exitMcap?: number;
-  exitedAt?: string;
-}
+export const dynamic = "force-dynamic";
+export const maxDuration = 30;
 
-// In-memory store (production: use database)
-const myTrades: Map<string, MyTrade> = new Map();
+// The trade journal (lib/my-trades.ts, table my_trades). It used to be a JavaScript Map: lost on every restart, with no
+// record of which tab an entry came from and a "current" value that never moved for a coin that left the board.
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const { symbol, mint, entryMcap, action } = body;
+    const body = await request.json().catch(() => ({}));
 
-    if (!mint) {
-      return NextResponse.json({ error: "Missing mint" }, { status: 400 });
+    if (body.action === "add-entry") {
+      const r = await addTrade({ mint: body.mint, symbol: body.symbol, tab: body.tab, entryMcap: body.entryMcap, sizeUsd: body.sizeUsd });
+      if (!r.trade) return NextResponse.json({ error: r.error }, { status: r.status });
+      return NextResponse.json({ success: true, trade: r.trade }, { status: r.status });
     }
 
-    if (action === "add-entry") {
-      const id = `${mint}-${Date.now()}`;
-      const trade: MyTrade = {
-        id,
-        symbol: symbol || "?",
-        mint,
-        enteredAt: new Date().toISOString(),
-        entryMcap: entryMcap || 50000,
-        currentMcap: entryMcap || 50000,
-        multiplier: 1.0,
-        status: "active",
-      };
-
-      myTrades.set(id, trade);
-      return NextResponse.json({ success: true, trade });
-    }
-
-    if (action === "exit") {
-      const { id, exitMcap } = body;
-      const trade = myTrades.get(id);
-      if (trade) {
-        trade.status = "exited";
-        trade.exitMcap = exitMcap;
-        trade.exitedAt = new Date().toISOString();
-        trade.multiplier = exitMcap / trade.entryMcap;
-      }
+    if (body.action === "exit") {
+      const trade = await exitTrade(body.id, body.exitMcap);
+      if (!trade) return NextResponse.json({ error: "Unknown trade" }, { status: 404 });
       return NextResponse.json({ success: true, trade });
     }
 
@@ -64,61 +32,14 @@ export async function POST(request: Request) {
 
 export async function GET() {
   try {
-    // Get all coins from board to calculate current mcaps
-    const boardRes = await internalFetch(`/api/board`, {
-      cache: "no-store",
-    });
-
-    let boardMints: Map<string, number> = new Map();
-    if (boardRes.ok) {
-      const board = await boardRes.json();
-      const sections = board.sections || {};
-      Object.entries(sections).forEach(([_, coins]: any) => {
-        if (Array.isArray(coins)) {
-          coins.forEach((c: any) => {
-            boardMints.set(c.mint, c.marketCapUsd || 50000);
-          });
-        }
-      });
-    }
-
-    // Update current mcaps for active trades
-    const trades = Array.from(myTrades.values()).map((trade) => {
-      if (trade.status === "active") {
-        const currentMcap = boardMints.get(trade.mint) || trade.entryMcap;
-        trade.currentMcap = currentMcap;
-        trade.multiplier = currentMcap / trade.entryMcap;
-      }
-      return trade;
-    });
-
-    const active = trades.filter((t) => t.status === "active");
-    const exited = trades.filter((t) => t.status === "exited");
-    const winners = exited.filter((t) => t.multiplier >= 2);
-    const avgProfit =
-      exited.length > 0
-        ? Math.round(
-            (exited.reduce((s, t) => s + t.multiplier, 0) / exited.length) * 100
-          ) / 100
-        : 0;
-
-    return NextResponse.json(
-      {
-        myTrades: trades,
-        stats: {
-          active: active.length,
-          exited: exited.length,
-          winners: winners.length,
-          avgProfit,
-        },
-      },
-      { headers: { "Cache-Control": "no-store, max-age=10" } }
-    );
+    const { trades, stats } = await listTrades();
+    return NextResponse.json({ myTrades: trades, stats }, { headers: { "Cache-Control": "no-store" } });
   } catch (err) {
     console.error("Get trades error:", err);
     return NextResponse.json({
       myTrades: [],
-      stats: { active: 0, exited: 0, winners: 0, avgProfit: 0 },
+      stats: { active: 0, exited: 0, winners: 0, avgProfit: 0, touched2x: 0, gaveBack: 0 },
+      error: "journal unavailable",
     });
   }
 }

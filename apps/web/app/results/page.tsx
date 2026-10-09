@@ -18,10 +18,16 @@ interface MyTrade {
   id: string;
   symbol: string;
   mint: string;
+  tab?: string | null;
+  source?: string;
   enteredAt: string;
   entryMcap: number;
   currentMcap: number;
   multiplier: number;
+  peakMultiple?: number;
+  lowMultiple?: number;
+  sizeUsd?: number | null;
+  note?: string | null;
   status: 'active' | 'exited';
   exitMcap?: number;
   exitedAt?: string;
@@ -130,14 +136,20 @@ export default function ResultsPage() {
               marginBottom: '32px',
             }}
           >
-            <h3 style={{ marginBottom: '16px', fontSize: '14px' }}>Performance by Detector</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
+            <h3 style={{ marginBottom: '6px', fontSize: '14px' }}>Which tab listed the winners</h3>
+            <p style={{ margin: '0 0 14px', fontSize: '11px', color: '#8a8a8e', lineHeight: 1.5 }}>
+              Only coins that reached 2x are listed here, with no losers, so this is NOT a win rate (the Learning page has win rates
+              per tab). A coin counts for every tab that listed it. Tab tracking started on 2026-10-09; earlier winners show "Not tracked".
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '12px' }}>
               {detectorBreakdown && (
                 <>
                   <DetectorCard name="CATE" count={detectorBreakdown.CATE} color="#FF3B30" />
                   <DetectorCard name="Elite" count={detectorBreakdown.Elite} color="#34c759" />
                   <DetectorCard name="Buy Signals" count={detectorBreakdown['Buy Signal']} color="#007AFF" />
                   <DetectorCard name="Momentum" count={detectorBreakdown['Ultra Momentum']} color="#FF9500" />
+                  <DetectorCard name="Incubation" count={detectorBreakdown['Incubation'] ?? 0} color="#30b0c0" />
+                  <DetectorCard name="Not tracked" count={detectorBreakdown['Not tracked'] ?? 0} color="#8a8a8e" />
                 </>
               )}
             </div>
@@ -228,6 +240,8 @@ export default function ResultsPage() {
               />
               <StatBox label="Exited" value={tradeStats.exited} color="#8a8a8e" />
               <StatBox label="Winners" value={tradeStats.winners} color="#34c759" />
+              <StatBox label="Reached 2x at some point" value={tradeStats.touched2x ?? 0} color="#FFB52F" />
+              <StatBox label="Gain given back" value={tradeStats.gaveBack ?? 0} color="#FF3B30" />
               <StatBox
                 label="Avg Profit"
                 value={`${tradeStats.avgProfit}x`}
@@ -247,7 +261,8 @@ export default function ResultsPage() {
               }}
             >
               <p style={{ color: '#8a8a8e' }}>
-                No trades yet. Click "✅ Mark Entered" on any coin in Radar to track it here.
+                No trades yet. Press "✔ Enter" on any coin in the Radar: the tab you used, your entry and its highest and lowest point afterwards are saved here.
+                (Market caps are checked while Aureus is open, so a spike between two checks is not seen.)
               </p>
             </div>
           ) : (
@@ -275,10 +290,16 @@ export default function ResultsPage() {
                       Entry Time
                     </th>
                     <th style={{ padding: '12px', textAlign: 'left', color: '#8a8a8e' }}>
+                      Tab
+                    </th>
+                    <th style={{ padding: '12px', textAlign: 'left', color: '#8a8a8e' }}>
                       Entry MCap
                     </th>
                     <th style={{ padding: '12px', textAlign: 'left', color: '#8a8a8e' }}>
                       Current MCap
+                    </th>
+                    <th style={{ padding: '12px', textAlign: 'left', color: '#8a8a8e' }}>
+                      Peak
                     </th>
                     <th style={{ padding: '12px', textAlign: 'left', color: '#8a8a8e' }}>
                       P&L
@@ -314,14 +335,26 @@ export default function ResultsPage() {
                         <td style={{ padding: '12px', color: '#8a8a8e' }}>
                           {hours}h ago
                         </td>
+                        <td style={{ padding: '12px', color: '#8a8a8e' }} title={trade.note || undefined}>
+                          {trade.tab ? trade.tab.replace(/_/g, ' ') : '—'}
+                        </td>
                         <td style={{ padding: '12px', color: '#8a8a8e' }}>
                           ${Math.round(trade.entryMcap / 1000)}k
                         </td>
                         <td style={{ padding: '12px', color: '#8a8a8e' }}>
                           ${Math.round(trade.currentMcap / 1000)}k
                         </td>
+                        <td
+                          style={{ padding: '12px', color: (trade.peakMultiple ?? 1) >= 2 ? '#FFB52F' : '#8a8a8e', fontWeight: 600 }}
+                          title="Highest market cap seen since entry, as a multiple of the entry"
+                        >
+                          {(trade.peakMultiple ?? 1).toFixed(2)}x
+                        </td>
                         <td style={{ padding: '12px', color: pnlColor, fontWeight: 700 }}>
                           {trade.multiplier.toFixed(2)}x
+                          {trade.status === 'active' && (trade.peakMultiple ?? 1) >= 2 && trade.multiplier < 1 && (
+                            <span style={{ marginLeft: 6, fontSize: 10, color: '#FF3B30' }}>gave back</span>
+                          )}
                         </td>
                         <td style={{ padding: '12px', color: '#8a8a8e' }}>
                           {trade.status === 'active' ? '🔵 Active' : '⚪ Exited'}

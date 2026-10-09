@@ -96,3 +96,21 @@ tracking. Suggestions are only proposals (`pending_review`); older ones are mark
 
 `filter_suggestions.current_threshold` holds the edge the group currently lets in (its lowest or highest observed
 value), not an active filter. `age_bucket_min/max` are in hours.
+
+## 3. The trade journal (`my_trades`, migration 0027)
+
+The Radar's "Enter" button now writes a row instead of a JavaScript `Map` that vanished on every restart and never knew the tab:
+
+- `POST /api/my-trades {action:"add-entry", mint, symbol, tab}`: stores the **tab** (`cate | buy_signals | ultra_momentum | elite | incubation`),
+  the **live** market cap/liquidity/price at the moment of the click, the pair's age, and an optional size. Repeating the click within 10 minutes
+  returns the same trade; the address is public, so there is a cap of 300 open trades and the mint must be a real Solana address with market data.
+  The button says "Not saved" when the server refused, instead of a green "Entered".
+- After entry, `refreshActiveTrades()` records the current, highest and lowest market cap (when the Results page asks, at most every 15 s, and on every
+  learning tick). The peak is only as good as how often the coin is looked at: a spike between two checks is missed.
+- Results -> My Trades shows tab, entry, **peak multiple** and P&L, and flags a gain that was given back (reached 2x, now below the entry).
+- `source = 'manual'` rows were added by hand from screenshots (5 trades on 2026-10-10, with the peak/low taken from GeckoTerminal's candles); their
+  `tab_name` is NULL where it is not known. Nothing is invented: the notes say what is approximate.
+
+Results -> System Performance used to label every winning coin "CATE" with score 50 (it looked for lowercase "elite"/"buy"/"momentum" in board section
+names like `PRIMARY_WATCH`). It now reads the tab(s) the learning tracker recorded, and says "Not tracked" for coins found before 2026-10-09. It still lists
+winners only, so it is not a win rate; the Learning page has the win rates.

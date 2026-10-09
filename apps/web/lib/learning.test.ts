@@ -115,3 +115,46 @@ describe("pollDelay", () => {
     expect(pollDelay(61 * S, 1 * S, { idleAfterMs: 2 * S, idleIntervalMs: 7 * S, deepIdleAfterMs: 60 * S, deepIdleIntervalMs: 30 * S })).toBe(30 * S);
   });
 });
+
+// ── trade journal (lib/my-trades.ts) ──────────────────────────────────────────────────────────────────────────
+import { isValidMint, summarize, toApi, type TradeRow } from "./my-trades";
+
+const row = (over: Partial<TradeRow> = {}): TradeRow => ({
+  id: "6c3387be-1b07-4c38-9cb5-022281845fb6", mint: "HMYd9tosnUXuNHmq7pXmoePRVBLBBjA3JBfydq6upump", symbol: "SI276", tab_name: "elite",
+  source: "radar", entered_at: "2026-10-07T07:05:00Z", entry_mcap_usd: "353100", entry_liquidity_usd: "55000", size_usd: "1.90", note: null,
+  status: "active", last_mcap_usd: "1334000", peak_mcap_usd: "2294000", peak_at: "2026-10-09T00:30:00Z", low_mcap_usd: "200000",
+  last_checked_at: "2026-10-09T22:00:00Z", exit_mcap_usd: null, exited_at: null, ...over,
+});
+
+describe("trade journal", () => {
+  it("accepts Solana mints and rejects anything else", () => {
+    expect(isValidMint("HMYd9tosnUXuNHmq7pXmoePRVBLBBjA3JBfydq6upump")).toBe(true);
+    expect(isValidMint("short")).toBe(false);
+    expect(isValidMint("0OIl" + "a".repeat(40))).toBe(false); // base58 has no 0, O, I or l
+    expect(isValidMint(undefined)).toBe(false);
+  });
+  it("turns a row into multiples of the entry", () => {
+    const t = toApi(row());
+    expect(t.multiplier).toBeCloseTo(1334000 / 353100, 4);
+    expect(t.peakMultiple).toBeCloseTo(2294000 / 353100, 4);
+    expect(t.lowMultiple).toBeCloseTo(200000 / 353100, 4);
+    expect(t.tab).toBe("elite");
+  });
+  it("never reports a peak below the entry or the current value", () => {
+    const t = toApi(row({ peak_mcap_usd: null, last_mcap_usd: "500000", low_mcap_usd: null }));
+    expect(t.peakMultiple).toBeCloseTo(500000 / 353100, 4);
+    expect(t.lowMultiple).toBe(1);
+  });
+  it("uses the exit value once a trade is closed", () => {
+    const t = toApi(row({ status: "exited", exit_mcap_usd: "706200", last_mcap_usd: "100" }));
+    expect(t.multiplier).toBeCloseTo(2, 5);
+  });
+  it("counts gains that were given back", () => {
+    const gone = toApi(row({ symbol: "RUNEPUNK", entry_mcap_usd: "9070", last_mcap_usd: "3920", peak_mcap_usd: "49995" }));
+    const kept = toApi(row());
+    const s = summarize([gone, kept]);
+    expect(s.touched2x).toBe(2);
+    expect(s.gaveBack).toBe(1);
+    expect(s.active).toBe(2);
+  });
+});

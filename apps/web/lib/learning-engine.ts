@@ -288,8 +288,9 @@ export function decideOutcome(i: OutcomeInput): Outcome {
   return "pending";
 }
 
-interface Pair {
+export interface Pair {
   baseToken?: { address?: string };
+  pairCreatedAt?: number;
   marketCap?: number;
   fdv?: number;
   priceUsd?: string;
@@ -300,7 +301,7 @@ interface Pair {
 const sameMint = (a: string, b: string) => (a.startsWith("0x") || b.startsWith("0x") ? a.toLowerCase() === b.toLowerCase() : a === b);
 
 /** One DexScreener call for up to 30 mints of one chain; the deepest pool wins per mint. null = the call failed. */
-async function fetchPairs(chain: string, mints: string[]): Promise<Map<string, Pair> | null> {
+export async function fetchPairs(chain: string, mints: string[]): Promise<Map<string, Pair> | null> {
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const res = await fetch(`https://api.dexscreener.com/tokens/v1/${chain}/${mints.join(",")}`, {
