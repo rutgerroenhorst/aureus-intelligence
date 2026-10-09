@@ -29,3 +29,7 @@ logs/
 .next-build/
 .next/
 .vercel
+
+# local helper scripts that contain database credentials - never commit
+run-migrations.mjs
+*.env.local
