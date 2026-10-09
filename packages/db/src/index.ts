@@ -15,22 +15,26 @@ export type { PoolClient, QueryResult } from "pg";
 
 import os from "node:os";
 
-let pool: pg.Pool | null = null;
+// One pool per PROCESS, kept on globalThis. `next dev` re-evaluates modules on every hot reload and
+// every copy used to open its own pool; the old ones were never closed, so a local Postgres with the
+// default max_connections=100 ran out of connections ("53300 too many clients") and the Radar
+// showed empty lists.
+const holder = globalThis as unknown as { __aureusPgPool?: pg.Pool };
 
 export function getPool(connectionString?: string): pg.Pool {
-  if (!pool) {
+  if (!holder.__aureusPgPool) {
     const cs = connectionString ?? getConfig().env.DATABASE_URL;
     // Serverless (Vercel) instances multiply: keep each pool tiny so the shared pooler is not exhausted.
     const serverless = Boolean(process.env.VERCEL);
     const maxConnections =
       Number(process.env.DB_POOL_MAX) ||
-      (serverless ? 3 : Math.min(100, Math.max(20, os.cpus().length * 5)));
+      (serverless ? 3 : Math.min(25, Math.max(10, os.cpus().length * 2)));
     const minConnections =
-      process.env.DB_POOL_MIN !== undefined ? Number(process.env.DB_POOL_MIN) : serverless ? 0 : 5;
-    pool = new Pool({
+      process.env.DB_POOL_MIN !== undefined ? Number(process.env.DB_POOL_MIN) : serverless ? 0 : 2;
+    const pool = new Pool({
       connectionString: cs,
-      max: maxConnections,  // Dynamic: 20-100 based on CPU cores (3 on Vercel; DB_POOL_MAX overrides)
-      min: minConnections,  // Keep minimum connections ready (0 on Vercel; DB_POOL_MIN overrides)
+      max: maxConnections,  // 10-25 based on CPU cores (3 on Vercel; DB_POOL_MAX overrides)
+      min: minConnections,  // 2 locally, 0 on Vercel; DB_POOL_MIN overrides
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 2000,
       statement_timeout: 5000,
@@ -41,14 +45,16 @@ export function getPool(connectionString?: string): pg.Pool {
     pool.on("error", (err) => {
       console.error("[DB] Unexpected pool error:", err);
     });
+    holder.__aureusPgPool = pool;
   }
-  return pool;
+  return holder.__aureusPgPool;
 }
 
 export async function closePool(): Promise<void> {
+  const pool = holder.__aureusPgPool;
   if (pool) {
+    holder.__aureusPgPool = undefined;
     await pool.end();
-    pool = null;
   }
 }
 
