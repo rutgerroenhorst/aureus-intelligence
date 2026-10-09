@@ -1,22 +1,41 @@
 {
-  "files": [],
-  "references": [
-    { "path": "packages/contracts" },
-    { "path": "packages/config" },
-    { "path": "packages/db" },
-    { "path": "packages/ingestion" },
-    { "path": "packages/legacy-import" },
-    { "path": "packages/feature-engine" },
-    { "path": "packages/rule-engine" },
-    { "path": "packages/snapshot-engine" },
-    { "path": "packages/outcome-engine" },
-    { "path": "packages/alert-engine" },
-    { "path": "packages/notifications" },
-    { "path": "packages/readiness" },
-    { "path": "packages/research" },
-    { "path": "packages/entry-engine" },
-    { "path": "packages/safety-engine" },
-    { "path": "packages/watch-engine" },
-    { "path": "packages/intelligence-v2" }
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "ES2022"
+    ],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "paths": {
+      "@/*": [
+        "./*"
+      ]
+    }
+  },
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts",
+    ".next-build/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules"
   ]
 }
