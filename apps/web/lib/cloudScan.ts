@@ -22,9 +22,11 @@ const RETENTION_EVERY_MIN = 360;
 /**
  * Last line of defence for the free database: past this size scanning pauses instead of filling the disk (a full
  * Supabase Free project turns read-only). Deleted rows are reused, not returned to the OS, so this is the size of the
- * files, which is what the quota counts too.
+ * files, which is what the quota counts too. OFF unless set: the laptop database has no quota and is already several GB.
+ * The Vercel project sets 440.
  */
-const STORAGE_LIMIT_MB = Number(process.env.SCAN_STORAGE_LIMIT_MB ?? 440);
+const STORAGE_LIMIT_MB = Number(process.env.SCAN_STORAGE_LIMIT_MB ?? 0);
+const storageIsFull = (mb: number) => STORAGE_LIMIT_MB > 0 && mb >= STORAGE_LIMIT_MB;
 /** A job that never reports back (function killed) blocks the next one for at most this long. */
 const LEASE_TTL_MIN = { scan: 6, learning: 4, suggestions: 3, retention: 5 } as const;
 /** After a failed run, try again sooner than the normal interval. */
@@ -139,7 +141,7 @@ export async function getScanState(): Promise<ScanState> {
   ]);
   const scannerAgeS: number | null = hb[0]?.age_s ?? null;
   const overBudget = used / 1000 >= CPU_BUDGET_S_PER_DAY;
-  const storageFull = mb >= STORAGE_LIMIT_MB;
+  const storageFull = storageIsFull(mb);
   const row = (job: Job) => leases.find((l) => l.name === LEASE_NAME[job]);
   const state = (job: Job): JobState => {
     const r = row(job);
@@ -165,7 +167,7 @@ export async function getScanState(): Promise<ScanState> {
  * the minimum-interval check (never a lease that is still held).
  */
 export async function claim(job: Job, force = false): Promise<boolean> {
-  if (job === "scan" && !force && (await databaseMb()) >= STORAGE_LIMIT_MB) return false;
+  if (job === "scan" && !force && STORAGE_LIMIT_MB > 0 && storageIsFull(await databaseMb())) return false;
   const every =
     EVERY_MIN[job] * (job === "scan" && !force && (await usedTodayMs()) / 1000 >= CPU_BUDGET_S_PER_DAY ? OVER_BUDGET_INTERVAL_FACTOR : 1);
   const { rows } = await query(

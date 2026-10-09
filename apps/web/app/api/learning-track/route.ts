@@ -1,8 +1,12 @@
 import { NextResponse } from "next/server";
 import { getPool } from "@aureus/db";
+import { isTrusted } from "@/lib/trusted";
 
 // POST: Track a coin as it qualifies for a tab
 export async function POST(request: Request) {
+  // Nothing in the app calls this any more: the server records qualifying coins itself (lib/learning-engine.ts).
+  // It used to accept an insert from anyone who could reach the site, which is public on the production address.
+  if (!isTrusted(request)) return NextResponse.json({ error: "forbidden" }, { status: 403 });
   try {
     const body = await request.json();
     const {

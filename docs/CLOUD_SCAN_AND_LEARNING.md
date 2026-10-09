@@ -41,7 +41,7 @@ outside caller also needs the protection-bypass header. Without `CRON_SECRET` no
 | --- | --- | --- |
 | Vercel 1M invocations / month | page polling (Radar 1 request per 20-60 s, telemetry 1 per minute, one tick request per 10 min) | about 90k a month for a screen open 24/7 |
 | Vercel 4 CPU-hours / month (blocked for 30 days beyond) | the scans (about 0.5-1 s of CPU per 25 coins) and the pages | scans count their own CPU per UTC day (`scan_lease` rows named `usage:YYYY-MM-DD`). Past `SCAN_CPU_BUDGET_S_PER_DAY` (300 s) the interval stretches 4x and catch-up rounds stop until the next day |
-| Supabase 500 MB database (read-only beyond) | every coin evaluation writes about 8 KB, mostly into six append-only history tables | `RETENTION_DAYS=7` (set on Vercel only): `prune_history()` removes older history every 6 h and keeps the newest row per pool/candidate/feature. Last resort: scanning pauses at `SCAN_STORAGE_LIMIT_MB` (440) and the shell says "Scan paused: storage full" |
+| Supabase 500 MB database (read-only beyond) | every coin evaluation writes about 8 KB, mostly into six append-only history tables | `RETENTION_DAYS=7` (set on Vercel only): `prune_history()` removes older history every 6 h and keeps the newest row per pool/candidate/feature. Last resort: scanning pauses at `SCAN_STORAGE_LIMIT_MB` (set to 440 on Vercel, off by default because the laptop database has no quota) and the shell says "Scan paused: storage full" |
 | Supabase pauses after ~7 days without activity | nothing, if the site is opened at least weekly | opening the site queries the database |
 | DexScreener about 300 requests a minute per IP | one scan makes 30-90 calls | scans are 10 minutes apart; calls are batched 30 coins per request |
 

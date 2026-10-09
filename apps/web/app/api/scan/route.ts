@@ -1,18 +1,13 @@
 import { NextResponse } from "next/server";
 import { waitUntil } from "@vercel/functions";
 import { RETENTION_DAYS, claim, getScanState, runLearning, runRetention, runScan } from "@/lib/cloudScan";
+import { isTrusted } from "@/lib/trusted";
 
 export const dynamic = "force-dynamic";
 // A scan has to fit in here: waitUntil() work counts against the function's maximum duration.
 export const maxDuration = 300;
 
 const noStore = { "Cache-Control": "no-store, max-age=0" };
-
-/** Only a caller that knows CRON_SECRET (an outside scheduler) may drive ticks without the browser. */
-function trusted(req: Request): boolean {
-  const secret = process.env.CRON_SECRET;
-  return Boolean(secret) && req.headers.get("authorization") === `Bearer ${secret}`;
-}
 
 /**
  * One tick: scan the market if the data is due, then grade/track coins if that is due. The work runs after
@@ -46,7 +41,7 @@ async function tick(force: boolean, only?: string | null) {
 /** State for anyone; a tick when called by the scheduler with the secret. */
 export async function GET(req: Request) {
   try {
-    if (trusted(req)) {
+    if (isTrusted(req)) {
       const q = new URL(req.url).searchParams;
       return NextResponse.json(await tick(q.get("force") === "1", q.get("only")), { headers: noStore });
     }
@@ -61,7 +56,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const q = new URL(req.url).searchParams;
-    const outside = trusted(req); // browsers cannot force or narrow a tick; only the scheduler with the secret can
+    const outside = isTrusted(req); // browsers cannot force or narrow a tick; only the scheduler with the secret can
     return NextResponse.json(await tick(outside && q.get("force") === "1", outside ? q.get("only") : null), { status: 202, headers: noStore });
   } catch (err) {
     console.error("[scan] POST failed", err);
