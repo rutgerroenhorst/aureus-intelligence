@@ -16,6 +16,16 @@ const routes: Record<string, () => Promise<RouteModule>> = {
   "/api/elite-signal-consensus": () => import("@/app/api/elite-signal-consensus/route"),
   "/api/learning-update-outcomes": () => import("@/app/api/learning-update-outcomes/route"),
   "/api/learning-generate-suggestions": () => import("@/app/api/learning-generate-suggestions/route"),
+  "/api/elite-validator": () => import("@/app/api/elite-validator/route"),
+  "/api/ultra-early": () => import("@/app/api/ultra-early/route"),
+  "/api/ultra-early-momentum": () => import("@/app/api/ultra-early-momentum/route"),
+  "/api/incubation": () => import("@/app/api/incubation/route"),
+  "/api/signals": () => import("@/app/api/signals/route"),
+  "/api/positions": () => import("@/app/api/positions/route"),
+  "/api/trends": () => import("@/app/api/trends/route"),
+  "/api/momentum": () => import("@/app/api/momentum/route"),
+  "/api/performance": () => import("@/app/api/performance/route"),
+  "/api/network-sentiment": () => import("@/app/api/network-sentiment/route"),
 };
 
 /**

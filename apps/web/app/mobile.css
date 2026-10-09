@@ -1,0 +1,251 @@
+/*
+ * Responsive + installable (PWA) layer.
+ * The shell and the pages style themselves inline, and inline styles beat normal CSS rules, so the
+ * overrides below use !important. Up to 860px (phones, iPad portrait) the sidebar becomes a bottom
+ * tab bar; iPad landscape and desktop keep the sidebar.
+ */
+html {
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Mobile-only elements stay invisible on wide screens. */
+.ae-bottomnav,
+.ae-sheet,
+.ae-sheet-backdrop,
+.ae-top-logo {
+  display: none;
+}
+
+@media (max-width: 860px) {
+  .ae-root {
+    flex-direction: column !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+  }
+  .ae-aside {
+    display: none !important;
+  }
+  .ae-main {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+  .ae-topbar {
+    height: auto !important;
+    min-height: 46px;
+    padding: calc(env(safe-area-inset-top) + 8px) 14px 8px !important;
+  }
+  .ae-top-logo {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+  }
+  .ae-top-logo svg {
+    width: 24px;
+    height: 24px;
+  }
+  .ae-top-solana,
+  .ae-top-sep {
+    display: none;
+  }
+  .ae-content {
+    padding-bottom: calc(66px + env(safe-area-inset-bottom)) !important;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
+  /* Bottom tab bar */
+  .ae-bottomnav {
+    display: flex;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 60;
+    background: rgba(15, 17, 22, 0.96);
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+    border-top: 1px solid #1a1a1f;
+    padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
+  }
+  .ae-bottomnav a,
+  .ae-bottomnav button {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    min-height: 46px;
+    font: inherit;
+    font-size: 10px;
+    font-weight: 600;
+    color: #8a8a8e;
+    text-decoration: none;
+    background: none;
+    border: 0;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  .ae-bottomnav svg {
+    width: 22px;
+    height: 22px;
+  }
+  .ae-bottomnav .active {
+    color: #35dcff;
+  }
+
+  /* "More" sheet sits above the tab bar */
+  .ae-sheet-backdrop {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: calc(60px + env(safe-area-inset-bottom));
+    z-index: 55;
+    background: rgba(0, 0, 0, 0.6);
+  }
+  .ae-sheet {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    position: fixed;
+    left: 8px;
+    right: 8px;
+    bottom: calc(66px + env(safe-area-inset-bottom));
+    z-index: 58;
+    background: #0f1116;
+    border: 1px solid #2a2a2f;
+    border-radius: 14px;
+    padding: 10px;
+  }
+  .ae-sheet a {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 48px;
+    padding: 0 14px;
+    border-radius: 10px;
+    background: #1a1a1f;
+    color: #d1d1d6;
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .ae-sheet a.active {
+    color: #35dcff;
+    background: rgba(53, 220, 255, 0.12);
+  }
+  .ae-sheet a svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  /* Page padding */
+  .epw-header {
+    padding: 16px 14px 12px !important;
+  }
+  .epw-content {
+    padding: 14px 12px !important;
+  }
+  .ae-content h1 {
+    font-size: 20px !important;
+  }
+
+  /* Radar: swipeable tab row, natural page scroll instead of a nested scroll box */
+  .radar-tabs {
+    flex-wrap: nowrap !important;
+    overflow-x: auto;
+    margin-left: -12px !important;
+    margin-right: -12px !important;
+    padding: 0 12px 6px;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .radar-tabs::-webkit-scrollbar {
+    display: none;
+  }
+  .radar-tabs button {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    min-height: 40px;
+  }
+  .radar-tab-content {
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  /* Page headers shared by the older pages */
+  .page-head {
+    padding: 16px 14px !important;
+    margin-bottom: 14px !important;
+  }
+  .page-head h2 {
+    font-size: 20px !important;
+  }
+
+  /* Live Event Stream */
+  .stream-list {
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+  }
+  .stream-row {
+    grid-template-columns: 48px minmax(0, 1fr) auto !important;
+    gap: 10px !important;
+    padding: 12px !important;
+  }
+
+  /* Signals: table on top, detail panel stacked below instead of beside it */
+  .sig-layout {
+    flex-direction: column !important;
+    height: auto !important;
+  }
+  .sig-main {
+    flex: 1 1 auto !important;
+    width: 100% !important;
+  }
+  .sig-pad {
+    padding: 12px 14px !important;
+  }
+  .sig-filters {
+    overflow-x: auto;
+    flex-wrap: nowrap !important;
+    scrollbar-width: none;
+  }
+  .sig-filters::-webkit-scrollbar {
+    display: none;
+  }
+  .sig-filters button {
+    white-space: nowrap;
+    flex: 0 0 auto;
+  }
+  .sig-detail {
+    flex: 0 0 auto !important;
+    width: 100% !important;
+    border-left: 0 !important;
+    border-top: 1px solid #2a2a3e !important;
+  }
+
+  /* One wide table or grid must never push the whole page sideways */
+  .ae-content table {
+    display: block;
+    overflow-x: auto;
+    max-width: 100%;
+  }
+  .ae-content img,
+  .ae-content svg {
+    max-width: 100%;
+  }
+  /* iOS zooms into inputs smaller than 16px */
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}

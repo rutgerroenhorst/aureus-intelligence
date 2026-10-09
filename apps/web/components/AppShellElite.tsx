@@ -2,21 +2,24 @@
 import React, { ReactNode, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { usePolling } from "@/lib/usePolling";
 
 interface AppShellEliteProps {
   children: ReactNode;
 }
 
-const AureusLogo = () => (
+// Each instance needs its own gradient id: a gradient defined inside a display:none SVG (the sidebar on
+// phones) cannot be referenced from another SVG, which made the top-bar logo disappear.
+const AureusLogo = ({ id = "aGrad" }: { id?: string }) => (
   <svg viewBox="0 0 40 40" width="28" height="28" fill="none" xmlns="http://www.w3.org/2000/svg">
     <defs>
-      <linearGradient id="aGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <linearGradient id={id} x1="0%" y1="0%" x2="100%" y2="100%">
         <stop offset="0%" stopColor="#2585FF" />
         <stop offset="100%" stopColor="#35DCFF" />
       </linearGradient>
     </defs>
-    <path d="M 8 32 L 20 8 L 32 32 M 14 24 L 26 24" stroke="url(#aGrad)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-    <circle cx="20" cy="20" r="18" fill="none" stroke="url(#aGrad)" strokeWidth="1" opacity="0.3"/>
+    <path d="M 8 32 L 20 8 L 32 32 M 14 24 L 26 24" stroke={`url(#${id})`} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    <circle cx="20" cy="20" r="18" fill="none" stroke={`url(#${id})`} strokeWidth="1" opacity="0.3"/>
   </svg>
 );
 
@@ -45,34 +48,73 @@ const NavIcon = ({ type }: { type: string }) => {
       return <svg {...iconProps}><polygon points="12 2 15.09 10.26 23.77 11.27 17.88 17.14 19.54 25.88 12 21.77 4.46 25.88 6.12 17.14 0.23 11.27 8.91 10.26"/></svg>;
     case "ops":
       return <svg {...iconProps}><circle cx="6" cy="6" r="1"/><circle cx="18" cy="6" r="1"/><circle cx="6" cy="18" r="1"/><circle cx="18" cy="18" r="1"/></svg>;
+    case "more":
+      return <svg {...iconProps}><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg>;
     default:
       return null;
   }
 };
 
+type HealthLevel = "unknown" | "ok" | "stale" | "down";
+interface Health {
+  level: HealthLevel;
+  label: string;
+}
+
+const HEALTH_COLOR: Record<HealthLevel, string> = {
+  unknown: "#8a8a8e",
+  ok: "#34c759",
+  stale: "#ff9f0a",
+  down: "#ff3b30",
+};
+
+const formatAge = (min: number) => (min < 90 ? `${min} min` : min < 60 * 48 ? `${Math.round(min / 60)} h` : `${Math.round(min / 1440)} d`);
+
+// "Live" must mean the data is actually fresh, not that a worker ran once at some point.
+function describeHealth(t: { status?: string; lastWorkerCycleAt?: string | null }): Health {
+  const last = t.lastWorkerCycleAt ? new Date(t.lastWorkerCycleAt).getTime() : NaN;
+  if (t.status === "OFFLINE" || Number.isNaN(last)) return { level: "down", label: "No data feed" };
+  const min = Math.max(0, Math.round((Date.now() - last) / 60_000));
+  if (min <= 20) return { level: "ok", label: "Live" };
+  if (min <= 90) return { level: "stale", label: `Data ${formatAge(min)} old` };
+  return { level: "down", label: `Feed stopped ${formatAge(min)} ago` };
+}
+
+const primaryNav = [
+  { label: "Radar", href: "/radar", type: "radar" },
+  { label: "Elite", href: "/elite", type: "elite" },
+  { label: "Results", href: "/results", type: "results" },
+  { label: "Signals", href: "/signals", type: "signals" },
+];
+
+const moreNav = [
+  { label: "Stream", href: "/stream", type: "stream" },
+  { label: "Learning", href: "/learning", type: "learning" },
+  { label: "Forensics", href: "/forensics", type: "forensics" },
+  { label: "Wallets", href: "/wallets", type: "wallets" },
+  { label: "Watchlist", href: "/watchlist", type: "watchlist" },
+  { label: "Ops", href: "/ops", type: "ops" },
+];
+
 export default function AppShellElite({ children }: AppShellEliteProps) {
   const pathname = usePathname();
-  const [backendOnline, setBackendOnline] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [health, setHealth] = useState<Health>({ level: "unknown", label: "" });
+  const [moreOpen, setMoreOpen] = useState(false);
+
+  // Once a minute, and only while the screen is visible (was every 10 s, always).
+  usePolling(async () => {
+    try {
+      const res = await fetch("/api/telemetry", { cache: "no-store" });
+      if (!res.ok) throw new Error(String(res.status));
+      setHealth(describeHealth(await res.json()));
+    } catch {
+      setHealth({ level: "down", label: "Offline" });
+    }
+  }, 60_000);
 
   useEffect(() => {
-    const checkBackend = async () => {
-      try {
-        const res = await fetch("/api/telemetry", { cache: "no-store" });
-        if (res.ok) {
-          const data = await res.json();
-          setBackendOnline(data.status !== "OFFLINE" && data.lastWorkerCycleAt);
-        }
-      } catch {
-        setBackendOnline(false);
-      } finally {
-        setLoading(false);
-      }
-    };
-    checkBackend();
-    const interval = setInterval(checkBackend, 10000);
-    return () => clearInterval(interval);
-  }, []);
+    setMoreOpen(false);
+  }, [pathname]);
 
   const mainNav = [
     { label: "Radar", href: "/radar", type: "radar", group: "Core" },
@@ -89,11 +131,13 @@ export default function AppShellElite({ children }: AppShellEliteProps) {
 
   const isActive = (href: string) => pathname === href;
   const groups = Array.from(new Set(mainNav.map(n => n.group)));
+  const healthColor = HEALTH_COLOR[health.level];
+  const moreActive = moreNav.some((n) => isActive(n.href));
 
   return (
-    <div style={{ display: "flex", height: "100vh", background: "#0a0908", fontFamily: "'Inter', -apple-system, sans-serif" }}>
-      {/* PREMIUM SIDEBAR */}
-      <aside style={{
+    <div className="ae-root" style={{ display: "flex", height: "100vh", background: "#0a0908", fontFamily: "'Inter', -apple-system, sans-serif" }}>
+      {/* PREMIUM SIDEBAR (desktop / tablet landscape) */}
+      <aside className="ae-aside" style={{
         width: "220px",
         background: "linear-gradient(180deg, #0f1116 0%, #0a0908 100%)",
         borderRight: "1px solid #1a1a1f",
@@ -180,13 +224,13 @@ export default function AppShellElite({ children }: AppShellEliteProps) {
         </nav>
 
         {/* STATUS INDICATOR */}
-        {!loading && (
+        {health.level !== "unknown" && (
           <div style={{
             paddingLeft: "16px",
             paddingRight: "16px",
             paddingBottom: "12px",
             fontSize: "11px",
-            color: backendOnline ? "#34c759" : "#ff3b30",
+            color: healthColor,
             display: "flex",
             alignItems: "center",
             gap: "6px",
@@ -195,18 +239,16 @@ export default function AppShellElite({ children }: AppShellEliteProps) {
               width: "6px",
               height: "6px",
               borderRadius: "50%",
-              background: backendOnline ? "#34c759" : "#ff3b30",
-              animation: backendOnline ? "pulse 2s infinite" : "none",
+              background: healthColor,
+              animation: health.level === "ok" ? "pulse 2s infinite" : "none",
             }} />
-            <span style={{ fontWeight: 500 }}>
-              {backendOnline ? "Live" : "Offline"}
-            </span>
+            <span style={{ fontWeight: 500 }}>{health.label}</span>
           </div>
         )}
       </aside>
 
       {/* MAIN CONTENT */}
-      <main style={{
+      <main className="ae-main" style={{
         flex: 1,
         display: "flex",
         flexDirection: "column",
@@ -215,7 +257,7 @@ export default function AppShellElite({ children }: AppShellEliteProps) {
         overflow: "hidden",
       }}>
         {/* TOP BAR */}
-        <div style={{
+        <div className="ae-topbar" style={{
           height: "56px",
           borderBottom: "1px solid #1a1a1f",
           display: "flex",
@@ -224,6 +266,10 @@ export default function AppShellElite({ children }: AppShellEliteProps) {
           paddingRight: "32px",
           background: "linear-gradient(90deg, #0f1116 0%, #0a0908 100%)",
         }}>
+          <div className="ae-top-logo">
+            <AureusLogo id="aGradTop" />
+            <span>AUREUS</span>
+          </div>
           <div style={{
             display: "flex",
             gap: "12px",
@@ -232,14 +278,16 @@ export default function AppShellElite({ children }: AppShellEliteProps) {
             fontSize: "12px",
             color: "#8a8a8e",
           }}>
-            <span>🌐 Solana</span>
-            <span style={{ width: "1px", height: "16px", background: "#1a1a1f" }} />
-            <span>● Live</span>
+            <span className="ae-top-solana">🌐 Solana</span>
+            <span className="ae-top-sep" style={{ width: "1px", height: "16px", background: "#1a1a1f" }} />
+            {health.level !== "unknown" && (
+              <span style={{ color: healthColor }}>● {health.label}</span>
+            )}
           </div>
         </div>
 
         {/* CONTENT AREA */}
-        <div style={{
+        <div className="ae-content" style={{
           flex: 1,
           overflowY: "auto",
           overflowX: "hidden",
@@ -248,6 +296,31 @@ export default function AppShellElite({ children }: AppShellEliteProps) {
           {children}
         </div>
       </main>
+
+      {/* MOBILE: bottom tab bar + "More" sheet (hidden on wide screens by mobile.css) */}
+      {moreOpen && <div className="ae-sheet-backdrop" onClick={() => setMoreOpen(false)} />}
+      {moreOpen && (
+        <div className="ae-sheet" role="dialog" aria-label="More pages">
+          {moreNav.map((item) => (
+            <Link key={item.href} href={item.href} className={isActive(item.href) ? "active" : ""}>
+              <NavIcon type={item.type} />
+              <span>{item.label}</span>
+            </Link>
+          ))}
+        </div>
+      )}
+      <nav className="ae-bottomnav" aria-label="Main">
+        {primaryNav.map((item) => (
+          <Link key={item.href} href={item.href} className={isActive(item.href) ? "active" : ""}>
+            <NavIcon type={item.type} />
+            <span>{item.label}</span>
+          </Link>
+        ))}
+        <button type="button" className={moreActive || moreOpen ? "active" : ""} onClick={() => setMoreOpen((v) => !v)} aria-expanded={moreOpen}>
+          <NavIcon type="more" />
+          <span>More</span>
+        </button>
+      </nav>
 
       <style>{`
         @keyframes pulse {

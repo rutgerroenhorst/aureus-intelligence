@@ -1,6 +1,7 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import ElitePageWrapper from "@/components/ElitePageWrapper";
+import { usePolling } from "@/lib/usePolling";
 
 interface Candidate {
   id: string;
@@ -27,6 +28,7 @@ export default function RadarPageElite() {
   const [momentum, setMomentum] = useState<any[]>([]);
   const [performance, setPerformance] = useState<any>(null);
   const [networks, setNetworks] = useState<any[]>([]);
+  const [safety, setSafety] = useState<{ total: number; safe: number; rejected: number; unverified: number; noData: number } | null>(null);
   const [selectedChain, setSelectedChain] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>("early");
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
@@ -37,57 +39,41 @@ export default function RadarPageElite() {
   });
   const [enteredCoins, setEnteredCoins] = useState<Set<string>>(new Set());
 
-  useEffect(() => {
-    const fetchAll = async () => {
-      try {
-        setIsRefreshing(true);
-        const [candRes, eliteRes, ultRes, ultMomRes, incRes, cateRes, signalsRes, posRes, trendsRes, momRes, perfRes, netRes] = await Promise.all([
-          fetch("/api/candidates"),
-          fetch("/api/elite-validator"),
-          fetch("/api/ultra-early"),
-          fetch("/api/ultra-early-momentum"),
-          fetch("/api/incubation"),
-          fetch("/api/cate-hunter"),
-          fetch("/api/signals"),
-          fetch("/api/positions"),
-          fetch("/api/trends"),
-          fetch("/api/momentum"),
-          fetch("/api/performance"),
-          fetch("/api/network-sentiment"),
-        ]);
+  // One request for everything (/api/radar-bundle), and only while the screen is visible.
+  // A source that failed comes back as null: keep showing its previous data instead of blanking it.
+  const fetchAll = async () => {
+    try {
+      setIsRefreshing(true);
+      const res = await fetch("/api/radar-bundle", { cache: "no-store" });
+      if (!res.ok) throw new Error(`radar-bundle ${res.status}`);
+      const { data: d } = await res.json();
 
-        if (candRes.ok) setCandidates(await candRes.json().then(d => d.candidates || []));
-        if (eliteRes.ok) setEliteCandidates(await eliteRes.json().then(d => d.candidates || []));
-        if (ultRes.ok) setUltraEarlyCandidates(await ultRes.json().then(d => d.candidates || []));
-        if (ultMomRes.ok) setUltraEarlyMomentum(await ultMomRes.json().then(d => d.candidates || []));
-        if (incRes.ok) setIncubationCandidates(await incRes.json().then(d => d.candidates || []));
-        if (cateRes.ok) {
-          const cateData = await cateRes.json();
-          setCateCoins(cateData.cateCoins || []);
-          setCateSummary(cateData.summary || null);
-        }
-        if (signalsRes.ok) {
-          const sig = await signalsRes.json();
-          setBuySignals(sig.buy_signals || []);
-        }
-        if (posRes.ok) setPositions(await posRes.json().then(d => d.positions || []));
-        if (trendsRes.ok) setTrends(await trendsRes.json().then(d => d.candidates || []));
-        if (momRes.ok) setMomentum(await momRes.json().then(d => d.candidates || []));
-        if (perfRes.ok) setPerformance(await perfRes.json().then(d => d.metrics || {}));
-        if (netRes.ok) setNetworks(await netRes.json().then(d => d.networks || []));
-
-        setLastUpdate(new Date());
-      } catch (err) {
-        console.error("Fetch error:", err);
-      } finally {
-        setIsRefreshing(false);
+      if (d.candidates) setCandidates(d.candidates.candidates || []);
+      if (d.elite) setEliteCandidates(d.elite.candidates || []);
+      if (d.ultraEarly) setUltraEarlyCandidates(d.ultraEarly.candidates || []);
+      if (d.ultraEarlyMomentum) setUltraEarlyMomentum(d.ultraEarlyMomentum.candidates || []);
+      if (d.incubation) setIncubationCandidates(d.incubation.candidates || []);
+      if (d.cate) {
+        setCateCoins(d.cate.cateCoins || []);
+        setCateSummary(d.cate.summary || null);
       }
-    };
+      if (d.signals) setBuySignals(d.signals.buy_signals || []);
+      if (d.positions) setPositions(d.positions.positions || []);
+      if (d.trends) setTrends(d.trends.candidates || []);
+      if (d.momentum) setMomentum(d.momentum.candidates || []);
+      if (d.performance) setPerformance(d.performance.metrics || {});
+      if (d.networks) setNetworks(d.networks.networks || []);
+      setSafety(d.safety || null);
 
-    fetchAll();
-    const poll = setInterval(fetchAll, 10_000);
-    return () => clearInterval(poll);
-  }, []);
+      setLastUpdate(new Date());
+    } catch (err) {
+      console.error("Fetch error:", err);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  usePolling(fetchAll, 20_000);
 
   const TabButton = ({ tab, label, count }: { tab: Tab; label: string; count?: number }) => (
     <button
@@ -499,7 +485,7 @@ export default function RadarPageElite() {
             📊 Aureus Radar
           </h1>
           
-          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "16px" }}>
+          <div className="radar-tabs" style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "16px" }}>
             <TabButton tab="cate" label="🎯 CATE" count={cateCoins.length} />
             <TabButton tab="signals" label="💰 Buy Signals" count={buySignals.length} />
             <TabButton tab="early" label="🚀 Ultra Momentum" count={ultraEarlyMomentum.length} />
@@ -508,12 +494,31 @@ export default function RadarPageElite() {
             <TabButton tab="stats" label="📋 Stats" />
           </div>
 
-          <div style={{ fontSize: "12px", color: "#8a8a8e" }}>
-            {isRefreshing ? "🔄 Refreshing..." : "✓ Live"}
+          <div style={{ fontSize: "12px", color: "#8a8a8e", display: "flex", alignItems: "center", gap: "10px" }}>
+            <span>
+              {isRefreshing
+                ? "🔄 Refreshing..."
+                : lastUpdate
+                  ? `✓ Updated ${lastUpdate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`
+                  : "Loading..."}
+            </span>
+            <button
+              onClick={() => void fetchAll()}
+              disabled={isRefreshing}
+              aria-label="Refresh now"
+              style={{ background: "#1a1a1f", color: "#8a8a8e", border: "1px solid #2a2a2f", borderRadius: "6px", padding: "4px 10px", fontSize: "12px", cursor: "pointer" }}
+            >
+              ↻ Refresh
+            </button>
           </div>
+          {safety && safety.unverified > 0 && (
+            <div style={{ marginTop: "8px", fontSize: "12px", color: "#ff9f0a" }}>
+              ⚠ {safety.unverified} of {safety.total} coins could not be live-checked right now (DexScreener busy) — they are NOT confirmed safe.
+            </div>
+          )}
         </div>
 
-        <div data-tab-content style={{ maxHeight: "calc(100vh - 300px)", overflowY: "auto" }}>
+        <div data-tab-content className="radar-tab-content" style={{ maxHeight: "calc(100vh - 300px)", overflowY: "auto" }}>
           {renderContent()}
         </div>
       </div>

@@ -123,14 +123,15 @@ export default function StreamPage() {
 
   return (
     <>
-      <div style={{ padding: "24px 32px", borderBottom: "1px solid #2a2a3e", marginBottom: "24px" }}>
+      <div className="page-head" style={{ padding: "24px 32px", borderBottom: "1px solid #2a2a3e", marginBottom: "24px" }}>
         <h2 style={{ fontSize: "28px", fontWeight: 700, margin: "0 0 8px 0", color: "#fff" }}>Live Event Stream</h2>
         <p style={{ fontSize: "14px", color: "#8a8a9e", margin: 0 }}>Real-time coin discovery events</p>
       </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: "12px", maxWidth: "900px", paddingLeft: "32px", paddingRight: "32px" }}>
+      <div className="stream-list" style={{ display: "flex", flexDirection: "column", gap: "12px", maxWidth: "900px", paddingLeft: "32px", paddingRight: "32px" }}>
         {events.map((event) => (
             <div
               key={event.id}
+              className="stream-row"
               style={{
                 padding: "18px 20px",
                 background: "linear-gradient(180deg, rgba(6, 23, 42, 0.8) 0%, var(--bg-raised) 100%)",

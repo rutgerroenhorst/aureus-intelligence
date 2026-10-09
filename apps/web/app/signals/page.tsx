@@ -114,16 +114,16 @@ export default function SignalsPage() {
 
   return (
     <>
-      <div style={{ padding: "24px 32px", borderBottom: "1px solid #2a2a3e" }}>
+      <div className="page-head" style={{ padding: "24px 32px", borderBottom: "1px solid #2a2a3e" }}>
         <h2 style={{ fontSize: "28px", fontWeight: 700, margin: "0 0 8px 0", color: "#fff" }}>Signals Command Center</h2>
         <p style={{ fontSize: "14px", color: "#8a8a9e", margin: 0 }}>Real-time structural, wallet, and risk events</p>
       </div>
-    <div style={{ display: "flex", gap: "0", height: "100%" }}>
+    <div className="sig-layout" style={{ display: "flex", gap: "0", height: "100%" }}>
         {/* LEFT: MAIN */}
-        <div style={{ flex: "0 1 72%", display: "flex", flexDirection: "column", minWidth: "0" }}>
+        <div className="sig-main" style={{ flex: "0 1 72%", display: "flex", flexDirection: "column", minWidth: "0" }}>
 
           {/* KPIs */}
-          <div style={{ padding: "16px 24px", borderBottom: "1px solid var(--border-color)", display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "12px", flexShrink: 0 }}>
+          <div className="sig-pad" style={{ padding: "16px 24px", borderBottom: "1px solid var(--border-color)", display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "12px", flexShrink: 0 }}>
           {[
             { label: "Live Signals", value: signals.length, color: "#2585FF" },
             { label: "Qualified", value: criticalCount, color: "#20E5A3" },
@@ -138,7 +138,7 @@ export default function SignalsPage() {
         </div>
 
         {/* FILTERS */}
-        <div style={{ padding: "16px 24px", borderBottom: "1px solid var(--border-color)", display: "flex", gap: "8px", flexShrink: 0 }}>
+        <div className="sig-pad sig-filters" style={{ padding: "16px 24px", borderBottom: "1px solid var(--border-color)", display: "flex", gap: "8px", flexShrink: 0 }}>
           <div style={{ display: "flex", gap: "6px" }}>
             {[
               { label: "All Signals", key: "all", count: signals.length },
@@ -247,7 +247,7 @@ export default function SignalsPage() {
 
       {/* RIGHT PANEL */}
       {selectedSignal && (
-        <div style={{ flex: "0 0 360px", display: "flex", flexDirection: "column", background: "var(--bg-surface)", overflow: "hidden", borderLeft: "1px solid var(--border-color)" }}>
+        <div className="sig-detail" style={{ flex: "0 0 360px", display: "flex", flexDirection: "column", background: "var(--bg-surface)", overflow: "hidden", borderLeft: "1px solid var(--border-color)" }}>
           <div style={{ padding: "16px", borderBottom: "1px solid var(--border-color)", flexShrink: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
               <TokenAvatar symbol={selectedSignal.symbol} />

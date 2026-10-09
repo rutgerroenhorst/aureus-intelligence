@@ -16,7 +16,7 @@ export default function ElitePageWrapper({ children, title, subtitle }: ElitePag
     }}>
       {/* HEADER */}
       {(title || subtitle) && (
-        <div style={{
+        <div className="epw-header" style={{
           padding: "28px 32px 24px 32px",
           borderBottom: "1px solid #1a1a1f",
           background: "linear-gradient(180deg, rgba(15, 17, 22, 0.5) 0%, transparent 100%)",
@@ -46,7 +46,7 @@ export default function ElitePageWrapper({ children, title, subtitle }: ElitePag
       )}
 
       {/* CONTENT */}
-      <div style={{
+      <div className="epw-content" style={{
         flex: 1,
         overflowY: "auto",
         overflowX: "hidden",
