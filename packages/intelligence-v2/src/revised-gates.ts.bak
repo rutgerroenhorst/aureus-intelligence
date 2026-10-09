@@ -1,0 +1,374 @@
+/**
+ * Intelligence V2 — REVISED Phase 1 Verification Gates
+ *
+ * Conservative model: output statuses = QUALIFIED / INSUFFICIENT_DATA / FATAL_REJECT
+ *
+ * Gates do NOT output VERIFIED. Verification is a separate step that requires
+ * ALL critical dimensions to pass + confidence ≥ 70%.
+ *
+ * Gates output QUALIFIED only if:
+ * 1. No FATAL_REJECT gates fire
+ * 2. Critical data is present (or missing non-critical data)
+ * 3. Confidence ≥ 35%
+ */
+
+import type { FeatureValue } from "@aureus/contracts";
+import { INTELLIGENCE_MODEL_V2_REVISED } from "./revised-config.js";
+
+/**
+ * Single gate result
+ */
+export interface GateResult {
+  gateId: string;
+  passed: boolean;  // Did NOT hit fatal threshold
+  status: "PASS" | "CAUTION" | "FAIL";
+  reason: string;
+  severity: "CRITICAL" | "HIGH" | "MEDIUM";
+  evidence: Record<string, unknown>;
+}
+
+/**
+ * Final verdict from gates
+ */
+export interface VerificationGatesVerdict {
+  // Status: QUALIFIED = passed gates, ready for deeper analysis (Phase 2)
+  // INSUFFICIENT_DATA = missing critical fields
+  // FATAL_REJECT = hit a fatal gate
+  status: "STRUCTURALLY_QUALIFIED" | "INSUFFICIENT_DATA" | "FATAL_REJECT";
+
+  confidence: number;  // Data quality 0-100
+
+  // Detail
+  failedGates: GateResult[];     // If any FAIL
+  cautionGates: GateResult[];    // If any CAUTION
+  passedGates: GateResult[];
+  missingCriticalFields: string[];
+  suppressionReasons: string[];  // Why NOT VERIFIED (if applicable)
+
+  // Evidence
+  evidence: Record<string, unknown>;
+
+  // Notes for Phase 2
+  nextPhaseRequirements: string[];
+}
+
+/**
+ * Input to gates
+ */
+export interface VerificationGatesInput {
+  // Features
+  features: Map<string, FeatureValue>;
+
+  // On-chain metadata
+  mint: {
+    freezeAuthority?: { address: string; isMutable: boolean } | null;
+    mintAuthority?: { address: string; isMutable: boolean } | null;
+  };
+
+  // Holders
+  topHolders?: Array<{ wallet: string; pct: number }>;
+
+  // Creator
+  deployer?: { address: string };
+  createdAt?: number;
+
+  // Risk DB
+  knownRugs?: Array<{ deployerAddress: string; reason: string }>;
+}
+
+function getFeatureValue(
+  features: Map<string, FeatureValue>,
+  featureId: string,
+): number | null {
+  const f = features.get(featureId);
+  if (!f || f.status !== "OK" || f.value == null) return null;
+  return Number(f.value);
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// GATE 1: FREEZE AUTHORITY (CRITICAL_REQUIRED)
+// ────────────────────────────────────────────────────────────────────────
+
+function evaluateGate1_FreezeAuthority(input: VerificationGatesInput): GateResult {
+  const freezeAuth = input.mint.freezeAuthority;
+
+  if (!freezeAuth) {
+    return {
+      gateId: "GATE-01-FREEZE-AUTHORITY",
+      passed: false,
+      status: "FAIL",
+      reason: "Freeze authority unknown (CRITICAL_REQUIRED field missing)",
+      severity: "CRITICAL",
+      evidence: { freezeAuthority: null, missing: true },
+    };
+  }
+
+  if (freezeAuth.isMutable) {
+    return {
+      gateId: "GATE-01-FREEZE-AUTHORITY",
+      passed: false,
+      status: "FAIL",
+      reason: `Mutable freeze authority ${freezeAuth.address} = rug risk (can freeze at any time)`,
+      severity: "CRITICAL",
+      evidence: { freezeAuthority: freezeAuth, fatal: true },
+    };
+  }
+
+  return {
+    gateId: "GATE-01-FREEZE-AUTHORITY",
+    passed: true,
+    status: "PASS",
+    reason: "Freeze authority immutable (safe)",
+    severity: "CRITICAL",
+    evidence: { freezeAuthority: freezeAuth },
+  };
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// GATE 2: CREATOR RUG HISTORY (CRITICAL_REQUIRED)
+// ────────────────────────────────────────────────────────────────────────
+
+function evaluateGate2_CreatorRugHistory(input: VerificationGatesInput): GateResult {
+  if (!input.deployer) {
+    return {
+      gateId: "GATE-02-CREATOR-RUG-HISTORY",
+      passed: false,
+      status: "FAIL",
+      reason: "Deployer address unknown (CRITICAL_REQUIRED)",
+      severity: "CRITICAL",
+      evidence: { deployer: null, missing: true },
+    };
+  }
+
+  const rugMatch = input.knownRugs?.find((r) => r.deployerAddress === input.deployer?.address);
+
+  if (rugMatch) {
+    return {
+      gateId: "GATE-02-CREATOR-RUG-HISTORY",
+      passed: false,
+      status: "FAIL",
+      reason: `Creator ${input.deployer.address} has rug history: ${rugMatch.reason}`,
+      severity: "CRITICAL",
+      evidence: { deployerAddress: input.deployer.address, rugRecord: rugMatch },
+    };
+  }
+
+  return {
+    gateId: "GATE-02-CREATOR-RUG-HISTORY",
+    passed: true,
+    status: "PASS",
+    reason: "No known rug history for creator",
+    severity: "CRITICAL",
+    evidence: { deployerAddress: input.deployer.address },
+  };
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// GATE 3: DEPLOYER CONCENTRATION (CRITICAL_REQUIRED)
+// ────────────────────────────────────────────────────────────────────────
+
+function evaluateGate3_DeployerConcentration(input: VerificationGatesInput): GateResult {
+  const dim = INTELLIGENCE_MODEL_V2_REVISED.dimensions.deployerConcentration;
+  const deployerConcentration = getFeatureValue(input.features, "deployer_funding_risk");
+
+  if (deployerConcentration === null) {
+    return {
+      gateId: "GATE-03-DEPLOYER-CONCENTRATION",
+      passed: false,
+      status: "FAIL",
+      reason: "Deployer concentration unknown (CRITICAL_REQUIRED)",
+      severity: "CRITICAL",
+      evidence: { deployerConcentration: null, missing: true },
+    };
+  }
+
+  if (deployerConcentration > (dim.thresholds.hardFail as number)) {
+    return {
+      gateId: "GATE-03-DEPLOYER-CONCENTRATION",
+      passed: false,
+      status: "FAIL",
+      reason: `Deployer ${(deployerConcentration * 100).toFixed(1)}% > ${(dim.thresholds.hardFail as number) * 100}% hard fail`,
+      severity: "CRITICAL",
+      evidence: { concentration: deployerConcentration, hardFail: dim.thresholds.hardFail },
+    };
+  }
+
+  if (deployerConcentration > (dim.thresholds.verifiedMax as number)) {
+    return {
+      gateId: "GATE-03-DEPLOYER-CONCENTRATION",
+      passed: true,
+      status: "CAUTION",
+      reason: `Deployer ${(deployerConcentration * 100).toFixed(1)}% between VERIFIED (${(dim.thresholds.verifiedMax as number) * 100}%) and hard fail — QUALIFIED but flagged`,
+      severity: "HIGH",
+      evidence: { concentration: deployerConcentration, verifiedMax: dim.thresholds.verifiedMax },
+    };
+  }
+
+  return {
+    gateId: "GATE-03-DEPLOYER-CONCENTRATION",
+    passed: true,
+    status: "PASS",
+    reason: `Deployer ${(deployerConcentration * 100).toFixed(1)}% ≤ VERIFIED threshold`,
+    severity: "HIGH",
+    evidence: { concentration: deployerConcentration },
+  };
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// GATE 4: HOLDER CONCENTRATION (CRITICAL_REQUIRED)
+// ────────────────────────────────────────────────────────────────────────
+
+function evaluateGate4_HolderConcentration(input: VerificationGatesInput): GateResult {
+  const dim = INTELLIGENCE_MODEL_V2_REVISED.dimensions.holderConcentration;
+
+  if (!input.topHolders || input.topHolders.length < 3) {
+    return {
+      gateId: "GATE-04-HOLDER-CONCENTRATION",
+      passed: false,
+      status: "FAIL",
+      reason: "Top holder data unavailable (CRITICAL_REQUIRED)",
+      severity: "CRITICAL",
+      evidence: { topHolders: input.topHolders, missing: true },
+    };
+  }
+
+  const top3Sum = input.topHolders.slice(0, 3).reduce((sum, h) => sum + h.pct, 0);
+
+  if (top3Sum > (dim.thresholds.hardFail as number)) {
+    return {
+      gateId: "GATE-04-HOLDER-CONCENTRATION",
+      passed: false,
+      status: "FAIL",
+      reason: `Top 3 holders ${(top3Sum * 100).toFixed(1)}% > ${(dim.thresholds.hardFail as number) * 100}% = illiquid (hard fail)`,
+      severity: "CRITICAL",
+      evidence: { top3Concentration: top3Sum, hardFail: dim.thresholds.hardFail },
+    };
+  }
+
+  if (top3Sum > (dim.thresholds.verifiedMax as number)) {
+    return {
+      gateId: "GATE-04-HOLDER-CONCENTRATION",
+      passed: true,
+      status: "CAUTION",
+      reason: `Top 3 holders ${(top3Sum * 100).toFixed(1)}% between VERIFIED (${(dim.thresholds.verifiedMax as number) * 100}%) and hard fail — QUALIFIED but flagged`,
+      severity: "HIGH",
+      evidence: { top3Concentration: top3Sum, verifiedMax: dim.thresholds.verifiedMax },
+    };
+  }
+
+  return {
+    gateId: "GATE-04-HOLDER-CONCENTRATION",
+    passed: true,
+    status: "PASS",
+    reason: `Top 3 holders ${(top3Sum * 100).toFixed(1)}% ≤ VERIFIED threshold`,
+    severity: "HIGH",
+    evidence: { top3Concentration: top3Sum },
+  };
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// GATE 5: BASIC LIQUIDITY (CRITICAL_REQUIRED)
+// ────────────────────────────────────────────────────────────────────────
+
+function evaluateGate5_BasicLiquidity(input: VerificationGatesInput): GateResult {
+  return {
+    gateId: "GATE-05-BASIC-LIQUIDITY",
+    passed: true,
+    status: "PASS",
+    reason: "Liquidity check deferred to data enrichment",
+    severity: "MEDIUM",
+    evidence: { note: "Phase 1 assumes liquidity present; will verify in snapshot" },
+  };
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// MAIN EVALUATION
+// ────────────────────────────────────────────────────────────────────────
+
+export function evaluateVerificationGates(input: VerificationGatesInput): VerificationGatesVerdict {
+  const gates: GateResult[] = [
+    evaluateGate1_FreezeAuthority(input),
+    evaluateGate2_CreatorRugHistory(input),
+    evaluateGate3_DeployerConcentration(input),
+    evaluateGate4_HolderConcentration(input),
+    evaluateGate5_BasicLiquidity(input),
+  ];
+
+  const failedGates = gates.filter((g) => g.status === "FAIL");
+  const cautionGates = gates.filter((g) => g.status === "CAUTION");
+  const passedGates = gates.filter((g) => g.status === "PASS");
+
+  const missingCriticalFields: string[] = [];
+  const suppressionReasons: string[] = [];
+
+  // ── FATAL_REJECT ─────────────────────────────────────────────────
+  if (failedGates.length > 0) {
+    const firstFail = failedGates[0]!;
+    suppressionReasons.push(`Fatal gate failure: ${firstFail.gateId} — ${firstFail.reason}`);
+
+    return {
+      status: "FATAL_REJECT",
+      confidence: 100,
+      failedGates: [firstFail],
+      cautionGates: [],
+      passedGates,
+      missingCriticalFields,
+      suppressionReasons,
+      evidence: {
+        firstFailure: firstFail,
+        totalFailures: failedGates.length,
+      },
+      nextPhaseRequirements: [],
+    };
+  }
+
+  // ── QUALIFIED ────────────────────────────────────────────────────
+  let confidence = 85;  // Base confidence if gates pass
+
+  if (cautionGates.length > 0) {
+    confidence -= cautionGates.length * 10;
+    suppressionReasons.push(`Caution flags: ${cautionGates.map((g) => g.gateId).join(", ")}`);
+  }
+
+  if (confidence < INTELLIGENCE_MODEL_V2_REVISED.confidenceThresholds.forQUALIFIED) {
+    suppressionReasons.push(`Confidence ${confidence}% < ${INTELLIGENCE_MODEL_V2_REVISED.confidenceThresholds.forQUALIFIED}% (QUALIFIED minimum)`);
+    return {
+      status: "INSUFFICIENT_DATA",
+      confidence,
+      failedGates: [],
+      cautionGates,
+      passedGates,
+      missingCriticalFields,
+      suppressionReasons,
+      evidence: { lowConfidence: true },
+      nextPhaseRequirements: cautionGates.map((g) => `Resolve: ${g.reason}`),
+    };
+  }
+
+  // ── Success: QUALIFIED ───────────────────────────────────────────
+  const nextPhaseRequirements = [
+    "Phase 2: Entity clustering (wallet forensics)",
+    "Phase 2: Organic flow analysis (real buyers vs wash trading)",
+    "Phase 2: Trend/narrative analysis (pre-mint vs post-token)",
+    "Phase 2: Smart money wallet tracking",
+    "Optional: Helius API (bundle contamination)",
+  ];
+
+  return {
+    status: "STRUCTURALLY_QUALIFIED",
+    confidence,
+    failedGates: [],
+    cautionGates,
+    passedGates,
+    missingCriticalFields,
+    suppressionReasons: [
+      "Not yet VERIFIED. Phase 2 required for entity/flow/trend analysis.",
+      `Current confidence ${confidence}% below VERIFIED threshold (${INTELLIGENCE_MODEL_V2_REVISED.confidenceThresholds.forVERIFIED}%).`,
+      "Qualified for deep analysis; not recommended for trading until VERIFIED.",
+    ],
+    evidence: {
+      gatesStatus: gates.map((g) => ({ id: g.gateId, status: g.status })),
+    },
+    nextPhaseRequirements,
+  };
+}

@@ -1,0 +1,41 @@
+REPLACEMENT CODE for renderEarlyCoins function:
+
+Replace the HUGE section (currently showing truncated version with just slice(0,5)) with:
+
+{hugeCoins.length > 0 && (
+  <>
+    <h4 style={{ color: "#ff9500", marginBottom: "12px", marginTop: "16px" }}>🔥🔥 HUGE ({hugeCoins.length})</h4>
+    {hugeCoins.map((c: any, i: number) => (
+      <CoinRow key={i} c={c} color="#ff9500" score={c.score} />
+    ))}
+  </>
+)}
+
+Replace BIG section with:
+
+{bigCoins.length > 0 && (
+  <>
+    <h4 style={{ color: "#34c759", marginBottom: "12px", marginTop: "16px" }}>🔥 BIG ({bigCoins.length})</h4>
+    {bigCoins.map((c: any, i: number) => (
+      <CoinRow key={i} c={c} color="#34c759" score={c.score} />
+    ))}
+  </>
+)}
+
+Replace WARM section with:
+
+{warmCoins.length > 0 && (
+  <>
+    <h4 style={{ color: "#5ac8fa", marginBottom: "12px", marginTop: "16px" }}>📈 WARM ({warmCoins.length})</h4>
+    {warmCoins.map((c: any, i: number) => (
+      <CoinRow key={i} c={c} color="#5ac8fa" score={c.score} />
+    ))}
+  </>
+)}
+
+This will add to each coin:
+✅ DexScreener button
+✅ Copy Mint button  
+✅ Enter button (track entry)
+✅ Full formatting with score display
+✅ All coin metrics (age, volume, price, buys)

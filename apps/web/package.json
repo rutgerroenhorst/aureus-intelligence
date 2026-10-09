@@ -1,16 +1,26 @@
 {
-  "name": "aureus-intelligence-web",
-  "version": "1.0.0",
+  "name": "@aureus/web",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "next dev -p 3000",
-    "build": "next build",
-    "start": "next start -p 3000",
-    "lint": "next lint"
+    "build": "NEXT_DIST_DIR=.next-build next build",
+    "start": "NEXT_DIST_DIR=.next-build next start -p 3000"
   },
   "dependencies": {
+    "@aureus/config": "workspace:*",
+    "@aureus/contracts": "workspace:*",
+    "@aureus/cost-model": "workspace:*",
+    "@aureus/db": "workspace:^",
+    "@aureus/readiness": "workspace:*",
+    "@aureus/research": "workspace:*",
+    "@aureus/rule-engine": "workspace:*",
+    "@aureus/safety-engine": "workspace:*",
+    "@aureus/watch-engine": "workspace:*",
+    "ioredis": "^5.4.2",
     "next": "14.2.15",
+    "pg": "^8.13.1",
     "react": "18.3.1",
     "react-dom": "18.3.1"
   },

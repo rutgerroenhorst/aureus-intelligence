@@ -25,12 +25,18 @@ const NavIcon = ({ type }: { type: string }) => {
   switch (type) {
     case "radar":
       return <svg {...iconProps}><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="2"/></svg>;
+    case "elite":
+      return <svg {...iconProps}><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>;
+    case "tier1":
+      return <svg {...iconProps}><path d="M12 2L2 7L2 17C2 20.3137 6.47715 23 12 23C17.5228 23 22 20.3137 22 17L22 7L12 2Z" fill="none"/><path d="M12 2L22 7L22 17" stroke="currentColor" strokeWidth="2"/></svg>;
     case "stream":
       return <svg {...iconProps}><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>;
     case "signals":
       return <svg {...iconProps}><polyline points="12 2 15 10 23 13 16 18 18 26 12 21 6 26 8 18 1 13 9 10 12 2" /></svg>;
     case "results":
       return <svg {...iconProps}><path d="M 4 14 L 8 8 L 12 11 L 16 6 L 20 10 L 20 20 L 4 20 Z"/></svg>;
+    case "learning":
+      return <svg {...iconProps}><path d="M12 3C7.03 3 3 7.03 3 12s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 16c-3.86 0-7-3.14-7-7s3.14-7 7-7 7 3.14 7 7-3.14 7-7 7zm0-12c-2.76 0-5 2.24-5 5s2.24 5 5 5 5-2.24 5-5-2.24-5-5-5z"/></svg>;
     case "forensics":
       return <svg {...iconProps}><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>;
     case "wallets":
@@ -70,9 +76,11 @@ export default function AppShellElite({ children }: AppShellEliteProps) {
 
   const mainNav = [
     { label: "Radar", href: "/radar", type: "radar", group: "Core" },
+    { label: "Elite", href: "/elite", type: "elite", group: "Core" },
     { label: "Results", href: "/results", type: "results", group: "Core" },
     { label: "Stream", href: "/stream", type: "stream", group: "Data" },
     { label: "Signals", href: "/signals", type: "signals", group: "Data" },
+    { label: "Learning", href: "/learning", type: "learning", group: "Data" },
     { label: "Forensics", href: "/forensics", type: "forensics", group: "Analysis" },
     { label: "Wallets", href: "/wallets", type: "wallets", group: "Analysis" },
     { label: "Watchlist", href: "/watchlist", type: "watchlist", group: "Tracking" },

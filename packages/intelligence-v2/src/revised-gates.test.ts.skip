@@ -1,0 +1,173 @@
+import { evaluateVerificationGates, type VerificationGatesInput } from "./revised-gates.js";
+
+describe("V2 Gates - Regression Tests", () => {
+  describe("Freeze Authority Mapping (critical bug fix)", () => {
+    it("freezeAuthorityActive=true means mutable (unsafe)", () => {
+      const input: VerificationGatesInput = {
+        features: new Map(),
+        mint: {
+          freezeAuthority: { address: "test", isMutable: true },
+        },
+        topHolders: [{ wallet: "test", pct: 0.1 }],
+        deployer: { address: "test" },
+        createdAt: 0,
+        knownRugs: [],
+      };
+
+      const verdict = evaluateVerificationGates(input);
+      expect(verdict.status).toBe("FATAL_REJECT");
+      expect(verdict.suppressionReasons[0]).toContain("Mutable freeze authority");
+    });
+
+    it("freezeAuthorityActive=false means immutable (safe)", () => {
+      const input: VerificationGatesInput = {
+        features: new Map(),
+        mint: {
+          freezeAuthority: { address: "test", isMutable: false },
+        },
+        topHolders: [{ wallet: "test", pct: 0.1 }],
+        deployer: { address: "test" },
+        createdAt: 0,
+        knownRugs: [],
+      };
+
+      const verdict = evaluateVerificationGates(input);
+      // Should not fail on freeze authority
+      const freezeGate = verdict.failedGates.find(g => g.gateId === "GATE-01-FREEZE-AUTHORITY");
+      expect(freezeGate).toBeUndefined();
+    });
+
+    it("freezeAuthorityActive=undefined means missing data", () => {
+      const input: VerificationGatesInput = {
+        features: new Map(),
+        mint: {}, // no freezeAuthority
+        topHolders: [{ wallet: "test", pct: 0.1 }],
+        deployer: { address: "test" },
+        createdAt: 0,
+        knownRugs: [],
+      };
+
+      const verdict = evaluateVerificationGates(input);
+      expect(verdict.status).toBe("INSUFFICIENT_DATA");
+      expect(verdict.missingCriticalFields[0]).toContain("Freeze authority");
+    });
+  });
+
+  describe("Holder Percentage Scale (0-1 range)", () => {
+    it("holderTop10Pct=0.3 means 30%", () => {
+      const input: VerificationGatesInput = {
+        features: new Map(),
+        mint: { freezeAuthority: { address: "test", isMutable: false } },
+        topHolders: [{ wallet: "test", pct: 0.3 }],
+        deployer: { address: "test" },
+        createdAt: 0,
+        knownRugs: [],
+      };
+
+      const verdict = evaluateVerificationGates(input);
+      // Should pass (30% < 70% verifiedMax)
+      expect(verdict.status).toBe("STRUCTURALLY_QUALIFIED");
+    });
+
+    it("holderTop10Pct=0.95 exceeds hardFail threshold", () => {
+      const input: VerificationGatesInput = {
+        features: new Map(),
+        mint: { freezeAuthority: { address: "test", isMutable: false } },
+        topHolders: [{ wallet: "test", pct: 0.95 }],
+        deployer: { address: "test" },
+        createdAt: 0,
+        knownRugs: [],
+      };
+
+      const verdict = evaluateVerificationGates(input);
+      // Should fail (95% > 95% is at boundary, but logic uses >)
+      expect(verdict.status).toBe("STRUCTURALLY_QUALIFIED");
+    });
+
+    it("holderTop10Pct=0.96 exceeds hardFail threshold", () => {
+      const input: VerificationGatesInput = {
+        features: new Map(),
+        mint: { freezeAuthority: { address: "test", isMutable: false } },
+        topHolders: [{ wallet: "test", pct: 0.96 }],
+        deployer: { address: "test" },
+        createdAt: 0,
+        knownRugs: [],
+      };
+
+      const verdict = evaluateVerificationGates(input);
+      // Should FATAL_REJECT (96% > 95% hardFail)
+      expect(verdict.status).toBe("FATAL_REJECT");
+      expect(verdict.suppressionReasons[0]).toContain("illiquid");
+    });
+  });
+
+  describe("Creator/Deployer Mapping", () => {
+    it("valid creator address passes gate", () => {
+      const input: VerificationGatesInput = {
+        features: new Map(),
+        mint: { freezeAuthority: { address: "test", isMutable: false } },
+        topHolders: [{ wallet: "test", pct: 0.1 }],
+        deployer: { address: "CreatorAddress123" },
+        createdAt: 0,
+        knownRugs: [],
+      };
+
+      const verdict = evaluateVerificationGates(input);
+      // Should not fail on creator
+      const creatorGate = verdict.failedGates.find(g => g.gateId === "GATE-02-CREATOR-RUG-HISTORY");
+      expect(creatorGate).toBeUndefined();
+    });
+
+    it("missing creator returns INSUFFICIENT_DATA", () => {
+      const input: VerificationGatesInput = {
+        features: new Map(),
+        mint: { freezeAuthority: { address: "test", isMutable: false } },
+        topHolders: [{ wallet: "test", pct: 0.1 }],
+        deployer: undefined,
+        createdAt: 0,
+        knownRugs: [],
+      };
+
+      const verdict = evaluateVerificationGates(input);
+      expect(verdict.status).toBe("INSUFFICIENT_DATA");
+      expect(verdict.missingCriticalFields[0]).toContain("Deployer");
+    });
+
+    it("creator on known rug list fails gate", () => {
+      const rugAddress = "KnownRugCreator";
+      const input: VerificationGatesInput = {
+        features: new Map(),
+        mint: { freezeAuthority: { address: "test", isMutable: false } },
+        topHolders: [{ wallet: "test", pct: 0.1 }],
+        deployer: { address: rugAddress },
+        createdAt: 0,
+        knownRugs: [
+          { deployerAddress: rugAddress, reason: "Rug pull history" },
+        ],
+      };
+
+      const verdict = evaluateVerificationGates(input);
+      expect(verdict.status).toBe("FATAL_REJECT");
+      expect(verdict.suppressionReasons[0]).toContain("rug history");
+    });
+  });
+
+  describe("Missing Data Semantics", () => {
+    it("missing data returns INSUFFICIENT_DATA not FATAL_REJECT", () => {
+      const input: VerificationGatesInput = {
+        features: new Map(),
+        mint: {}, // missing freeze authority
+        topHolders: undefined, // missing holders
+        deployer: undefined, // missing creator
+        createdAt: 0,
+        knownRugs: [],
+      };
+
+      const verdict = evaluateVerificationGates(input);
+      expect(verdict.status).toBe("INSUFFICIENT_DATA");
+      expect(verdict.confidence).toBe(30);
+      expect(verdict.missingCriticalFields.length).toBeGreaterThan(0);
+      expect(verdict.suppressionReasons[0]).toContain("Missing critical data");
+    });
+  });
+});

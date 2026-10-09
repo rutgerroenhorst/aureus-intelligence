@@ -1,0 +1,9 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nextjs",
+  "regions": ["lhr1"],
+  "buildCommand": "cd ../.. && pnpm -r --filter './packages/*' run build && cd apps/web && pnpm exec next build",
+  "functions": {
+    "app/api/**/route.ts": { "maxDuration": 60 }
+  }
+}

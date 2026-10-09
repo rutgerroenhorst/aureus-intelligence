@@ -27,3 +27,5 @@ coverage/
 # pm2 logs
 logs/
 .next-build/
+.next/
+.vercel

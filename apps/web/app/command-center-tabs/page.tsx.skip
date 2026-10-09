@@ -1,0 +1,307 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import { useFetch } from "@/hooks/useFetch";
+import { trackCoinQualification } from "@/lib/learning-integration";
+
+interface Coin {
+  symbol: string;
+  mint: string;
+  stealthScore?: number;
+  score?: number;
+  dangerScore?: number;
+  buyRatio?: number;
+  holderTop10?: number;
+  volumeVelocity?: number;
+  minutesOld?: number;
+  market_cap_usd?: number;
+}
+
+interface TabConfig {
+  id: string;
+  label: string;
+  icon: string;
+  filter: (coin: Coin) => boolean;
+}
+
+const TABS: TabConfig[] = [
+  {
+    id: "stealth",
+    label: "STEALTH MOONS",
+    icon: "🌙",
+    filter: (c) => {
+      const age = (c.minutesOld || 0) / (60 * 24);
+      return (c.score || 0) > 100 && (c.stealthScore || 0) > 80 && age >= 3 && age <= 8 && (c.dangerScore || 0) < 40;
+    }
+  },
+  {
+    id: "elite",
+    label: "ELITE TOKENS",
+    icon: "👑",
+    filter: (c) => (c.score || 0) > 120 && (c.buyRatio || 0) > 0.6 && (c.dangerScore || 0) < 30
+  },
+  {
+    id: "meme",
+    label: "MEME TREASURES",
+    icon: "🎭",
+    filter: (c) => {
+      const symbol = (c.symbol || "").toLowerCase();
+      return (symbol.includes("coin") || symbol.includes("inu") || symbol.includes("dog") || symbol.includes("cat")) && (c.score || 0) > 75;
+    }
+  },
+  {
+    id: "early",
+    label: "EARLY ENTRY",
+    icon: "⚡",
+    filter: (c) => {
+      const age = (c.minutesOld || 0) / (60 * 24);
+      return age < 3 && (c.score || 0) > 80 && (c.dangerScore || 0) < 50 && (c.buyRatio || 0) > 0.55;
+    }
+  }
+];
+
+const SIDEBAR_SECTIONS = [
+  {
+    label: "CORE",
+    items: [
+      { name: "Radar", icon: "📡", href: "/radar", active: false },
+      { name: "Results", icon: "📊", href: "/results", active: true }
+    ]
+  },
+  {
+    label: "DATA",
+    items: [
+      { name: "Stream", icon: "📈", href: "/stream", active: false },
+      { name: "Signals", icon: "⚡", href: "/signals", active: false }
+    ]
+  },
+  {
+    label: "ANALYSIS",
+    items: [
+      { name: "Forensics", icon: "🔍", href: "/forensics", active: false },
+      { name: "Wallets", icon: "💼", href: "/wallets", active: false }
+    ]
+  },
+  {
+    label: "TRACKING",
+    items: [
+      { name: "Watchlist", icon: "⭐", href: "/watchlist", active: false },
+      { name: "Ops", icon: "⚙️", href: "/ops", active: false }
+    ]
+  }
+];
+
+export default function CommandCenterTabs() {
+  const [activeTab, setActiveTab] = useState("stealth");
+  const [selectedCoin, setSelectedCoin] = useState<Coin | null>(null);
+  const [watchlist, setWatchlist] = useState<string[]>([]);
+
+  const { data } = useFetch("/api/early-coins?limit=100");
+  const coins = data?.candidates || [];
+
+  useEffect(() => {
+    const saved = localStorage.getItem("aureus:watchlist");
+    if (saved) setWatchlist(JSON.parse(saved));
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem("aureus:watchlist", JSON.stringify(watchlist));
+  }, [watchlist]);
+
+  const activeTabConfig = TABS.find((t) => t.id === activeTab)!;
+  const filteredCoins = coins.filter(activeTabConfig.filter).sort((a, b) => (b.score || 0) - (a.score || 0)).slice(0, 20);
+
+  // Auto-track coins as they qualify
+  useEffect(() => {
+    filteredCoins.forEach((coin) => {
+      trackCoinQualification(coin, activeTab);
+    });
+  }, [activeTab, filteredCoins]);
+
+  const getStatus = (coin: Coin) => {
+    if ((coin.dangerScore || 0) > 40) return { emoji: "🔴", text: "RISKY", color: "#ff3b30" };
+    if ((coin.minutesOld || 0) / (60 * 24) < 3) return { emoji: "⏳", text: "EARLY", color: "#30b0c0" };
+    return { emoji: "🟢", text: "READY", color: "#34c759" };
+  };
+
+  const toggleWatchlist = (mint: string) => {
+    setWatchlist((prev) => (prev.includes(mint) ? prev.filter((m) => m !== mint) : [...prev, mint]));
+  };
+
+  return (
+    <div>
+      {/* TAB BAR */}
+      <div style={{ display: "flex", gap: "8px", marginBottom: "24px", borderBottom: "1px solid #2a2a3e", paddingBottom: "12px" }}>
+        {TABS.map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => {
+              setActiveTab(tab.id);
+              setSelectedCoin(null);
+            }}
+            style={{
+              padding: "8px 16px",
+              background: activeTab === tab.id ? "linear-gradient(135deg, #34c759, #30b0c0)" : "transparent",
+              color: activeTab === tab.id ? "#000" : "#8a8a9e",
+              border: activeTab === tab.id ? "none" : "1px solid #2a2a3e",
+              borderRadius: "6px",
+              cursor: "pointer",
+              fontWeight: activeTab === tab.id ? "700" : "500",
+              fontSize: "13px",
+              transition: "all 0.2s"
+            }}
+            onMouseEnter={(e) => {
+              if (activeTab !== tab.id) {
+                e.currentTarget.style.borderColor = "#34c759";
+                e.currentTarget.style.color = "#34c759";
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (activeTab !== tab.id) {
+                e.currentTarget.style.borderColor = "#2a2a3e";
+                e.currentTarget.style.color = "#8a8a9e";
+              }
+            }}
+          >
+            {tab.icon} {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* COINS & DETAIL */}
+      <div style={{ display: "grid", gridTemplateColumns: "280px 1fr", gap: "20px", minHeight: "600px" }}>
+        {/* LEFT: COIN LIST */}
+        <div
+          style={{
+            background: "linear-gradient(180deg, rgba(52, 199, 89, 0.05), rgba(48, 176, 192, 0.05))",
+            border: "1px solid #2a2a3e",
+            borderRadius: "8px",
+            padding: "16px",
+            overflowY: "auto"
+          }}
+        >
+          <div style={{ fontSize: "12px", fontWeight: "700", marginBottom: "12px", color: "#34c759" }}>
+            TOP {filteredCoins.length} COINS
+          </div>
+          {filteredCoins.map((coin, idx) => {
+            const status = getStatus(coin);
+            const isWatched = watchlist.includes(coin.mint);
+            return (
+              <div
+                key={coin.mint}
+                onClick={() => setSelectedCoin(coin)}
+                style={{
+                  background: selectedCoin?.mint === coin.mint ? "rgba(52, 199, 89, 0.15)" : "transparent",
+                  border: `1px solid ${selectedCoin?.mint === coin.mint ? "#34c759" : "#2a2a3e"}`,
+                  borderRadius: "6px",
+                  padding: "12px",
+                  marginBottom: "8px",
+                  cursor: "pointer",
+                  transition: "all 0.2s"
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px", fontWeight: "600" }}>
+                  <span>#{idx + 1} {coin.symbol} {isWatched && "⭐"}</span>
+                  <span style={{ color: status.color }}>{status.emoji}</span>
+                </div>
+                <div style={{ fontSize: "11px", color: "#8a8a9e", marginTop: "6px" }}>
+                  Score: {coin.score}/150 • {((coin.minutesOld || 0) / (60 * 24)).toFixed(1)}d
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* RIGHT: DETAIL */}
+        <div
+          style={{
+            background: "linear-gradient(180deg, rgba(52, 199, 89, 0.05), rgba(48, 176, 192, 0.05))",
+            border: "1px solid #2a2a3e",
+            borderRadius: "8px",
+            padding: "20px",
+            overflowY: "auto"
+          }}
+        >
+          {selectedCoin ? (
+            <>
+              <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "20px" }}>
+                <h3 style={{ margin: "0", fontSize: "28px", fontWeight: "700" }}>{selectedCoin.symbol}</h3>
+                <span style={{ fontSize: "12px", fontWeight: "700", padding: "4px 10px", borderRadius: "4px", background: getStatus(selectedCoin).color, color: "#000" }}>
+                  {getStatus(selectedCoin).text}
+                </span>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "20px" }}>
+                {[
+                  { label: "QUALITY", value: `${selectedCoin.score}/150`, color: "#34c759" },
+                  { label: "VELOCITY", value: `${Math.round(selectedCoin.stealthScore || 0)}/155`, color: "#30b0c0" },
+                  { label: "DANGER", value: `${Math.round(selectedCoin.dangerScore || 0)}/100`, color: selectedCoin.dangerScore! > 40 ? "#ff3b30" : "#34c759" },
+                  { label: "MCAP", value: `$${((selectedCoin.market_cap_usd || 0) / 1000).toFixed(0)}k`, color: "#fff" }
+                ].map((m) => (
+                  <div key={m.label} style={{ background: "rgba(0,0,0,0.3)", padding: "12px", borderRadius: "6px", border: "1px solid #2a2a3e" }}>
+                    <div style={{ fontSize: "10px", color: "#8a8a9e", marginBottom: "4px" }}>{m.label}</div>
+                    <div style={{ fontSize: "16px", fontWeight: "700", color: m.color }}>{m.value}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ marginBottom: "20px" }}>
+                <div style={{ fontSize: "12px", fontWeight: "700", marginBottom: "8px" }}>EXIT TARGETS</div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "8px" }}>
+                  {[2, 5, 10].map((x) => (
+                    <div key={x} style={{ background: "rgba(0,0,0,0.3)", padding: "8px", borderRadius: "6px", textAlign: "center", border: "1px solid #2a2a3e" }}>
+                      <div style={{ fontSize: "10px", color: "#8a8a9e" }}>{x}x</div>
+                      <div style={{ fontSize: "14px", fontWeight: "700", color: "#34c759", marginTop: "4px" }}>
+                        ${(((selectedCoin.market_cap_usd || 0) * x) / 1000).toFixed(0)}k
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ display: "flex", gap: "8px" }}>
+                <button
+                  onClick={() => window.open(`https://dexscreener.com/solana/${selectedCoin.mint}`, "_blank")}
+                  style={{
+                    flex: 1,
+                    padding: "12px",
+                    background: "linear-gradient(135deg, #34c759, #30b0c0)",
+                    color: "#000",
+                    border: "none",
+                    borderRadius: "6px",
+                    cursor: "pointer",
+                    fontWeight: "700",
+                    fontSize: "13px",
+                    transition: "all 0.2s"
+                  }}
+                >
+                  📊 VIEW ON DEXSCREENER
+                </button>
+                <button
+                  onClick={() => toggleWatchlist(selectedCoin.mint)}
+                  style={{
+                    flex: 1,
+                    padding: "12px",
+                    background: watchlist.includes(selectedCoin.mint) ? "rgba(52, 199, 89, 0.2)" : "rgba(0,0,0,0.3)",
+                    color: watchlist.includes(selectedCoin.mint) ? "#34c759" : "#8a8a9e",
+                    border: `1px solid ${watchlist.includes(selectedCoin.mint) ? "#34c759" : "#2a2a3e"}`,
+                    borderRadius: "6px",
+                    cursor: "pointer",
+                    fontWeight: "600",
+                    fontSize: "13px",
+                    transition: "all 0.2s"
+                  }}
+                >
+                  ⭐ {watchlist.includes(selectedCoin.mint) ? "SAVED" : "WATCHLIST"}
+                </button>
+              </div>
+            </>
+          ) : (
+            <div style={{ textAlign: "center", color: "#8a8a9e", marginTop: "40px" }}>
+              ← Select a coin to view details
+            </div>
+          )}
+        </div>
+      </div>
+  );
+}

@@ -1,8 +1,0 @@
-{
-  "framework": "nextjs",
-  "regions": ["iad1"],
-  "env": {
-    "DEXSCREENER_BASE_URL": "https://api.dexscreener.com",
-    "GECKOTERMINAL_BASE_URL": "https://api.geckoterminal.com/api/v2"
-  }
-}
