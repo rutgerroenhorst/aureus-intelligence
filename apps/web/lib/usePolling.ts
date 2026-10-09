@@ -28,6 +28,11 @@ export function usePolling(fn: () => void | Promise<void>, intervalMs: number, o
     const nextDelay = () =>
       Date.now() - lastInteraction > idleAfterMs ? Math.max(idleIntervalMs, intervalMs) : intervalMs;
 
+    // Time left until the next refresh, measured from the LAST refresh. Re-arming a full-length timer on
+    // every visibility change (some browsers flip visibility every few seconds) would never let the
+    // idle interval take effect and would refresh as often as the active interval.
+    const dueIn = () => Math.max(0, nextDelay() - (Date.now() - lastRun));
+
     const run = async () => {
       if (running || stopped) return;
       running = true;
@@ -47,7 +52,7 @@ export function usePolling(fn: () => void | Promise<void>, intervalMs: number, o
       timer = setTimeout(async () => {
         await run();
         schedule();
-      }, nextDelay());
+      }, dueIn());
     };
 
     const onVisibility = () => {
@@ -55,7 +60,8 @@ export function usePolling(fn: () => void | Promise<void>, intervalMs: number, o
         clearTimeout(timer);
         return;
       }
-      if (Date.now() - lastRun >= intervalMs) void run().then(schedule);
+      // Back on screen: refresh right away only if the data is already due, otherwise just re-arm.
+      if (dueIn() === 0) void run().then(schedule);
       else schedule();
     };
 
