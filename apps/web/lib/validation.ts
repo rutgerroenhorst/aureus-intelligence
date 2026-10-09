@@ -27,6 +27,11 @@ const NUM = (v: unknown) => (v == null ? null : Number(v));
 
 export async function fetchResearchRows(): Promise<ResearchRow[]> {
   const rows = await q<Record<string, unknown>>(`
+    -- The list of features does not depend on the candidate, so it is computed ONCE. Written inline as
+    -- (SELECT DISTINCT feature_id FROM feature_values) inside the per-candidate subquery below, Postgres
+    -- re-ran that scan of the whole feature table for every one of the 1,365 candidates: 215 s on the laptop
+    -- database (1.6M rows), which the page's 10 s query timeout turned into a 500. With the CTE: 0.9 s.
+    WITH feats AS MATERIALIZED (SELECT DISTINCT feature_id FROM feature_values)
     SELECT cr.candidate_id, t.symbol_label, c.current_state,
       cr.peak_return_pct, cr.final_return_pct, cr.max_drawdown_pct, cr.is_rug,
       cr.discovery_liquidity_usd, cr.observations, cr.window_24h_complete, cr.lifespan_s,
@@ -41,7 +46,7 @@ export async function fetchResearchRows(): Promise<ResearchRow[]> {
       -- the (candidate_id, feature_id, calculated_at DESC) index answer each one is
       -- ~7x cheaper.
       (SELECT jsonb_object_agg(f.feature_id, jsonb_build_object('status', x.status, 'value', x.value))
-         FROM (SELECT DISTINCT feature_id FROM feature_values) f
+         FROM feats f
          CROSS JOIN LATERAL (SELECT status, value FROM feature_values v
                               WHERE v.candidate_id=cr.candidate_id AND v.feature_id=f.feature_id
                               ORDER BY v.calculated_at DESC LIMIT 1) x) AS features
