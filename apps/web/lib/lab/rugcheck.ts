@@ -44,9 +44,11 @@ export interface RugFeatures {
   rc_insiders: number | null;
   rc_lp_locked: number | null;
   rc_risk_n: number | null;
+  /** RugCheck lists "creator history of rugged tokens" among the risks */
+  rc_creator_rugs: number | null;
 }
 
-const NONE: RugFeatures = { rc_holders: null, rc_top1: null, rc_top10: null, rc_insider_pct: null, rc_insiders: null, rc_lp_locked: null, rc_risk_n: null };
+const NONE: RugFeatures = { rc_holders: null, rc_top1: null, rc_top10: null, rc_insider_pct: null, rc_insiders: null, rc_lp_locked: null, rc_risk_n: null, rc_creator_rugs: null };
 const BURN = new Set(["1nc1nerator11111111111111111111111111111111", "11111111111111111111111111111111"]);
 
 /** Reduce RugCheck's long report to the row the lab keeps. null when the answer is not a report. */
@@ -102,6 +104,7 @@ export function rugAt(rows: RugRow[] | undefined | null, t: number, tau: number)
     rc_insiders: pick.ins,
     rc_lp_locked: pick.lp == null ? null : pick.lp / 100,
     rc_risk_n: pick.risks.length,
+    rc_creator_rugs: pick.risks.some((r) => /creator history/i.test(r)) ? 1 : 0,
   };
 }
 

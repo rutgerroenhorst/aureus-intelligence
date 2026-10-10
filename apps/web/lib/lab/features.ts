@@ -279,6 +279,7 @@ export const FEATURES: FeatureMeta[] = [
   { key: "rc_insiders", label: "Wallets in insider networks", group: "Holders", fmt: "num", about: "How many wallets RugCheck puts in insider networks around the coin (an airdrop-style spread can make this very large)." },
   { key: "rc_lp_locked", label: "Liquidity locked or burned (RugCheck)", group: "Holders", fmt: "frac", about: "Share of the pool's liquidity tokens that are locked or burned at RugCheck's first look." },
   { key: "rc_risk_n", label: "RugCheck risks listed", group: "Holders", fmt: "num", about: "How many risks RugCheck lists for the coin (low liquidity, high concentration, creator history, ...)." },
+  { key: "rc_creator_rugs", label: "Creator has rugged before (RugCheck)", group: "Holders", fmt: "bool", about: "RugCheck lists a history of rugged tokens for the wallet that created the coin." },
   { key: "rc_holders", label: "Holders (RugCheck)", group: "Holders", fmt: "num", about: "Number of holder wallets at RugCheck's first look." },
   { key: "organic_vol_share", label: "Organic share of volume, 24 h", group: "Collected", fmt: "frac", about: "Share of the last 24 hours' volume that Jupiter counts as organic (real traders, not bots or the same wallets) (only for coins seen from now on)." },
 ];
