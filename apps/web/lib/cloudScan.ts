@@ -12,6 +12,8 @@ import { getPool } from "@aureus/db";
 export const SCAN_EVERY_MIN = Number(process.env.SCAN_EVERY_MINUTES ?? 10);
 export const LEARNING_EVERY_MIN = Number(process.env.LEARNING_EVERY_MINUTES ?? 5);
 export const SUGGESTIONS_EVERY_MIN = 60;
+/** The Learning Lab's own round (collectors, lessons, analyses) runs inside the learning tick, at most this often. */
+export const LAB_EVERY_MIN = Number(process.env.LAB_EVERY_MINUTES ?? 15);
 /**
  * History older than this many days is removed from the big append-only tables (migration 0026, prune_history).
  * Unset (0) = never prune: the laptop database is the full research record and must not set it. The Vercel project
@@ -28,9 +30,11 @@ const RETENTION_EVERY_MIN = 360;
 const STORAGE_LIMIT_MB = Number(process.env.SCAN_STORAGE_LIMIT_MB ?? 0);
 const storageIsFull = (mb: number) => STORAGE_LIMIT_MB > 0 && mb >= STORAGE_LIMIT_MB;
 /** A job that never reports back (function killed) blocks the next one for at most this long. */
-const LEASE_TTL_MIN = { scan: 6, learning: 4, suggestions: 3, retention: 5 } as const;
+const LEASE_TTL_MIN = { scan: 6, learning: 4, suggestions: 3, retention: 5, lab: 6 } as const;
 /** After a failed run, try again sooner than the normal interval. */
 const RETRY_AFTER_FAILURE_MIN = 2;
+/** The lab is a best-effort extra: a lab that keeps failing must not burn the CPU the scans need, so it waits longer. */
+const LAB_RETRY_AFTER_FAILURE_MIN = 30;
 /**
  * Vercel Hobby allows 4 CPU-hours a month and blocks the project for 30 days beyond that, so a screen left open
  * 24/7 must not be able to spend it. Scans count their own CPU per UTC day; past this many seconds the interval
@@ -41,8 +45,8 @@ const OVER_BUDGET_INTERVAL_FACTOR = 4;
 const TODAY = `'usage:' || to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD')`;
 
 export type Job = keyof typeof LEASE_TTL_MIN;
-const LEASE_NAME: Record<Job, string> = { scan: "cloud-scan", learning: "learning", suggestions: "learning-suggestions", retention: "retention" };
-const EVERY_MIN: Record<Job, number> = { scan: SCAN_EVERY_MIN, learning: LEARNING_EVERY_MIN, suggestions: SUGGESTIONS_EVERY_MIN, retention: RETENTION_EVERY_MIN };
+const LEASE_NAME: Record<Job, string> = { scan: "cloud-scan", learning: "learning", suggestions: "learning-suggestions", retention: "retention", lab: "lab" };
+const EVERY_MIN: Record<Job, number> = { scan: SCAN_EVERY_MIN, learning: LEARNING_EVERY_MIN, suggestions: SUGGESTIONS_EVERY_MIN, retention: RETENTION_EVERY_MIN, lab: LAB_EVERY_MIN };
 
 export interface JobState {
   running: boolean;
@@ -181,7 +185,7 @@ export async function claim(job: Job, force = false): Promise<boolean> {
              OR scan_lease.last_finished < now() - make_interval(mins =>
                   CASE WHEN scan_lease.last_result->>'ok' = 'false' THEN $5::int ELSE $3::int END))
      RETURNING name`,
-    [LEASE_NAME[job], LEASE_TTL_MIN[job], every, force, RETRY_AFTER_FAILURE_MIN],
+    [LEASE_NAME[job], LEASE_TTL_MIN[job], every, force, job === "lab" ? LAB_RETRY_AFTER_FAILURE_MIN : RETRY_AFTER_FAILURE_MIN],
   );
   return rows.length > 0;
 }
@@ -215,8 +219,8 @@ async function guarded(job: Job, work: () => Promise<Record<string, unknown>>): 
   result.cpuMs = Math.round((cpu.user + cpu.system) / 1000);
   result.at = new Date().toISOString();
   await release(job, result);
-  // "suggestions" runs inside "learning", whose measurement already includes it.
-  if (job !== "suggestions") await addUsage(Number(result.cpuMs));
+  // "suggestions" and "lab" run inside "learning", whose measurement already includes them.
+  if (job !== "suggestions" && job !== "lab") await addUsage(Number(result.cpuMs));
   console.log(JSON.stringify({ msg: `scan job ${job}`, ...result }));
   return result;
 }
@@ -277,8 +281,16 @@ export function runLearning(): Promise<Record<string, unknown>> {
         return { ...(await generateSuggestions()) };
       });
     }
+    // The Learning Lab: collectors, lessons and (about hourly) the analyses. Skipped when today's CPU allowance is used up.
+    let lab: Record<string, unknown> | undefined;
+    if ((await usedTodayMs()) / 1000 < CPU_BUDGET_S_PER_DAY && (await claim("lab"))) {
+      lab = await guarded("lab", async () => {
+        const { runLab } = await import("./lab/tick");
+        return { ...(await runLab()) };
+      });
+    }
     if ("error" in outcomes && "error" in tracked) throw new Error(`${outcomes.error}; ${tracked.error}`);
-    return { tracked, outcomes, journal, suggestions };
+    return { tracked, outcomes, journal, suggestions, lab };
   });
 }
 

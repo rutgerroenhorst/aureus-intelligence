@@ -71,6 +71,10 @@ After each scan (and every `LEARNING_EVERY_MINUTES`, default 5, otherwise) `runL
    `incubation`) and records every listed coin that was not already tracked for that tab in the last 24 h.
    The baseline market cap is fetched live at that moment, not taken from the stored value.
 3. Hourly, `/api/learning-generate-suggestions` proposes filter cut-offs.
+4. The Learning Lab round (`lib/lab/tick.ts`), at most every `LAB_EVERY_MINUTES` (default 15) and only while today's CPU
+   allowance is not used up: collectors for what the scanner does not keep, up to 25 coin lessons, and the analyses about
+   hourly. Its CPU is counted inside this job. It is documented in `docs/LEARNING_LAB.md`; the `/learning` page reads its
+   results, and still shows the grading below (Tabs view) for reference.
 
 ### How a coin is graded (`decideOutcome` in `lib/learning-engine.ts`)
 
