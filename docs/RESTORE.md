@@ -29,7 +29,7 @@ Every database change of the overnight work only ADDS (new tables, new rows); no
 previous code runs unchanged against the current databases and simply ignores the new tables. Nothing has to be undone in Supabase or in
 the laptop database. (If a migration ever has to be removed: `DROP TABLE` of the tables it created, named in the migration file.)
 
-Migrations added since the restore point: `0029_lab_watch.sql` and `0030_pump_feed.sql`; both only create tables (`lab_watch`, `pump_launches`, `pump_graduates`) and grants. The restore point's code ignores them.
+Migrations added since the restore point: `0029_lab_watch.sql`, `0030_pump_feed.sql`, `0031_wallet.sql` and `0032_trade_peak_known.sql`; they only create tables (`lab_watch`, `pump_launches`, `pump_graduates`, `wallet_watch`, `wallet_txs`, `wallet_fills`), grants and nullable columns on `my_trades` (`sold_usd`, `sold_fraction`, `tokens_held`, `peak_known`). The restore point's code ignores them. The wallet sync (docs/WALLET.md) added 144 rows to `my_trades` (`source = 'wallet'`) and corrected 5 of the user's own rows; the hosted journal as it was before is saved in `backups/2026-10-10-before-overnight/hosted-my_trades-before-wallet.json`, and `DELETE FROM my_trades WHERE source = 'wallet'` removes the added rows.
 
 Environment variables on Vercel: none were added or changed overnight (this line is updated if that ever changes).
 
