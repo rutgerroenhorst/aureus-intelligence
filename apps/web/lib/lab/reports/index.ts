@@ -2,8 +2,10 @@ import { loadLabCoins, type LabCoin, type Queryable } from "../builder";
 import { fmtValue, FEATURE_BY_KEY } from "../features";
 import { buildHypotheses, HYPOTHESES } from "./hypotheses";
 import { buildInsights, type InsightsReport } from "./insights";
+import { buildLanes } from "./lanes";
 import { buildLifecycle } from "./lifecycle";
 import { buildLive } from "./live";
+import { buildLoop, scoreValues, type HistoryPoint } from "./loop";
 import { buildModels } from "./model";
 import { buildNoGo } from "./nogo";
 import { buildOverview } from "./overview";
@@ -23,8 +25,8 @@ const pct = (x: number, d = 0) => `${(x * 100).toFixed(d)}%`;
 async function registerHypotheses(db: Queryable): Promise<Map<string, number>> {
   for (const h of HYPOTHESES) {
     await db.query(
-      `INSERT INTO lab_hypotheses (id, title, statement, definition, note) VALUES ($1, $2, $3, $4::jsonb, $5) ON CONFLICT (id) DO NOTHING`,
-      [h.id, h.title, h.statement, JSON.stringify({ unit: h.unit, tau: h.tau ?? null, outcome: h.outcome, claim: h.claim, minPerGroup: h.minPerGroup }), h.basis],
+      `INSERT INTO lab_hypotheses (id, registered_at, title, statement, definition, note) VALUES ($1, COALESCE($6::timestamptz, now()), $2, $3, $4::jsonb, $5) ON CONFLICT (id) DO NOTHING`,
+      [h.id, h.title, h.statement, JSON.stringify({ unit: h.unit, lane: h.lane ?? "fresh", tau: h.tau ?? null, outcome: h.outcome, claim: h.claim, minPerGroup: h.minPerGroup }), h.basis, h.registeredAt ?? null],
     );
   }
   const { rows } = await db.query(`SELECT id, EXTRACT(EPOCH FROM registered_at)::float8 AS t FROM lab_hypotheses`);
@@ -85,18 +87,45 @@ function headlinesOf(reports: Record<string, any>): Headline[] {
 }
 
 export async function computeReports(db: Queryable): Promise<ReportMap> {
-  const coins: LabCoin[] = await loadLabCoins(db);
+  const all: LabCoin[] = await loadLabCoins(db);
+  // Every analysis below is about the Radar's own coins (what the door admitted); the other lanes are reported on their own.
+  const coins = all.filter((c) => c.lane === "fresh");
   const nowS = Date.now() / 1000;
   const registered = await registerHypotheses(db);
+  const watching: Record<string, number> = {};
+  const w = await db.query(`SELECT lane, reason, count(*)::int AS n FROM lab_watch WHERE active GROUP BY 1, 2`).catch(() => ({ rows: [] as any[] }));
+  for (const r of w.rows) {
+    const id = r.lane === "graduate" ? "young" : r.reason === "too_big" ? "big" : "runners";
+    watching[id] = (watching[id] ?? 0) + r.n;
+  }
   const overview = buildOverview(coins);
   const insights = buildInsights(coins);
   const rules = buildRuleBoard(coins);
   const { report: models, trained } = buildModels(coins);
   const nogo = buildNoGo(coins, insights);
   const lifecycle = buildLifecycle(coins);
-  const hypotheses = buildHypotheses(coins, registered, nowS);
-  const live = buildLive(coins, trained, models, nowS);
+  const hypotheses = buildHypotheses(all, registered, nowS);
+  const live = buildLive(all, trained, models, nowS);
+  const lanes = buildLanes(all, watching);
   const tabs = await buildTabs(db, coins);
+  // The loop card: today's scoreboard values are appended to a small daily history so that trends exist without keeping raw reports.
+  const cov = await db
+    .query(`SELECT count(DISTINCT date_trunc('hour', observed_at))::int AS h FROM prices WHERE observed_at > now() - interval '24 hours'`)
+    .catch(() => ({ rows: [] as any[] }));
+  const coverageH: number | null = cov.rows[0]?.h ?? null;
+  const prev = await db.query(`SELECT payload FROM lab_reports WHERE kind = 'history'`).catch(() => ({ rows: [] as any[] }));
+  const sv = scoreValues({ tabs, lanes, coverageH });
+  const today: HistoryPoint = {
+    day: new Date().toISOString().slice(0, 10),
+    v: {
+      listed_doubled: sv.doubled.n >= 10 ? sv.doubled.k / sv.doubled.n : null,
+      listed_halved: sv.halved.n >= 10 ? sv.halved.k / sv.halved.n : null,
+      door_missed: sv.awayBasis >= 20 ? sv.awayHeld3 / sv.awayBasis : null,
+      coverage: coverageH,
+    },
+  };
+  const history: HistoryPoint[] = [...((prev.rows[0]?.payload?.points ?? []) as HistoryPoint[]).filter((p) => p.day !== today.day), today].slice(-120);
+  const loop = buildLoop({ tabs, rules, hypotheses, lanes, coverageH, history });
   const reports: Record<string, unknown> = {
     overview,
     insights,
@@ -106,10 +135,13 @@ export async function computeReports(db: Queryable): Promise<ReportMap> {
     lifecycle,
     hypotheses: { items: hypotheses },
     live,
+    lanes,
     tabs,
+    loop,
+    history: { points: history },
   };
   reports.headlines = headlinesOf(reports);
-  reports.meta = { asOf: new Date().toISOString(), coins: coins.length, finals: coins.filter((c) => c.status === "final").length };
+  reports.meta = { asOf: new Date().toISOString(), coins: all.length, radarCoins: coins.length, finals: all.filter((c) => c.status === "final").length };
   return reports;
 }
 

@@ -5,14 +5,17 @@
  */
 
 import { getPool } from "@aureus/db";
-import { buildCoins, saveCoins, selectCandidates } from "./builder";
+import { buildCoins, saveCoins, selectCandidates, selectWatch } from "./builder";
 import { collectGeckoMulti, collectJupiter, collectPriceTail } from "./collectors";
+import { collectWatch, discoverRunners } from "./lanes";
 import { computeReports, saveReports } from "./reports";
 
 const REPORT_EVERY_MIN = 55;
 const REPORT_AFTER_CHANGES = 12;
 /** Collector rows are folded into the lessons within a few days; the hosted database is small, the laptop keeps them for rebuilds. */
 const KEEP_SIGNALS_DAYS = process.env.VERCEL ? 6 : 60;
+/** Watch readings feed lessons that stay open for 8 days. */
+const KEEP_WATCH_DAYS = process.env.VERCEL ? 9 : 30;
 
 export async function runLab(opts: { force?: boolean; limit?: number } = {}): Promise<Record<string, unknown>> {
   const db = getPool();
@@ -20,15 +23,19 @@ export async function runLab(opts: { force?: boolean; limit?: number } = {}): Pr
   const t0 = Date.now();
   const failure = (e: unknown) => ({ error: String((e as Error)?.message ?? e).slice(0, 160) });
 
+  // The lab's own watch list: find runners on Jupiter's lists, read every watched coin that is due.
+  out.runners = await discoverRunners(db, { force: opts.force }).catch(failure);
+  out.watch = await collectWatch(db, { maxCalls: process.env.VERCEL ? 3 : 6 }).catch(failure);
   out.priceTail = await collectPriceTail(db, { limit: 150 }).catch(failure);
   out.geckoMulti = await collectGeckoMulti(db, { maxCalls: 3 }).catch(failure);
   out.jupiter = await collectJupiter(db, { maxCalls: 3 }).catch(failure);
 
   const now = Date.now() / 1000;
   const cands = await selectCandidates(db, { limit: opts.limit ?? 25 });
-  const built = await buildCoins(db, cands, now);
+  const watched = await selectWatch(db, { limit: 12 });
+  const built = await buildCoins(db, [...cands, ...watched], now);
   const saved = await saveCoins(db, built.coins, process.env.VERCEL ? "hosted" : "local");
-  out.lessons = { due: cands.length, saved, skipped: built.skipped.length };
+  out.lessons = { due: cands.length, watched: watched.length, saved, skipped: built.skipped.length };
 
   const { rows } = await db.query(`SELECT EXTRACT(EPOCH FROM (now() - computed_at))::float8 AS age_s FROM lab_reports WHERE kind = 'meta'`).catch(() => ({ rows: [] as Array<{ age_s: number }> }));
   const ageMin = rows[0] ? rows[0].age_s / 60 : Infinity;
@@ -39,7 +46,10 @@ export async function runLab(opts: { force?: boolean; limit?: number } = {}): Pr
     out.reports = { computed: Object.keys(reports).length, coins: (reports.meta as { coins: number }).coins };
   } else out.reports = { skipped: true, ageMin: Math.round(ageMin), changed: pending };
 
-  await db.query(`DELETE FROM lab_signals_ts WHERE taken_at < now() - make_interval(days => $1)`, [KEEP_SIGNALS_DAYS]).catch(() => undefined);
+  await db.query(`DELETE FROM lab_signals_ts WHERE source <> 'watch' AND taken_at < now() - make_interval(days => $1)`, [KEEP_SIGNALS_DAYS]).catch(() => undefined);
+  await db.query(`DELETE FROM lab_signals_ts WHERE source = 'watch' AND taken_at < now() - make_interval(days => $1)`, [KEEP_WATCH_DAYS]).catch(() => undefined);
+  // A lesson whose coin was first seen more than 8 days ago has nothing left to learn from, even if its readings were pruned since.
+  await db.query(`UPDATE lab_coins SET status = 'final' WHERE status = 'open' AND first_seen_at < now() - interval '8 days'`).catch(() => undefined);
   out.ms = Date.now() - t0;
   return out;
 }

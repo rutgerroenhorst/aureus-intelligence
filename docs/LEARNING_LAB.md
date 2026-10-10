@@ -37,6 +37,7 @@ scanner (prices, liquidity, raw DexScreener payloads, enrichment)          lab c
 | `lab_reports` | latest analysis per kind | `overview, insights, rules, models, nogo, lifecycle, hypotheses, live, tabs, headlines, meta`; ~120 KB in total |
 | `lab_signals_ts` | collector rows | `price_tail, candle_tail, gecko_multi, jupiter`; pruned after 21 days; folded into lessons by the builder |
 | `lab_hypotheses` | hypotheses with registration dates | the earliest date always wins when two databases are synced |
+| `lab_watch` | the coins the lab watches itself (migration 0029) | lanes beyond the Radar's door, see section 5; polled by the lab, never part of the Radar's candidates |
 
 Why lessons instead of history: the hosted database keeps 7 days of price history (`prune_history`), the laptop keeps
 everything. A lesson is small, so what was learned survives the pruning, and the laptop's month of history can be pushed to
@@ -95,34 +96,77 @@ as "try next round" (GeckoTerminal refuses often from shared IPs; Jupiter and De
 write a guess. Unique buyers, organic score and holder counts exist only as snapshots, so the lab can learn from them only for
 coins it watches from now on; the page says so.
 
-## 5. Where it runs
+## 5. Lanes: what the Radar's door turns away
+
+The Radar admits a coin only when its pair is at least 60 minutes old and worth at most $150K (`DISCOVERY_MIN_AGE_MIN`,
+`DISCOVERY_MAX_MCAP_USD` in `apps/worker/src/run.ts`; the age floor is a measured choice, the first hour has ten times the downside).
+That is a decision about what the Radar shows. It also means the system never finds out what happens to the coins it refuses, and
+it cannot see a coin like HOTBOT (worth about $550K an hour after graduating, so no setting of the filters could let it in).
+The lab therefore follows those coins as well, without touching the Radar:
+
+| lane | what | how it gets on the watch list |
+| --- | --- | --- |
+| `fresh` | the Radar's own coins (everything else in this document) | the scanner's candidates |
+| `graduate` | turned away as under 60 minutes old | the worker's discovery pass (`apps/worker/src/labWatch.ts`, `noteTurnedAway`) |
+| `runner` | turned away as worth more than $150K, or found on Jupiter's top lists | the same hook, and `discoverRunners` (`lib/lab/lanes.ts`): Jupiter's free organic-score, most-traded and trending lists, filtered to $0.3M-$150M, 3 hours to 60 days old, liquidity $40K+, organic score 30+, 300+ holders |
+
+`collectWatch` polls each watched coin from DexScreener (30 mints a call): every 8 minutes for the first 6 hours, every 30 minutes
+until 48 hours, then every 2 hours, for 7 days (hosted: 20 / 60 / 180 minutes, at most 120 coins at once). Readings are stored in
+`lab_signals_ts` (source `watch`, about 540 bytes each) and the builder turns them into lessons exactly like scanner readings, with
+`lane` set and a `via:<feed>` tag. A coin the Radar later adopts is left to its normal lesson. Every analysis except the lane table
+(`lanes` report), the live list and the hypotheses H6 uses only `fresh` coins: the models were fitted on them.
+
+The Radar's **Runners** tab (`/api/runners`) lists the watched runners with their latest reading, split into healthy, established
+ones and young, exploding ones, with the lab's result so far at the top (empty until the first runners have been followed 3 days).
+
+## 6. The system loop (top of the Overview)
+
+A system improves itself through a closed loop, not through more analysis: measure, propose one small change, test it on coins it
+has not seen yet, adopt it only when it is proven, repeat. The loop card is that loop on one screen:
+
+- **Scoreboard**, four numbers with a per-day trend: Radar listings that held 2x, Radar listings that lost half within a day, the share
+  of coins behind the door that held 3x, and hours scanned in the last 24.
+- **Experiments**: every hypothesis (H1-H6) with how far the smaller group is from the number needed to judge it.
+- **Needs you**: at most three decisions, raised only when the evidence passes its gates (forward-only coins, enough in both groups,
+  bigger than chance): a hypothesis confirmed or contradicted, a production rule that blocks coins that do better than the ones it lets
+  through, a lane that does better than the Radar, scanning gaps. The default is "nothing needs you". Nothing changes behaviour by itself:
+  a flag on Radar cards is information only, and hiding a coin always waits for a person.
+
+Each Radar card also shows one **Lab** line when the lab has something checked to say: how often coins that scored the same way lost
+half within a day or doubled within three days (`/api/lab-odds`, from the stored live report).
+
+## 7. Where it runs
 
 - **Hosted**: inside the learning tick (`lib/cloudScan.ts` `runLearning`, which already runs every 5 minutes while a screen is
   open). The lab round (`lib/lab/tick.ts` `runLab`) runs at most every 15 minutes, only while today's CPU allowance
   (`SCAN_CPU_BUDGET_S_PER_DAY`) is not used up, holds its own lease (`scan_lease` name `lab`), and its CPU is counted inside the
   learning job. Per round: collectors, at most 25 lessons, and the reports about hourly (or after 12 changed lessons). A report
   recompute costs about 1 s of CPU on a laptop. Nothing runs while no screen is open (same rule as the scans).
-- **Laptop**: `corepack pnpm exec tsx scripts/lab-tick.ts [force]` does the same by hand. The laptop database has the full month
-  of history, so lessons built there are richer.
+- **Laptop**: the long-running worker (`pnpm worker:start`) runs a lab round every 10 minutes between scan cycles
+  (`maybeRunLab` in `apps/worker/src/run.ts`; `LAB_IN_WORKER=0` switches it off, `LAB_EVERY_MINUTES` sets the pace; a failure is
+  logged and never stops scanning). A restart of the worker is needed once to load it. `corepack pnpm exec tsx scripts/lab-tick.ts [force]`
+  does the same by hand. The laptop database has the full month of history, so lessons built there are richer.
 - **Sync**: `TO_URL=<hosted url> LAB_REPORTS=1 corepack pnpm exec tsx scripts/lab-push.ts` copies lessons and hypotheses from the
   laptop to the hosted database and recomputes the hosted reports. A lesson replaces a stored one only when it is at least as
   complete (clearly earlier start, or same start (within 45 min) with more readings or a later end), so pushing twice, or
   pushing after the hosted site learned something, loses nothing, and a hosted rebuild from pruned history can never overwrite a
   complete lesson.
+- **Case study**: `corepack pnpm exec tsx scripts/lab-case.ts` builds the HOTBOT case from live market data into `lab_reports` (kind
+  `cases`); `lab-push.ts` copies it to the hosted database. GeckoTerminal refuses often, so the script says so and can simply be run again.
 - **Rebuild everything**: `corepack pnpm exec tsx scripts/lab-build.ts` (lessons + reports; `LAB_REPORTS_ONLY=1` for the reports only).
 - **Rehearse the hosted rights**: `LAB_AS_ROLE=aureus_app DATABASE_URL=<hosted, as postgres> corepack pnpm exec tsx scripts/lab-tick.ts force`
   (needs `GRANT aureus_app TO postgres WITH SET TRUE` on the hosted database; revoke afterwards).
 
-## 6. The views
+## 8. The views
 
-Overview (what the lab knows, how coins end, how trustworthy the lessons are, collector status) · Why coins go · Why coins don't
+Overview (the system loop, what the lab knows, how coins end, lanes beyond the door, how trustworthy the lessons are, collector status) · Why coins go · Why coins don't
 (per moment, each feature with its bins, AUC, q and halves; "show all tested") · Filters (four kinds of coin, the filter simulator,
 plain no-hoper rules checked on later coins, the scoreboard of the system's own rules) · Live coins (flags, kind, odds; cards on a
 phone) · Life of a coin (hazard and survival, narrative/venue/hour splits) · Models (what each model learned and whether it
-beat chance) · Hypotheses (registered ideas and their forward evidence) · Tabs (how each Radar tab's listings did, plus the
+beat chance) · Hypotheses (registered ideas and their forward evidence) · Case: HOTBOT (the coin the door could not let in, with its market cap against the door) · Tabs (how each Radar tab's listings did, plus the
 legacy Self-Optimizer).
 
-## 7. What it says today (2026-10-10, 1,420 coins over 28 days; read the page for the current numbers)
+## 9. What it says today (2026-10-10, 1,420 coins over 28 days; read the page for the current numbers)
 
 - Of the 463 coins followed for the full 3 days, 19% held 2x, 11% held 3x, 3.2% held 10x.
 - No listing-time feature predicts winners strongly. Volume, trades and liquidity ratios drive **both** doubling and crashing:
@@ -134,12 +178,17 @@ legacy Self-Optimizer).
 - Break-even for a blind-entry strategy needs an AUC of 0.70-0.75; the lab's best models are at the edge of that, so the lab's
   job today is to raise the cost of bad coins, not to promise winners.
 
-## 8. Known limits
+## 10. Known limits
 
 - 54% of coins were censored by the scanner; their tails are being completed (candle repair running at about 8 coins a minute),
   so survivorship bias shrinks as the repair finishes. Re-run `scripts/lab-build.ts` afterwards.
 - The hosted database only sees coins that were scanned while a screen was open (or by the laptop worker). Coins launched while
   nobody watched are never seen there.
-- Discovery blind spots found with HOTBOT (a coin the user bought through the system that went to $5M+): coins that graduate from
-  pump.fun and coins 2-30 days old that are already past the $150K discovery cap never enter the universe. Planned: a
-  graduation lane and a "mature runners" lane (both would be tagged in `lab_coins.lane`, which already exists).
+- Discovery blind spots found with HOTBOT (a coin the user holds that went about 10x): coins that graduate from pump.fun and pass
+  $150K within the first hour, and coins days old that are already past the door's cap, never enter the Radar. The lanes (section 5)
+  measure them from the moment the lab first sees them. The `graduate` lane only holds the young coins the worker's discovery pass
+  happens to see in DexScreener's search and launch feeds; seeing every graduation from minute 0 needs an on-chain feed (a Helius
+  key), which the system does not have. The `runner` lane is fed by Jupiter's lists, so it only holds coins that are already running.
+- The lab's lessons for lane coins start when the lab first sees them, usually after a big move: a runner's "first look" is not its
+  launch. Lanes are compared with the Radar's coins as groups, not as if they had been entered at the same moment.
+- The lab follows at most 120 coins at once on the hosted site (600 on the laptop) and 7 days each; the free database is small.

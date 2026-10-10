@@ -11,6 +11,7 @@ import { Live } from "./Live";
 import { Lifecycle } from "./Lifecycle";
 import { Models } from "./Models";
 import { Hypotheses } from "./Hypotheses";
+import { Cases } from "./Cases";
 import { TabsLegacy } from "./TabsLegacy";
 import type { LabData } from "./types";
 
@@ -23,6 +24,7 @@ const VIEWS = [
   { id: "life", label: "Life of a coin" },
   { id: "models", label: "Models" },
   { id: "ideas", label: "Hypotheses" },
+  { id: "case", label: "Case: HOTBOT" },
   { id: "tabs", label: "Tabs" },
 ] as const;
 type View = (typeof VIEWS)[number]["id"];
@@ -84,6 +86,7 @@ export default function LearningPage() {
           {view === "life" && <Lifecycle d={data!} />}
           {view === "models" && <Models d={data!} />}
           {view === "ideas" && <Hypotheses d={data!} />}
+          {view === "case" && <Cases d={data!} />}
           {view === "tabs" && <TabsLegacy d={data!} />}
         </>
       )}

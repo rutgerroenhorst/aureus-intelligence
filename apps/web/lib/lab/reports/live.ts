@@ -6,6 +6,7 @@
 
 import type { LabCoin } from "../builder";
 import type { Features } from "../features";
+import { aiNameWide } from "../narrative";
 import { RULES } from "./rulesboard";
 import { binOf, median, quantileEdges } from "../stats";
 import { isStanding, num, rate, rowsFor, type Rate, type Row } from "./common";
@@ -13,6 +14,8 @@ import { crossFit, MODEL_TAUS, predict, type ModelsReport, type ModelTarget, typ
 
 export interface LiveCoin {
   mint: string;
+  /** fresh = the Radar's own; graduate / runner = the lab's own watch list (no odds: the models are fitted on the Radar's coins) */
+  lane: string;
   symbol: string | null;
   name: string | null;
   ageH: number;
@@ -80,7 +83,9 @@ export function calibrate(rows: Row[], target: ModelTarget, tau: number): Calib 
 const gateRule = RULES.find((r) => r.id === "gate_all_dump")!;
 const oneWallet = RULES.find((r) => r.id === "engine_one_wallet")!;
 
-export function buildLive(coins: LabCoin[], trained: Trained[], models: ModelsReport, nowS: number): LiveReport {
+export function buildLive(allCoins: LabCoin[], trained: Trained[], models: ModelsReport, nowS: number): LiveReport {
+  // the models and their calibration come from the Radar's own coins; the other lanes are listed with flags only
+  const coins = allCoins.filter((c) => c.lane === "fresh");
   const checkedAt = {
     go2: models.evals.filter((e) => e.target === "go2" && e.valid).map((e) => e.tau),
     collapse24: models.evals.filter((e) => e.target === "collapse24" && e.valid).map((e) => e.tau),
@@ -113,11 +118,13 @@ export function buildLive(coins: LabCoin[], trained: Trained[], models: ModelsRe
     return c.bins[binOf(predict(m, f), c.edges)] ?? null;
   };
   const out: LiveCoin[] = [];
-  for (const coin of coins) {
+  for (const coin of allCoins) {
     const now = coin.outcome.now;
-    if (!now || coin.status !== "open" || nowS - now.ts > 6 * 3600 || now.ageH > 96) continue;
+    if (!now || coin.status !== "open" || nowS - now.ts > 6 * 3600 || now.ageH > 200) continue;
+    if (coin.lane === "fresh" && now.ageH > 96) continue;
     const f = now.f;
-    const standing = isStanding(f);
+    const fresh = coin.lane === "fresh";
+    const standing = fresh && isStanding(f);
     // The models were fitted on coins that still stand; for a coin that already fell apart they say nothing.
     const tauG = standing ? pickTau(now.ageH, checkedAt.go2.filter((t) => calib.has(`go2:${t}`))) : null;
     const tauC = standing ? pickTau(now.ageH, checkedAt.collapse24.filter((t) => calib.has(`collapse24:${t}`))) : null;
@@ -127,7 +134,7 @@ export function buildLive(coins: LabCoin[], trained: Trained[], models: ModelsRe
     const cut = tauG != null && tauG === tauC ? cuts.get(tauG) : undefined;
     const g = tauG != null ? modelFor("go2", tauG) : undefined;
     const c = tauC != null ? modelFor("collapse24", tauC) : undefined;
-    const zone = !standing ? "fallen" : cut && g && c ? (predict(c, f) >= cut.r ? (predict(g, f) >= cut.o ? "burner" : "knife") : predict(g, f) >= cut.o ? "steady" : "zombie") : null;
+    const zone = !fresh ? null : !standing ? "fallen" : cut && g && c ? (predict(c, f) >= cut.r ? (predict(g, f) >= cut.o ? "burner" : "knife") : predict(g, f) >= cut.o ? "steady" : "zombie") : null;
     const flags: string[] = [];
     if (num(f.vol_decay) && f.vol_decay < 0.05) flags.push("volume has dried up");
     if (num(f.dd) && f.dd >= 0.99) flags.push("standing at its own high");
@@ -137,16 +144,24 @@ export function buildLive(coins: LabCoin[], trained: Trained[], models: ModelsRe
     if (gateRule.blocked(f) === true) flags.push("the radar's dump gate hides it");
     if (oneWallet.blocked(f) === true) flags.push("one wallet holds 20%+");
     if (f.tag_product === 1) flags.push("AI or tool name");
+    if (!fresh) {
+      if (aiNameWide(coin.name, coin.symbol)) flags.push("AI, agent or bot name");
+      if (num(f.organic_score) && f.organic_score >= 70) flags.push(`organic score ${Math.round(f.organic_score)}`);
+      if (num(f.holders) && f.holders >= 5000) flags.push(`${Math.round(f.holders).toLocaleString("en-US")} holders`);
+      if (num(f.uniq_buyers_h1) && num(f.trades_h1) && f.trades_h1 > 0 && f.uniq_buyers_h1 / f.trades_h1 < 0.15) flags.push("few wallets behind the trades");
+    }
     out.push({
-      mint: coin.mint, symbol: coin.symbol, name: coin.name, ageH: now.ageH, mcap: f.mcap ?? null, liq: f.liq ?? null,
+      mint: coin.mint, lane: coin.lane, symbol: coin.symbol, name: coin.name, ageH: now.ageH, mcap: f.mcap ?? null, liq: f.liq ?? null,
       mult: f.mult ?? null, dd: f.dd ?? null, go2, collapse24: col, zone, flags, tags: coin.tags, oddsAt: { go2: go2 ? tauG : null, collapse24: col ? tauC : null },
     });
   }
   const odds = (r: Rate | null) => (r ? r.p : -1);
   out.sort((a, b) => odds(b.go2) - odds(a.go2) || a.ageH - b.ageH);
+  const radar = out.filter((c) => c.lane === "fresh").slice(0, 60);
+  const others = out.filter((c) => c.lane !== "fresh").sort((a, b) => (b.mcap ?? 0) - (a.mcap ?? 0)).slice(0, 40);
   const at = (t: number[]) => (t.length ? t.map((x) => `${x} h`).join(", ") : "none");
   return {
-    coins: out.slice(0, 80),
+    coins: [...radar, ...others],
     trusted,
     checkedAt,
     note: trusted.go2 || trusted.collapse24

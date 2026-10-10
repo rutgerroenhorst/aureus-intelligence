@@ -5,6 +5,11 @@ import { buildOutcome, classify, forwardLabels } from "./outcomes";
 import { primaryTag, siteFamily, tagsFor } from "./narrative";
 import { buildFeatures, fmtValue } from "./features";
 import { calibrate, pickTau } from "./reports/live";
+import { isRunnerLike, pairToRow } from "./lanes";
+import { watchPay, type LabCoin } from "./builder";
+import { aiNameWide } from "./narrative";
+import { buildLanes } from "./reports/lanes";
+import { buildLoop } from "./reports/loop";
 import type { Row } from "./reports/common";
 
 /** A path with one reading every `gap` seconds from the given prices; liquidity optional. */
@@ -254,5 +259,98 @@ describe("live odds", () => {
     expect(rates[rates.length - 1]!).toBeGreaterThan(rates[0]!);
     expect(Math.max(...rates)).toBeLessThanOrEqual(1);
     expect(c!.bins.reduce((a, b) => a + b.n, 0)).toBeLessThanOrEqual(300);
+  });
+});
+
+describe("runner lane", () => {
+  const NOW = Date.parse("2026-10-10T12:00:00Z");
+  const hot = { id: "M1", symbol: "HOTBOT", mcap: 4_600_000, liquidity: 507_000, holderCount: 4_951, organicScore: 81, firstPool: { createdAt: "2026-10-01T23:59:50Z" }, launchpad: "pump.fun" };
+  it("accepts a HOTBOT-like coin and rejects stablecoins, tiny, brand-new and ancient ones", () => {
+    expect(isRunnerLike(hot, NOW)).toBe(true);
+    expect(isRunnerLike({ ...hot, organicScore: 0 }, NOW)).toBe(false); // pegged tokens have no organic trading
+    expect(isRunnerLike({ ...hot, mcap: 120_000 }, NOW)).toBe(false);
+    expect(isRunnerLike({ ...hot, mcap: 900_000_000 }, NOW)).toBe(false);
+    expect(isRunnerLike({ ...hot, liquidity: 10_000 }, NOW)).toBe(false);
+    expect(isRunnerLike({ ...hot, firstPool: { createdAt: "2026-10-10T10:00:00Z" } }, NOW)).toBe(false); // 2 hours: the Radar's territory
+    expect(isRunnerLike({ ...hot, firstPool: { createdAt: "2026-06-01T00:00:00Z" } }, NOW)).toBe(false); // established token
+    expect(isRunnerLike({ ...hot, holderCount: undefined, stats24h: { numTraders: 3_000 } }, NOW)).toBe(true); // traders stand in for a missing holder count
+    expect(isRunnerLike({ ...hot, holderCount: undefined }, NOW)).toBe(false);
+  });
+
+  it("stores a DexScreener pair compactly and reads it back as the snapshot the features expect", () => {
+    const pair = {
+      priceUsd: "0.0046", liquidity: { usd: 254_000 }, marketCap: 4_590_000, fdv: 4_600_000, dexId: "pumpswap", quoteToken: { symbol: "SOL" }, pairCreatedAt: 1_790_920_030_000,
+      priceChange: { m5: 0.1, h1: 2, h6: 8, h24: 160 }, volume: { m5: 100, h1: 9_000, h6: 40_000, h24: 300_000 },
+      txns: { m5: { buys: 3, sells: 2 }, h1: { buys: 300, sells: 380 }, h6: { buys: 2000, sells: 2100 }, h24: { buys: 9000, sells: 12000 } },
+      info: { websites: [{ url: "https://usehotbot.com" }], socials: [{}, {}] },
+    };
+    const row = pairToRow(pair, 1_790_999_999);
+    expect(JSON.stringify(row).length).toBeLessThan(600);
+    const pay = watchPay(row);
+    expect(pay.price).toBeCloseTo(0.0046);
+    expect(pay.mcap).toBe(4_590_000);
+    expect([pay.b_h1, pay.s_h1, pay.v_h6, pay.pc_h24]).toEqual([300, 380, 40_000, 160]);
+    expect([pay.dex, pay.quote, pay.n_web, pay.n_soc, pay.site]).toEqual(["pumpswap", "SOL", 1, 2, "https://usehotbot.com"]);
+    expect(pay.created_ms).toBe(1_790_920_030_000);
+  });
+
+  it("reads AI, agent and bot names widely but not words that merely contain 'bot'", () => {
+    for (const [n, sym] of [["HOT BOT", "HOTBOT"], ["Agency", "Agency"], ["Clawd", "CLAWD"], ["Grok Terminal", "GT"], ["Smart AI", "SAI"], ["TradeBot", "TB"]] as const) expect(aiNameWide(n, sym)).toBe(true);
+    for (const [n, sym] of [["Bottle", "BTL"], ["Both", "BOTH"], ["Chai Latte", "CHAI"], ["Doge", "DOGE"], ["Maine", "MAINE"]] as const) expect(aiNameWide(n, sym)).toBe(false);
+  });
+});
+
+function fakeCoin(over: Partial<LabCoin> & { held72?: number; final72?: number | null }): LabCoin {
+  const { held72 = 1, final72 = 1, ...rest } = over;
+  return {
+    mint: Math.random().toString(36).slice(2), chain: "solana", candidateId: null, symbol: "X", name: "X", lane: "fresh", firstSeenAt: 1_790_000_000, pairCreatedAt: null,
+    firstPrice: 1, firstMcap: 100_000, firstLiq: 20_000, lastSeenAt: 1_790_000_000 + 80 * 3600, observations: 40, phantoms: 0, tags: [], snaps: [], status: "final",
+    outcome: { cls: "BOUNCE", ageH: 80, p0: 1, peakHeld: { all: held72, h1: 1, h6: 1, h24: 1, h72: held72 }, minMult: { h1: 1, h6: 1, h24: 1, h72: 1 }, finalMult: { h6: 1, h24: 1, h72: final72 }, tTo: { x15: null, x2: null, x3: null, x5: null, x10: null }, maxDd: 0.3, liqFirst: 1, liqLast: 1, liqMinRatio: 1, gapS: 600, readings: 40, censored: false, lastT: 1_790_000_000 + 80 * 3600 },
+    ...rest,
+  } as LabCoin;
+}
+
+describe("lanes and the loop", () => {
+  it("groups coins by lane and counts only coins followed for the whole window", () => {
+    const coins = [
+      ...Array.from({ length: 30 }, (_, i) => fakeCoin({ lane: "fresh", held72: i < 6 ? 2.5 : 1 })),
+      ...Array.from({ length: 30 }, (_, i) => fakeCoin({ lane: "runner", tags: ["via:jupiter_organic"], held72: i < 15 ? 2.5 : 1, name: i < 10 ? "Hot Bot" : "Plain" })),
+      fakeCoin({ lane: "graduate", tags: [] }),
+      fakeCoin({ lane: "runner", tags: ["via:too_big"], held72: 3, status: "open", outcome: { ...fakeCoin({}).outcome, ageH: 10 } }),
+    ];
+    const r = buildLanes(coins, { runners: 7 });
+    const by = Object.fromEntries(r.groups.map((g) => [g.id, g]));
+    expect(by.fresh!.n).toBe(30);
+    expect(by.fresh!.held2.k).toBe(6);
+    expect(by.runners!.basis).toBe(30);
+    expect(by.runners!.held2.k).toBe(15);
+    expect(by.runners!.watching).toBe(7);
+    expect(by.big!.n).toBe(1);
+    expect(by.big!.basis).toBe(0); // still being followed: not counted yet
+    expect(by.young!.n).toBe(1);
+    // the AI-name split uses the wide matcher: 10 "Hot Bot" coins against 20 others
+    expect(by.runners!.ai!.in.n).toBe(10);
+    expect(by.runners!.ai!.out.n).toBe(20);
+  });
+
+  it("raises a decision only when the evidence passes its gate, and stays quiet otherwise", () => {
+    const quiet = buildLoop({
+      tabs: { tabs: [], note: "" }, rules: { rules: [] }, hypotheses: [], lanes: buildLanes([], {}), coverageH: 24, history: [],
+    });
+    expect(quiet.decisions).toEqual([]);
+    expect(quiet.scoreboard.find((x) => x.id === "coverage")!.value).toBe(24);
+    expect(quiet.scoreboard.find((x) => x.id === "listed_doubled")!.value).toBeNull(); // too few listings: no number
+
+    const noisy = buildLoop({
+      tabs: { tabs: [], note: "" }, rules: { rules: [] }, lanes: buildLanes([], {}), coverageH: 9, history: [{ day: "2026-10-09", v: { coverage: 20 } }],
+      hypotheses: [
+        { id: "H9-x", title: "An idea", statement: "It holds.", basis: "", registeredAt: 1_790_000_000, claim: "higher", outcome: "held2", status: "supported", need: 25,
+          inSample: { inGroup: { n: 0, rate: null, ev: null }, outGroup: { n: 0, rate: null, ev: null }, p: null },
+          forward: { inGroup: { n: 30, rate: { k: 12, n: 30, p: 0.4, lo: 0.28, hi: 0.53 }, ev: null }, outGroup: { n: 40, rate: { k: 6, n: 40, p: 0.15, lo: 0.08, hi: 0.26 }, ev: null }, p: 0.01 } },
+      ],
+    });
+    expect(noisy.decisions.map((d) => d.id).sort()).toEqual(["coverage", "hyp-H9-x"]);
+    expect(noisy.decisions[0]!.level).toBe("act");
+    expect(noisy.scoreboard.find((x) => x.id === "coverage")!.trend).toEqual([{ day: "2026-10-09", v: 20 }]);
   });
 });

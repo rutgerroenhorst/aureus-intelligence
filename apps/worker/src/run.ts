@@ -25,6 +25,7 @@ import { measureOpenSignals } from "./shadow.js";
 import { measurePhaseSnapshots } from "./watchStatus.js";
 import { measureVerdictOutcomes } from "./verdicts.js";
 import { ensurePartitions, currentMonthWritable, reconcileRuleCurrent } from "./partitions.js";
+import { noteTurnedAway, type TurnedAway } from "./labWatch.js";
 
 const WORKER_ID = process.env.WORKER_ID ?? `worker-${process.pid}`;
 const log = (msg: string, extra: Record<string, unknown> = {}) =>
@@ -194,7 +195,9 @@ const SUPPORTED_CHAINS = (process.env.DISCOVERY_CHAINS ?? "solana,ethereum,polyg
 
 interface SearchPair {
   chainId?: string;
-  baseToken?: { address?: string };
+  pairAddress?: string;
+  dexId?: string;
+  baseToken?: { address?: string; name?: string; symbol?: string };
   liquidity?: { usd?: number };
   pairCreatedAt?: number;
   marketCap?: number;
@@ -212,6 +215,8 @@ async function discoveryDue(pollMs: number): Promise<string[]> {
     let tooOld = 0;
     let noAge = 0;
     let tooBig = 0;
+    /** What the door refused for being too young or too big: handed to the Learning Lab, which watches it (never the Radar). */
+    const turnedAway: TurnedAway[] = [];
 
     /** Median admitted age per source — the number that decides where to invest next. */
     const agesBySource: Record<string, number[]> = { search: [], feed: [], onchain: [] };
@@ -225,10 +230,10 @@ async function discoveryDue(pollMs: number): Promise<string[]> {
       if (liq < DISCOVERY_MIN_LIQUIDITY_USD) { tooThin++; return false; }
       const ageH = p.pairCreatedAt ? (pollMs - p.pairCreatedAt) / 3.6e6 : null;
       if (ageH == null) { noAge++; return false; }   // cannot place it in the window
-      if (ageH * 60 < DISCOVERY_MIN_AGE_MIN) { tooYoung++; return false; }
+      if (ageH * 60 < DISCOVERY_MIN_AGE_MIN) { tooYoung++; turnedAway.push({ p, reason: "too_young" }); return false; }
       if (ageH > DISCOVERY_MAX_AGE_H) { tooOld++; return false; }
       const mc = p.marketCap ?? p.fdv ?? null;
-      if (mc != null && mc > DISCOVERY_MAX_MCAP_USD) { tooBig++; return false; }
+      if (mc != null && mc > DISCOVERY_MAX_MCAP_USD) { tooBig++; turnedAway.push({ p, reason: "too_big" }); return false; }
       agesBySource[source]!.push(ageH * 60);
       return true;
     };
@@ -312,6 +317,9 @@ async function discoveryDue(pollMs: number): Promise<string[]> {
       }
     }
 
+    // The coins the door refused are not lost: the Learning Lab watches them (see labWatch.ts). Failures are swallowed there.
+    const watching = await noteTurnedAway(pool, turnedAway, pollMs);
+
     // Discovery's job is to find things we do NOT have. A mint we already track is
     // rescanned by the due-list anyway, so spending a scarce discovery slot on it is
     // pure waste — and it was: the search feed (large caps, all already known) filled
@@ -342,7 +350,7 @@ async function discoveryDue(pollMs: number): Promise<string[]> {
         return [k, { n: v.length, p50: Math.round(sorted[Math.floor(sorted.length / 2)]!) }];
       })),
       new: fresh.length, alreadyKnown: rediscovered,
-      dropped: { tooThin, tooYoung, tooOld, tooBig, noAge },
+      dropped: { tooThin, tooYoung, tooOld, tooBig, noAge }, labWatchAdded: watching,
       window: { minLiquidityUsd: DISCOVERY_MIN_LIQUIDITY_USD, minAgeMin: DISCOVERY_MIN_AGE_MIN,
                 maxAgeH: DISCOVERY_MAX_AGE_H, maxMcapUsd: DISCOVERY_MAX_MCAP_USD },
     });
@@ -467,6 +475,33 @@ async function drainEnrichment(nowMs: number): Promise<{ enriched: number; reeva
 
 let lastPartitionCheckMs = 0;
 const PARTITION_CHECK_INTERVAL_MS = 60 * 60_000;
+
+/**
+ * The Learning Lab's round between scan cycles, so the laptop learns by itself around the clock (collectors, lessons, reports).
+ * The hosted site runs the same round inside its own learning tick, so this is only for the long-running worker. It runs beside
+ * the scan, never inside it, and any failure is logged and forgotten: the lab must not be able to hurt scanning.
+ * LAB_IN_WORKER=0 switches it off; LAB_EVERY_MINUTES (default 10) sets the pace.
+ */
+const LAB_IN_WORKER = (process.env.LAB_IN_WORKER ?? "1") !== "0" && !process.env.VERCEL;
+const LAB_EVERY_MS = Number(process.env.LAB_EVERY_MINUTES ?? 10) * 60_000;
+let lastLabMs = 0;
+let labRunning = false;
+function maybeRunLab(): void {
+  if (!LAB_IN_WORKER || labRunning || Date.now() - lastLabMs < LAB_EVERY_MS) return;
+  lastLabMs = Date.now();
+  labRunning = true;
+  void (async () => {
+    try {
+      const { runLab } = await import("../../web/lib/lab/tick.js");
+      const r = await runLab();
+      log("lab", { ms: r.ms, runners: r.runners, watch: r.watch, lessons: r.lessons, reports: r.reports });
+    } catch (e) {
+      log("lab failed", { error: (e as Error).message });
+    } finally {
+      labRunning = false;
+    }
+  })();
+}
 
 interface CycleStats {
   candidates: number;
@@ -620,6 +655,7 @@ async function loop(): Promise<void> {
     } else {
       log("cycle skipped: another worker holds the lock");
     }
+    maybeRunLab();
     await new Promise((r) => setTimeout(r, workerConfig.cycleTickMs));
   }
 }

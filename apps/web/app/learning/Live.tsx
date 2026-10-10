@@ -1,6 +1,7 @@
 "use client";
+import { useState } from "react";
 import s from "./lab.module.css";
-import { Empty, Note, Section } from "./parts";
+import { Empty, Note, Section, Seg } from "./parts";
 import { hours, pct, usd } from "./format";
 import type { LabData } from "./types";
 import type { Rate } from "@/lib/lab/reports/common";
@@ -23,13 +24,31 @@ function Odds({ r, tone, what }: { r: Rate | null; tone: "good" | "bad"; what: s
   );
 }
 
+const LANE_LABEL: Record<string, string> = { fresh: "Radar", graduate: "too young for the door", runner: "runner" };
+
 export function Live({ d }: { d: LabData }) {
   const live = d.live;
+  const [lane, setLane] = useState<"all" | "fresh" | "runner" | "graduate">("all");
   if (!live) return null;
+  const counts = { all: live.coins.length, fresh: 0, runner: 0, graduate: 0 } as Record<string, number>;
+  for (const c of live.coins) counts[c.lane] = (counts[c.lane] ?? 0) + 1;
+  const shown = live.coins.filter((c) => lane === "all" || c.lane === lane);
   return (
     <Section title="Coins being followed now" lede="What the lab says about each coin it is still watching: how often coins that looked like this one doubled or lost half, which of the four kinds it is, and plain flags. A number is only shown when the model behind it has beaten chance on coins it had not seen, at an age close to this coin's.">
       <Note warn={!live.trusted.go2 && !live.trusted.collapse24}>{live.note}</Note>
-      {live.coins.length === 0 ? (
+      {(counts.runner || counts.graduate) > 0 && (
+        <Seg
+          value={lane}
+          onChange={setLane}
+          options={[
+            { value: "all", label: `All ${counts.all}` },
+            { value: "fresh", label: `Radar ${counts.fresh}` },
+            ...(counts.runner ? [{ value: "runner" as const, label: `Runners ${counts.runner}` }] : []),
+            ...(counts.graduate ? [{ value: "graduate" as const, label: `Too young ${counts.graduate}` }] : []),
+          ]}
+        />
+      )}
+      {shown.length === 0 ? (
         <Empty>No coin is being followed right now. They appear here after the next scan.</Empty>
       ) : (
         <div className={s.liveWrap}>
@@ -44,13 +63,14 @@ export function Live({ d }: { d: LabData }) {
             <div>Kind</div>
             <div>Flags</div>
           </div>
-          {live.coins.map((c) => {
+          {shown.map((c) => {
             const z = c.zone ? ZONE[c.zone] : null;
             return (
               <div key={c.mint} className={s.liveRow}>
                 <div className={s.liveCoin}>
                   <b>{c.symbol ?? "?"}</b>
                   <div className={s.small}>{c.name}</div>
+                  {c.lane !== "fresh" && <span className={`${s.tag} ${s.tagGood}`}>{LANE_LABEL[c.lane] ?? c.lane}</span>}
                 </div>
                 <div className={s.num} data-label="Age">{hours(c.ageH)}</div>
                 <div className={s.num} data-label="Market cap">{usd(c.mcap)}</div>

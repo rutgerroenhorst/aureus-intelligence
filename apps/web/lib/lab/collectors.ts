@@ -43,10 +43,16 @@ const fin = (x: unknown): number | null => {
  * database carries that database's ids.
  */
 const SCANNED = `
-  SELECT DISTINCT ON (t.mint) t.mint, p.pool_address,
-         (c.monitoring_tier::text <> 'TIER0_DORMANT' AND c.current_state::text NOT IN ('REJECTED', 'EXPIRED')) AS followed
-    FROM candidates c JOIN tokens t ON t.id = c.token_id JOIN pools p ON p.id = c.pool_id
-   ORDER BY t.mint, c.discovered_at`;
+  SELECT mint, pool_address, followed FROM (
+    SELECT DISTINCT ON (t.mint) t.mint, p.pool_address,
+           (c.monitoring_tier::text <> 'TIER0_DORMANT' AND c.current_state::text NOT IN ('REJECTED', 'EXPIRED')) AS followed
+      FROM candidates c JOIN tokens t ON t.id = c.token_id JOIN pools p ON p.id = c.pool_id
+     ORDER BY t.mint, c.discovered_at
+  ) cand
+  UNION ALL
+  SELECT w.mint, w.pool_address, true AS followed FROM lab_watch w
+   WHERE w.pool_address IS NOT NULL
+     AND NOT EXISTS (SELECT 1 FROM tokens t JOIN candidates c ON c.token_id = t.id WHERE t.mint = w.mint)`;
 
 async function insertRows(db: Queryable, rows: Array<{ mint: string; source: string; payload: unknown }>): Promise<void> {
   if (!rows.length) return;

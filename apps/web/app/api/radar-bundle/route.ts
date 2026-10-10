@@ -18,6 +18,8 @@ const SOURCES = {
   momentum: "/api/momentum",
   performance: "/api/performance",
   networks: "/api/network-sentiment",
+  runners: "/api/runners",
+  labOdds: "/api/lab-odds",
 } as const;
 
 // Shared by every device that asks within the window, so a second phone or tablet costs no extra CPU.

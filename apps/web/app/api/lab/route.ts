@@ -12,7 +12,9 @@ const noStore = { "Cache-Control": "no-store, max-age=0" };
  */
 export async function GET() {
   try {
-    const { computedAt, reports } = await loadReports(getPool());
+    const { computedAt, reports: stored } = await loadReports(getPool());
+    // the daily history only feeds the loop card's trends (already inside "loop"); the page does not need it
+    const { history: _history, ...reports } = stored as Record<string, unknown>;
     const pool = getPool();
     // Collection health: how much each collector has gathered, so the page can say what is still "collecting".
     const { rows } = await pool.query(

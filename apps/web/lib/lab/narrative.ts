@@ -48,6 +48,15 @@ export function tagsFor(name: string | null | undefined, symbol: string | null |
   return [...tags];
 }
 
+/**
+ * A wider reading of "AI / agent / bot name" than the `ai_agent` tag, for the runner lane's own hypothesis (H6): a word that
+ * ends in bot (hotbot, chatbot), contains agent, agency, gpt, claw, claude, grok, neural or llm, or the word ai on its own. It
+ * is separate on purpose. H1 was written down with the narrower tag before HOTBOT was looked at; widening that tag afterwards
+ * would change what an earlier hypothesis means.
+ */
+const AI_WIDE = /(\w*bot\b|agen(t|cy)|gpt|claw|claude|grok|neural|llm|copilot|autonom)|\bai\b/i;
+export const aiNameWide = (name: string | null | undefined, symbol: string | null | undefined): boolean => AI_WIDE.test(`${symbol ?? ""} ${name ?? ""}`);
+
 /** The tag that decides a coin's single narrative bucket in tables (priority order). */
 export function primaryTag(tags: string[]): "ai_agent" | "tool" | "animal" | "person" | "other" {
   for (const t of ["ai_agent", "tool", "animal", "person"] as const) if (tags.includes(t)) return t;

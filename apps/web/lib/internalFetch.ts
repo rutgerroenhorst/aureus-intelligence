@@ -26,6 +26,8 @@ const routes: Record<string, () => Promise<RouteModule>> = {
   "/api/momentum": () => import("@/app/api/momentum/route"),
   "/api/performance": () => import("@/app/api/performance/route"),
   "/api/network-sentiment": () => import("@/app/api/network-sentiment/route"),
+  "/api/runners": () => import("@/app/api/runners/route"),
+  "/api/lab-odds": () => import("@/app/api/lab-odds/route"),
 };
 
 /**

@@ -7,12 +7,17 @@
 import type { LabCoin } from "../builder";
 import type { Features } from "../features";
 import { bootDiffCi, fisherExact, mean } from "../stats";
+import { aiNameWide } from "../narrative";
 import { num, rate, type Rate } from "./common";
 
 type Side = "in" | "out" | null;
 
 export interface HypothesisDef {
   id: string;
+  /** which lane's coins are tested (default: the Radar's own, "fresh") */
+  lane?: string;
+  /** when the idea was written down, when that is not simply the moment the lab first computed it (ISO, UTC) */
+  registeredAt?: string;
   title: string;
   statement: string;
   /** honest account of where the idea came from */
@@ -66,6 +71,13 @@ export const HYPOTHESES: HypothesisDef[] = [
     basis: "Not testable on history: the score exists only as a snapshot from today. The lab collects it every round from now on, so coins first seen from today carry the score they had.",
     unit: "coin", side: (c) => { const v = anySignal(c, "organic_score"); return v == null ? null : v >= 60 ? "in" : "out"; }, outcome: "held3", claim: "higher", minPerGroup: 20,
   },
+  {
+    id: "H6-runner-ai-names", lane: "runner", registeredAt: "2026-10-10T09:00:00Z",
+    title: "Runners with an AI, agent or bot name keep running more often",
+    statement: "Among coins the lab follows as runners (found on Jupiter's organic-score, most-traded and trending lists, or turned away by the door for being too big), those with an AI, agent or bot name (HOTBOT, CLAWD, agency...) hold 2x within three days more often than the other runners.",
+    basis: "From HOTBOT, a coin the user holds that went about 10x: an AI-agent trading product, found by hand. Among the Radar's own coins the AI-or-tool-name effect only showed after the winners were known (H1). This tests the idea on a different population and with a wider name rule, written down before any runner coin had been collected.",
+    unit: "coin", side: (c) => (aiNameWide(c.name, c.symbol) ? "in" : "out"), outcome: "held2", claim: "higher", minPerGroup: 25,
+  },
 ];
 
 export type HypothesisStatus = "supported" | "contradicted" | "open" | "collecting";
@@ -95,6 +107,7 @@ interface Item { side: Side; t0: number; hit: boolean | null; ev: number | null 
 function itemsOf(def: HypothesisDef, coins: LabCoin[]): Item[] {
   const out: Item[] = [];
   for (const c of coins) {
+    if (c.lane !== (def.lane ?? "fresh")) continue;
     if (def.unit === "coin") {
       if (c.outcome.readings < 8 || c.outcome.ageH < 72 * 0.95) continue;
       const side = def.side(c, snapAt(c, 0)?.f ?? null);

@@ -2,6 +2,8 @@
 import { useState } from "react";
 import ElitePageWrapper from "@/components/ElitePageWrapper";
 import { usePolling, useOnScanDone } from "@/lib/usePolling";
+import { RunnersTab, type Runner, type RunnersLab } from "./RunnersTab";
+import { LabLine, type LabOdds } from "./LabLine";
 
 interface Candidate {
   id: string;
@@ -12,7 +14,7 @@ interface Candidate {
   discovered_at: string;
 }
 
-type Tab = "cate" | "signals" | "positions" | "trends" | "momentum" | "performance" | "elite-s" | "early" | "entry" | "qualified" | "stats";
+type Tab = "cate" | "signals" | "positions" | "trends" | "momentum" | "performance" | "elite-s" | "early" | "entry" | "qualified" | "stats" | "runners";
 
 // The name the learning system and the trade journal use for each Radar tab.
 const JOURNAL_TAB: Partial<Record<Tab, string>> = {
@@ -21,6 +23,7 @@ const JOURNAL_TAB: Partial<Record<Tab, string>> = {
   early: "ultra_momentum",
   "elite-s": "elite",
   qualified: "incubation",
+  runners: "runners",
 };
 
 export default function RadarPageElite() {
@@ -32,6 +35,10 @@ export default function RadarPageElite() {
   const [cateCoins, setCateCoins] = useState<any[]>([]);
   const [cateSummary, setCateSummary] = useState<any>(null);
   const [buySignals, setBuySignals] = useState<any[]>([]);
+  const [labOdds, setLabOdds] = useState<Record<string, LabOdds>>({});
+  const [runners, setRunners] = useState<Runner[]>([]);
+  const [runnersLab, setRunnersLab] = useState<RunnersLab | null>(null);
+  const [failedEntries, setFailedEntries] = useState<Set<string>>(new Set());
   const [positions, setPositions] = useState<any[]>([]);
   const [trends, setTrends] = useState<any[]>([]);
   const [momentum, setMomentum] = useState<any[]>([]);
@@ -45,7 +52,7 @@ export default function RadarPageElite() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [scrollPositions, setScrollPositions] = useState<{[key in Tab]: number}>({
     cate: 0, signals: 0, positions: 0, trends: 0, momentum: 0, performance: 0,
-    "elite-s": 0, early: 0, entry: 0, qualified: 0, stats: 0
+    "elite-s": 0, early: 0, entry: 0, qualified: 0, stats: 0, runners: 0
   });
   const [enteredCoins, setEnteredCoins] = useState<Set<string>>(new Set());
 
@@ -69,6 +76,11 @@ export default function RadarPageElite() {
         setCateSummary(d.cate.summary || null);
       }
       if (d.signals) setBuySignals(d.signals.buy_signals || []);
+      if (d.labOdds) setLabOdds(d.labOdds.coins || {});
+      if (d.runners) {
+        setRunners(d.runners.candidates || []);
+        setRunnersLab(d.runners.lab || null);
+      }
       if (d.positions) setPositions(d.positions.positions || []);
       if (d.trends) setTrends(d.trends.candidates || []);
       if (d.momentum) setMomentum(d.momentum.candidates || []);
@@ -188,6 +200,7 @@ export default function RadarPageElite() {
               <span style={{ color: "#8a8a8e" }}>{slippage}</span>
             </div>
           )}
+          <LabLine odds={labOdds[c.mint]} />
         </div>
         <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
           {score && <span style={{ fontSize: "11px", color: "#fff", fontWeight: 700 }}>{Math.round(score)}</span>}
@@ -348,6 +361,30 @@ export default function RadarPageElite() {
               </div>
             )}
           </div>
+        );
+      case "runners":
+        return (
+          <RunnersTab
+            runners={runners}
+            lab={runnersLab}
+            entered={enteredCoins}
+            failedMints={failedEntries}
+            onEnter={async (c) => {
+              try {
+                const res = await fetch("/api/my-trades", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ symbol: c.symbol, mint: c.mint, entryMcap: c.mcap, tab: JOURNAL_TAB.runners ?? null, action: "add-entry" }),
+                });
+                if (!res.ok) throw new Error(`my-trades ${res.status}`);
+                setEnteredCoins((prev) => new Set([...prev, c.mint]));
+                setFailedEntries((prev) => { const n = new Set(prev); n.delete(c.mint); return n; });
+              } catch (err) {
+                console.error("Could not save the entry:", err);
+                setFailedEntries((prev) => new Set([...prev, c.mint]));
+              }
+            }}
+          />
         );
       case "early":
         return (
@@ -513,6 +550,7 @@ export default function RadarPageElite() {
             <TabButton tab="early" label="🚀 Ultra Momentum" count={ultraEarlyMomentum.length} />
             <TabButton tab="elite-s" label="⭐ Elite" count={eliteCandidates.length} />
             <TabButton tab="qualified" label="💼 Incubation" count={incubationCandidates.length} />
+            <TabButton tab="runners" label="🏃 Runners" count={runners.length} />
             <TabButton tab="stats" label="📋 Stats" />
           </div>
 
@@ -535,7 +573,7 @@ export default function RadarPageElite() {
           </div>
           {failedSources.length > 0 && (
             <div style={{ marginTop: "8px", fontSize: "12px", color: "#ff9f0a" }}>
-              ⚠ {failedSources.length} of 12 data sources could not be loaded just now ({failedSources.join(", ")}). Lists may be incomplete or out of date; the next refresh tries again.
+              ⚠ {failedSources.length} data source{failedSources.length === 1 ? "" : "s"} could not be loaded just now ({failedSources.join(", ")}). Lists may be incomplete or out of date; the next refresh tries again.
             </div>
           )}
           {safety && safety.unverified > 0 && (

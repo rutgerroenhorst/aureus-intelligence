@@ -475,6 +475,34 @@
   min-width: 0;
 }
 
+/* experiments list */
+.expList {
+  display: grid;
+  gap: 8px;
+}
+.expRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 90px 70px 96px;
+  gap: 10px;
+  align-items: center;
+}
+.expTitle {
+  min-width: 0;
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+.expBar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--panel-2);
+  overflow: hidden;
+}
+.expBar i {
+  display: block;
+  height: 100%;
+  background: var(--teal);
+}
+
 .empty {
   border: 1px dashed var(--line);
   border-radius: 12px;
@@ -484,6 +512,12 @@
 }
 
 @media (max-width: 860px) {
+  .expRow {
+    grid-template-columns: minmax(0, 1fr) 70px;
+  }
+  .expRow .expBar {
+    grid-column: 1 / 2;
+  }
   .page {
     padding: 14px 14px 90px;
   }

@@ -46,8 +46,9 @@ export interface LabCoin {
   status: "open" | "final";
 }
 
-interface CandRow {
-  candidate_id: string;
+export interface CandRow {
+  /** null for coins from the lab's own watch list (they have no candidate in the scanner) */
+  candidate_id: string | null;
   mint: string;
   chain: string;
   symbol: string | null;
@@ -58,6 +59,10 @@ interface CandRow {
   state: string | null;
   tier: string | null;
   discovery_source: string | null;
+  /** fresh (the Radar's universe, the default) | graduate | runner */
+  lane?: string;
+  /** read from the lab's watch readings instead of the scanner's price history */
+  watch?: boolean;
 }
 
 const fin = (x: unknown): number | null => {
@@ -100,11 +105,84 @@ export async function selectCandidates(db: Queryable, opts: { limit: number; all
   return rows as CandRow[];
 }
 
+/**
+ * Coins from the lab's own watch list that need a lesson: new ones once they have an hour of readings, maturing ones every half
+ * hour. A coin the Radar has since adopted is left to its normal lesson.
+ */
+export async function selectWatch(db: Queryable, opts: { limit: number; all?: boolean; mints?: string[] }): Promise<CandRow[]> {
+  const where: string[] = [`NOT EXISTS (SELECT 1 FROM tokens t JOIN candidates c ON c.token_id = t.id WHERE t.mint = w.mint)`];
+  const params: unknown[] = [];
+  if (opts.mints?.length) {
+    params.push(opts.mints);
+    where.push(`w.mint = ANY($${params.length}::text[])`);
+  } else if (!opts.all) {
+    where.push(`((l.mint IS NULL AND w.first_seen_at < now() - interval '60 minutes' AND w.polls >= 3) OR (l.status = 'open' AND l.built_at < now() - interval '30 minutes'))`);
+  }
+  params.push(opts.limit);
+  const { rows } = await db.query(
+    `SELECT w.mint, w.chain, w.symbol, w.name, w.lane, w.reason, w.note,
+            EXTRACT(EPOCH FROM w.first_seen_at)::float8 AS discovered_at, EXTRACT(EPOCH FROM w.pair_created_at)::float8 AS pool_created,
+            (l.mint IS NULL) AS is_new, l.built_at
+       FROM lab_watch w LEFT JOIN lab_coins l ON l.mint = w.mint
+      WHERE ${where.join(" AND ")}
+      ORDER BY is_new DESC, l.built_at ASC NULLS FIRST
+      LIMIT $${params.length}`,
+    params,
+  ).catch(() => ({ rows: [] as any[] }));
+  return rows.map((r) => ({
+    candidate_id: null, mint: r.mint, chain: r.chain ?? "solana", symbol: r.symbol, name: r.name, pool_id: `watch:${r.mint}`,
+    discovered_at: r.discovered_at, pool_created: r.pool_created,
+    // a coin the exchange stopped listing counts as dropped by its tracker (like a rejected one), so its end is not mistaken for a result
+    state: r.note === "gone" ? "REJECTED" : "WATCH", tier: null, discovery_source: r.reason, lane: r.lane, watch: true,
+  }));
+}
+
 interface RawObs extends Obs {
   eventId: string | null;
+  /** the snapshot behind the reading, when the reading carries it itself (watch readings) */
+  pay?: PayloadRow | null;
+}
+
+/** The snapshot a watch reading carries (compact arrays: [5 min, 1 h, 6 h, 24 h]) in the shape of a stored scanner snapshot. */
+export function watchPay(x: any): PayloadRow {
+  const at = (a: unknown, i: number) => (Array.isArray(a) ? fin(a[i]) : null);
+  return {
+    pc_m5: at(x.pc, 0), pc_h1: at(x.pc, 1), pc_h6: at(x.pc, 2), pc_h24: at(x.pc, 3),
+    v_m5: at(x.v, 0), v_h1: at(x.v, 1), v_h6: at(x.v, 2), v_h24: at(x.v, 3),
+    b_m5: at(x.b, 0), s_m5: at(x.s, 0), b_h1: at(x.b, 1), s_h1: at(x.s, 1), b_h6: at(x.b, 2), s_h6: at(x.s, 2), b_h24: at(x.b, 3), s_h24: at(x.s, 3),
+    liq: fin(x.liq), mcap: fin(x.mcap), fdv: fin(x.fdv), price: fin(x.p), boosts: fin(x.bo),
+    dex: x.dex ?? null, quote: x.q ?? null, n_web: fin(x.nw), n_soc: fin(x.ns), site: x.site ?? null, created_ms: fin(x.pcm),
+  };
+}
+
+async function loadWatchObs(db: Queryable, mints: string[]): Promise<Map<string, RawObs[]>> {
+  const out = new Map<string, RawObs[]>();
+  if (!mints.length) return out;
+  const { rows } = await db.query(
+    `SELECT mint, EXTRACT(EPOCH FROM taken_at)::float8 AS ts, payload FROM lab_signals_ts
+      WHERE source = 'watch' AND mint = ANY($1::text[]) ORDER BY taken_at`,
+    [mints],
+  ).catch(() => ({ rows: [] as any[] }));
+  for (const r of rows) {
+    const x = r.payload ?? {};
+    const p = fin(x.p);
+    if (x.gone || p == null || p <= 0) continue;
+    const pay = watchPay(x);
+    const a = out.get(`watch:${r.mint}`) ?? [];
+    a.push({ t: r.ts, p, liq: pay.liq, mcap: pay.mcap ?? pay.fdv, eventId: null, pay });
+    out.set(`watch:${r.mint}`, a);
+  }
+  return out;
 }
 
 async function loadObs(db: Queryable, rows: CandRow[]): Promise<Map<string, RawObs[]>> {
+  const watchRows = rows.filter((r) => r.watch);
+  if (watchRows.length) {
+    const out = await loadWatchObs(db, watchRows.map((r) => r.mint));
+    const rest = rows.filter((r) => !r.watch);
+    if (rest.length) for (const [k, v] of await loadObs(db, rest)) out.set(k, v);
+    return out;
+  }
   const poolIds = rows.map((r) => r.pool_id);
   const prices = await db.query(
     `SELECT pool_id, EXTRACT(EPOCH FROM observed_at)::float8 AS t, price_usd::float8 AS p, market_cap_usd::float8 AS mcap, raw_event_id
@@ -263,7 +341,7 @@ export async function buildCoins(db: Queryable, rows: CandRow[], now: number): P
   const result: BuildResult = { coins: [], skipped: [] };
   if (!rows.length) return result;
   const obsBy = await loadObs(db, rows);
-  const enrBy = await loadEnrichment(db, rows.map((r) => r.candidate_id));
+  const enrBy = await loadEnrichment(db, rows.map((r) => r.candidate_id).filter((x): x is string => !!x));
   const sigBy = await loadSignals(db, rows.map((r) => r.mint));
 
   // Decide which readings need their stored snapshot, then fetch them in one go.
@@ -286,8 +364,8 @@ export async function buildCoins(db: Queryable, rows: CandRow[], now: number): P
     const picks: Array<{ tau: number; idx: number }> = [];
     // The coin as it stands now (tau -1) feeds the live view; it is not a decision moment of its own.
     const lastIdx = clean.length - 1;
-    if (lastIdx > 0 && now - clean[lastIdx]!.t < 6 * 3600 && clean[lastIdx]!.eventId) {
-      want.add(clean[lastIdx]!.eventId!);
+    if (lastIdx > 0 && now - clean[lastIdx]!.t < 6 * 3600 && (clean[lastIdx]!.eventId || clean[lastIdx]!.pay)) {
+      if (clean[lastIdx]!.eventId) want.add(clean[lastIdx]!.eventId!);
       picks.push({ tau: -1, idx: lastIdx });
     }
     for (const tau of TAUS) {
@@ -304,6 +382,7 @@ export async function buildCoins(db: Queryable, rows: CandRow[], now: number): P
     preps.push({ row, raw, clean, phantoms, picks });
   }
   const payloads = await loadPayloads(db, [...want]);
+  const payOf = (o: RawObs): PayloadRow | null => o.pay ?? (o.eventId ? payloads.get(o.eventId) ?? null : null);
 
   for (const pr of preps) {
     const { row, clean } = pr;
@@ -315,15 +394,15 @@ export async function buildCoins(db: Queryable, rows: CandRow[], now: number): P
       result.skipped.push({ mint: row.mint, reason: "no usable outcome" });
       continue;
     }
-    const firstPay = clean[0]!.eventId ? payloads.get(clean[0]!.eventId!) ?? null : null;
+    const firstPay = payOf(clean[0]!);
     const tags = tagsFor(row.name, row.symbol, firstPay?.site);
+    if (row.watch && row.discovery_source) tags.push(`via:${row.discovery_source}`);
     const rule = "auto" as const;
-    const enr = enrBy.get(row.candidate_id) ?? null;
+    const enr = row.candidate_id ? enrBy.get(row.candidate_id) ?? null : null;
     const sigList = sigBy.get(row.mint);
     const snaps: Snap[] = [];
     for (const { tau, idx } of pr.picks) {
-      const ev = clean[idx]!.eventId;
-      const pay = ev ? payloads.get(ev) ?? null : null;
+      const pay = payOf(clean[idx]!);
       const f = buildFeatures({ tau, clean, idx, first, pay, enr, tags, signals: signalsNear(sigList, clean[idx]!.t) });
       if (tau < 0) outcome.now = { ts: clean[idx]!.t, ageH: (clean[idx]!.t - t0) / 3600, f };
       else snaps.push({ tau, ts: clean[idx]!.t, f, y: forwardLabels(clean, idx, { rule }) });
@@ -336,7 +415,7 @@ export async function buildCoins(db: Queryable, rows: CandRow[], now: number): P
       candidateId: row.candidate_id,
       symbol: row.symbol,
       name: row.name,
-      lane: "fresh",
+      lane: row.lane ?? "fresh",
       firstSeenAt: t0,
       pairCreatedAt: row.pool_created,
       firstPrice: first.p0,
