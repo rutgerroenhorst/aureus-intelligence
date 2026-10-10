@@ -147,6 +147,29 @@ graduations a day, and a large share graduate within minutes because the creator
 "Anatomy of pump.fun graduations" table once enough coins have run their three days, and hypotheses H7 (born graduated), H8 (Mayhem Mode) and
 H9 (one-off creators) were written down before any of them had.
 
+**How graduations end, read from the readings (`lib/lab/pump.ts`, shown on Radar > Graduations).** The 72-hour lessons need three days, but
+the watch readings already show what happens in the first hours. Three kinds of "graduation" turned out to be different things (first
+80 minutes of the stream, 2026-10-10; the page recomputes it, read the page for current numbers):
+
+- *Born graduated* (creator bought >= 50 SOL in the creating transaction and the coin graduated within 2 minutes): the pool opens with
+  $40-65K of liquidity, the price often climbs for a few minutes, and then the pool is emptied (the creator sells everything into it; the
+  liquidity tokens of a pump.fun graduation are burned, so it is a sell-off, not a classic liquidity pull). Of the first 24, 14 were already
+  emptied and 7 of the 8 that could be judged at about an hour were.
+- *Mayhem Mode*: all 14 first "graduations" left a pool holding $2-$29 (DexScreener and RugCheck agree on the liquidity; the pool had about
+  0.1 SOL against 400M tokens). Not tradable in any real size.
+- *Organic* (everything else with a known launch): real pools of $8-50K at the start.
+
+Definitions: *empty* = first liquidity reading under $1,000; *drained* = the pool held at least $10K at some reading and later fell under 10%
+of that peak and under $5K; the one-hour judgement uses the first reading taken 55-100 minutes after graduation. The Graduations tab and Home
+show by default only coins that are real pools, still standing, and not born graduated or Mayhem; "Everything" shows the rest with the reason.
+Descriptive only: H7 and H8 are still judged on the 72-hour lessons, forward-only, by the loop.
+
+**The phone.** The stream can only be held by a long-running process on the laptop. With `LAB_SYNC_URL` (a connection string for the hosted
+database) set, the worker or `scripts/lab-daemon.ts` copies one small snapshot (graduations of the last 72 hours with their readings, and the
+summary above) into the hosted `lab_reports` table every 3 minutes (kind `gradlist`, one row, replaced each time, left out of `/api/lab`
+and of the lab's "computed at"). The hosted Radar, Home and coin dossier read it and say how old it is; without the variable they say that
+the stream runs on the laptop. Nothing else is copied: the raw readings stay local (about 85 MB a day would not fit the free database).
+
 A watched coin that the exchange stops listing is closed with a terminal "dead" reading: every window of such a coin is decided as "did not
 happen" and it counts as followed for the whole window (leaving dead coins out would make the survivors look like everybody).
 

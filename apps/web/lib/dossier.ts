@@ -10,6 +10,8 @@
  */
 
 import { getPool } from "@aureus/db";
+import { currentGraduates } from "./graduates";
+import { gradKind, type GradKind, type KindSummary } from "./lab/pump";
 import { aiNameWide, tagsFor } from "@/lib/lab/narrative";
 
 const HEADERS = { accept: "application/json", "user-agent": "Aureus-Dossier/1.0" };
@@ -52,7 +54,11 @@ export interface Dossier {
     lesson: null | { lane: string; cls: string; status: string; firstSeenAt: number; firstMcap: number | null; peakHeld: number | null; minMult: number | null; tags: string[] };
     odds: null | { go2: { p: number; k: number; n: number } | null; collapse24: { p: number; k: number; n: number } | null; zone: string | null; flags: string[]; ageH: number };
     watch: null | { lane: string; reason: string; firstSeenAt: number; active: boolean; polls: number };
-    pump: null | { createToMigrateMin: number | null; initialBuySol: number | null; mayhem: boolean | null; creatorLaunches72h: number | null };
+    pump: null | {
+      createToMigrateMin: number | null; initialBuySol: number | null; mayhem: boolean | null; creatorLaunches72h: number | null;
+      /** what kind of graduation this was, whether its pool was empty from the start or was drained, and how that kind has ended for other coins */
+      kind: GradKind | null; empty: boolean | null; drained: boolean | null; peakMultiple: number | null; evidence: KindSummary | null;
+    };
     entry: null | { enteredAt: string; entryMcap: number; peakMultiple: number; multiplier: number; tab: string | null };
   };
   narrative: { tags: string[]; aiName: boolean };
@@ -107,7 +113,16 @@ async function labFacts(mint: string): Promise<Dossier["lab"]> {
     out.lesson = { lane: lesson[0].lane, cls: o.cls ?? "OPEN", status: lesson[0].status, firstSeenAt: lesson[0].seen, firstMcap: num(lesson[0].first_mcap), peakHeld: num(o.peakHeld?.all), minMult: num(o.minMult?.h72), tags: lesson[0].tags ?? [] };
   }
   if (watch[0]) out.watch = { lane: watch[0].lane, reason: watch[0].reason, firstSeenAt: watch[0].seen, active: watch[0].active, polls: watch[0].polls };
-  if (pump[0]) out.pump = { createToMigrateMin: num(pump[0].create_to_migrate_min), initialBuySol: num(pump[0].initial_buy_sol), mayhem: pump[0].mayhem, creatorLaunches72h: num(pump[0].creator_launches_72h) };
+  // the laptop's stream is local; the hosted site only has the snapshot the laptop pushed, which lists the recent graduations
+  const grads = await currentGraduates(pool).catch(() => null);
+  const gradRow = grads?.candidates.find((c) => c.mint === mint) ?? null;
+  const facts = pump[0]
+    ? { createToMigrateMin: num(pump[0].create_to_migrate_min), initialBuySol: num(pump[0].initial_buy_sol), mayhem: pump[0].mayhem as boolean | null, creatorLaunches72h: num(pump[0].creator_launches_72h) }
+    : gradRow ? { createToMigrateMin: gradRow.createToMigrateMin, initialBuySol: gradRow.devBuySol, mayhem: gradRow.mayhem as boolean | null, creatorLaunches72h: gradRow.creatorLaunches } : null;
+  if (facts) {
+    const kind = gradRow?.kind ?? gradKind({ createToMigrateMin: facts.createToMigrateMin, devBuySol: facts.initialBuySol, mayhem: facts.mayhem });
+    out.pump = { ...facts, kind, empty: gradRow?.empty ?? null, drained: gradRow?.drained ?? null, peakMultiple: gradRow?.peakMultiple ?? null, evidence: grads?.summary.find((x) => x.kind === kind) ?? null };
+  }
   if (entry[0]) {
     const e = Number(entry[0].entry_mcap_usd) || 1;
     out.entry = { enteredAt: new Date(entry[0].entered_at).toISOString(), entryMcap: e, peakMultiple: Math.max(Number(entry[0].peak_mcap_usd) || e, Number(entry[0].last_mcap_usd) || e) / e, multiplier: (Number(entry[0].last_mcap_usd) || e) / e, tab: entry[0].tab_name };

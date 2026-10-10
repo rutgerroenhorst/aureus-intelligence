@@ -15,6 +15,7 @@ import { followedFully } from "./reports/common";
 import { staticsAt, type StaticRow } from "./statics";
 import { regimeAt } from "./regime";
 import type { Row } from "./reports/common";
+import { gradFate, gradFlags, gradKind, isHealthy, summarizeFates, type Reading } from "./pump";
 
 /** A path with one reading every `gap` seconds from the given prices; liquidity optional. */
 const path = (prices: number[], gap = 300, liq?: number[]): Obs[] => prices.map((p, i) => ({ t: 1_000_000 + i * gap, p, liq: liq ? liq[i]! : 20_000 }));
@@ -464,5 +465,86 @@ describe("facts about the team and the market, read as of a moment", () => {
   it("gives nothing for a moment outside the history it has", () => {
     expect(regimeAt(hist, t0 + 40 * DAY).regime_sol_24h).toBeNull();
     expect(regimeAt(null, t0).regime_sol_24h).toBeNull();
+  });
+});
+
+
+describe("pump.fun graduations: how they end", () => {
+  const T0 = 2_000_000;
+  const rd = (min: number, p: number, liq: number): Reading => ({ t: T0 + min * 60, p, liq, mcap: p * 1e9 });
+
+  it("tells the three kinds apart from what the event stream knew", () => {
+    expect(gradKind({ createToMigrateMin: 0.1, devBuySol: 85, mayhem: false })).toBe("born");
+    expect(gradKind({ createToMigrateMin: 0.1, devBuySol: 85, mayhem: true })).toBe("mayhem");
+    expect(gradKind({ createToMigrateMin: 20, devBuySol: 0.5, mayhem: false })).toBe("organic");
+    expect(gradKind({ createToMigrateMin: 1.9, devBuySol: 49.9, mayhem: false })).toBe("organic");
+    expect(gradKind({ createToMigrateMin: null, devBuySol: null, mayhem: null })).toBe("unknown");
+  });
+
+  it("sees a pool that was real and is sold dry, and when", () => {
+    const f = gradFate(T0, [rd(4, 1.0, 60_000), rd(10, 1.4, 70_000), rd(30, 0.9, 55_000), rd(62, 0.01, 2_000), rd(80, 0.01, 2_000)]);
+    expect(f.empty).toBe(false);
+    expect(f.drained).toBe(true);
+    expect(f.drainedAfterMin).toBeCloseTo(62, 5);
+    expect(f.peakMultiple).toBeCloseTo(1.4, 5);
+    expect(f.at1h).toEqual({ liq: 2_000, p: 0.01, drained: true, halved: true, above: false });
+  });
+
+  it("calls a pool empty when it never held real money, and never calls that drained", () => {
+    const f = gradFate(T0, [rd(4, 1e-8, 11), rd(30, 1e-8, 11), rd(70, 1e-8, 11)]);
+    expect(f.empty).toBe(true);
+    expect(f.drained).toBe(false);
+    expect(f.at1h?.drained).toBe(false);
+  });
+
+  it("does not judge a coin before about an hour has passed, and does not drain a pool that is merely smaller", () => {
+    const young = gradFate(T0, [rd(3, 1, 30_000), rd(20, 1.1, 32_000), rd(40, 1.2, 33_000)]);
+    expect(young.at1h).toBeNull();
+    // 30% lower than its peak is not a drain (needs under 10% of the peak and under $5K)
+    const dip = gradFate(T0, [rd(4, 1, 40_000), rd(30, 0.7, 28_000), rd(60, 0.6, 24_000)]);
+    expect(dip.drained).toBe(false);
+    expect(dip.at1h?.halved).toBe(false);
+    expect(dip.at1h?.above).toBe(false);
+    // a small pool that never reached $10K cannot "drain" either
+    expect(gradFate(T0, [rd(4, 1, 8_000), rd(60, 0.01, 400)]).drained).toBe(false);
+  });
+
+  it("is order-independent and ignores unusable readings", () => {
+    const a = gradFate(T0, [rd(60, 0.01, 2_000), rd(4, 1.0, 60_000), { t: T0 + 100, p: null, liq: null, mcap: null }]);
+    expect(a.reads).toBe(3);
+    expect(a.drained).toBe(true);
+    expect(a.firstLiq).toBe(60_000);
+  });
+
+  it("summarises by kind with rates over the right bases, and withholds medians on tiny samples", () => {
+    const born = (peak: number, drained: boolean) => ({ kind: "born" as const, fate: gradFate(T0, [rd(4, 1, 60_000), rd(10, peak, 70_000), rd(62, drained ? 0.01 : 1.2, drained ? 2_000 : 60_000)]) });
+    const rows = [born(1.4, true), born(1.3, true), born(2, true), born(1.1, false), { kind: "mayhem" as const, fate: gradFate(T0, [rd(4, 1e-8, 11), rd(62, 1e-8, 11)]) }];
+    const s = summarizeFates(rows);
+    const b = s.find((x) => x.kind === "born")!;
+    expect(b.n).toBe(4);
+    expect(b.realPools).toBe(4);
+    expect(b.judged1h).toBe(4);
+    expect(b.drained1h).toBe(3);
+    expect(b.above1h).toBe(1);
+    expect(b.medianPeakMultiple).not.toBeNull();
+    const m = s.find((x) => x.kind === "mayhem")!;
+    expect(m.empty).toBe(1);
+    expect(m.realPools).toBe(0);
+    expect(m.medianPeakMultiple).toBeNull();
+    expect(s.find((x) => x.kind === "organic")).toBeUndefined();
+  });
+
+  it("shows by default only coins that are not measured to end in a drain", () => {
+    const real = gradFate(T0, [rd(4, 1, 30_000), rd(20, 1.1, 32_000)]);
+    const dry = gradFate(T0, [rd(4, 1, 60_000), rd(60, 0.01, 2_000)]);
+    const empty = gradFate(T0, [rd(4, 1e-8, 11)]);
+    expect(isHealthy("organic", real, 32_000)).toBe(true);
+    expect(isHealthy("organic", dry, 2_000)).toBe(false);
+    expect(isHealthy("organic", empty, 11)).toBe(false);
+    expect(isHealthy("born", real, 32_000)).toBe(false);
+    expect(isHealthy("mayhem", real, 32_000)).toBe(false);
+    expect(isHealthy("organic", null, null)).toBe(false);
+    expect(gradFlags("born", dry, { devBuySol: 85 })).toEqual(["pool drained", "born graduated: the creator bought the whole curve"]);
+    expect(gradFlags("organic", empty)).toEqual(["empty pool"]);
   });
 });

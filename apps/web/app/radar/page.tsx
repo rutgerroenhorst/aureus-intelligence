@@ -4,7 +4,7 @@ import ElitePageWrapper from "@/components/ElitePageWrapper";
 import { usePolling, useOnScanDone } from "@/lib/usePolling";
 import { RunnersTab, type Runner, type RunnersLab, type RunnersPrior } from "./RunnersTab";
 import { LabLine, type LabOdds } from "./LabLine";
-import { GraduatesTab, type Graduate } from "./GraduatesTab";
+import { GraduatesTab, type Graduate, type GradMeta } from "./GraduatesTab";
 
 interface Candidate {
   id: string;
@@ -37,6 +37,7 @@ export default function RadarPageElite() {
   const [cateSummary, setCateSummary] = useState<any>(null);
   const [buySignals, setBuySignals] = useState<any[]>([]);
   const [graduates, setGraduates] = useState<Graduate[]>([]);
+  const [gradMeta, setGradMeta] = useState<GradMeta | null>(null);
   const [gradLab, setGradLab] = useState<{ followed3d: number; held2: { p: number } } | null>(null);
   const [labOdds, setLabOdds] = useState<Record<string, LabOdds>>({});
   const [runners, setRunners] = useState<Runner[]>([]);
@@ -84,6 +85,7 @@ export default function RadarPageElite() {
       if (d.graduates) {
         setGraduates(d.graduates.candidates || []);
         setGradLab(d.graduates.lab || null);
+        setGradMeta({ summary: d.graduates.summary || [], source: d.graduates.source, asOf: d.graduates.asOf });
       }
       if (d.runners) {
         setRunners(d.runners.candidates || []);
@@ -379,7 +381,7 @@ export default function RadarPageElite() {
           </div>
         );
       case "graduates":
-        return <GraduatesTab coins={graduates} lab={gradLab} />;
+        return <GraduatesTab coins={graduates} lab={gradLab} meta={gradMeta} />;
       case "runners":
         return (
           <RunnersTab
@@ -570,7 +572,7 @@ export default function RadarPageElite() {
             <TabButton tab="elite-s" label="⭐ Elite" count={eliteCandidates.length} />
             <TabButton tab="qualified" label="💼 Incubation" count={incubationCandidates.length} />
             <TabButton tab="runners" label="🏃 Runners" count={runners.length} />
-            <TabButton tab="graduates" label="🎓 Graduations" count={graduates.length} />
+            <TabButton tab="graduates" label="🎓 Graduations" count={graduates.filter((g) => g.healthy !== false).length} />
             <TabButton tab="stats" label="📋 Stats" />
           </div>
 

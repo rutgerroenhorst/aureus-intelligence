@@ -71,8 +71,15 @@ function chipsOf(d: Dossier): Chip[] {
     const mins = (d.paid.profile - d.market.pairCreatedAt / 1000) / 60;
     if (mins >= 0 && mins <= 60) c.push({ text: `Paid profile after ${Math.max(1, Math.round(mins))} min`, tone: "info", why: "The team paid DexScreener for an enhanced profile soon after the pair appeared." });
   }
-  if (d.lab.pump && d.lab.pump.createToMigrateMin != null && d.lab.pump.createToMigrateMin < 2 && (d.lab.pump.initialBuySol ?? 0) >= 50) c.push({ text: `Born graduated (creator bought ${Math.round(d.lab.pump.initialBuySol ?? 0)} SOL)`, tone: "warn", why: "The creator bought the whole bonding curve in the launch transaction, so the coin graduated within minutes. That is not how organic graduations look; the lab is measuring how these coins end." });
-  if (d.lab.pump?.mayhem) c.push({ text: "Mayhem Mode launch", tone: "warn", why: "An AI agent trades this coin for its first 24 hours; early volume is partly the agent's." });
+  const pump = d.lab.pump;
+  if (pump) {
+    const ev = pump.evidence;
+    const measured = ev && ev.realPools >= 3 ? ` Measured on the ${ev.n} such coins the lab has readings for: ${ev.drained} of ${ev.realPools} real pools were drained so far${ev.judged1h >= 3 ? `, and ${ev.drained1h} of ${ev.judged1h} that were judged at about an hour had been drained by then` : ""}.` : "";
+    if (pump.drained) c.push({ text: "Pool drained", tone: "bad", why: "The pool held real money and has been sold nearly dry (under $5K, under a tenth of its peak). The liquidity tokens of a pump.fun graduation are burned, so this is not a classic liquidity pull: the holders of most of the supply sold into it." });
+    else if (pump.empty) c.push({ text: "Empty pool", tone: "warn", why: "The pool held under $1,000 from the first reading: nothing can be bought or sold in any real size." });
+    if (pump.kind === "born") c.push({ text: `Born graduated (creator bought ${Math.round(pump.initialBuySol ?? 0)} SOL)`, tone: "bad", why: `The creator bought the whole bonding curve in the launch transaction, so the coin graduated within minutes. The pool opens with real money and the price often climbs for a while, then the creator sells into it.${measured}` });
+    if (pump.kind === "mayhem") c.push({ text: "Mayhem Mode launch", tone: "warn", why: `An AI agent trades this coin for its first 24 hours. In the lab's readings the pools these coins graduate into hold a few dollars${ev ? ` (${ev.empty} of ${ev.n} under $1,000 from the start)` : ""}.` });
+  }
   if (d.narrative.aiName) c.push({ text: "AI, agent or bot name", tone: "info", why: "The name points at AI, agents or bots (the lab tests whether such coins do better)." });
   return c;
 }

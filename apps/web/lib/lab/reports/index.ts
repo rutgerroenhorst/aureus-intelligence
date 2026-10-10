@@ -165,7 +165,8 @@ export interface StoredReports {
 }
 
 export async function loadReports(db: Queryable): Promise<StoredReports> {
-  const { rows } = await db.query(`SELECT kind, computed_at, payload FROM lab_reports`);
+  // "gradlist" is the laptop's graduation snapshot (pushed every few minutes): not a lab report, and it must not make the lab look freshly computed
+  const { rows } = await db.query(`SELECT kind, computed_at, payload FROM lab_reports WHERE kind <> 'gradlist'`);
   const reports: Record<string, unknown> = {};
   let latest = 0;
   for (const r of rows) {

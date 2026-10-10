@@ -6,7 +6,7 @@ import { planCheck } from "@/lib/exitPlan";
 
 interface Trade { id?: string; symbol: string; mint?: string; status: "active" | "exited"; multiplier: number; peakMultiple: number; lowMultiple: number }
 interface Runner { mint: string; symbol: string | null; mcap: number | null; change24h: number | null; via: string; organic: number | null; holders: number | null; seenHoursAgo: number; flags: string[] }
-interface Grad { mint: string; symbol: string | null; ageMin: number; mcap: number | null; sinceFirst: number | null; flags: string[] }
+interface Grad { mint: string; symbol: string | null; ageMin: number; mcap: number | null; liq?: number | null; sinceFirst: number | null; flags: string[]; kind?: string; healthy?: boolean; hiddenWhy?: string | null; empty?: boolean; drained?: boolean }
 interface Loop { scoreboard: Array<{ id: string; label: string; value: number | null; n: number; format: "pct" | "hours" }>; decisions: Array<{ id: string; level: string; title: string; suggestion: string }>; }
 
 const usd = (v: number | null | undefined) => {
@@ -24,6 +24,7 @@ export default function HomePage() {
   const [trades, setTrades] = useState<Trade[] | null>(null);
   const [runners, setRunners] = useState<Runner[] | null>(null);
   const [grads, setGrads] = useState<Grad[] | null>(null);
+  const [gradAsOf, setGradAsOf] = useState<string | null>(null);
   const [loop, setLoop] = useState<Loop | null>(null);
   usePolling(async () => {
     const get = async (u: string) => {
@@ -37,7 +38,10 @@ export default function HomePage() {
     const [t, r, g, l] = await Promise.all([get("/api/my-trades"), get("/api/runners"), get("/api/graduates"), get("/api/lab/loop")]);
     if (t) setTrades(t.myTrades ?? []);
     if (r) setRunners(r.candidates ?? []);
-    if (g) setGrads(g.candidates ?? []);
+    if (g) {
+      setGrads(g.candidates ?? []);
+      setGradAsOf(g.source === "laptop" ? g.asOf ?? null : null);
+    }
     if (l) setLoop(l.loop ?? null);
   }, 60_000);
 
@@ -49,7 +53,12 @@ export default function HomePage() {
   }, [open]);
   const givingBack = open.filter((t) => t.peakMultiple >= 2 && t.multiplier < 0.6 * t.peakMultiple).sort((a, b) => b.peakMultiple / Math.max(0.01, b.multiplier) - a.peakMultiple / Math.max(0.01, a.multiplier)).slice(0, 4);
   const healthy = (runners ?? []).filter((r) => r.via !== "too_big").sort((a, b) => (b.organic ?? 0) - (a.organic ?? 0)).slice(0, 5);
-  const fresh = (grads ?? []).filter((g) => g.ageMin <= 90 && (g.sinceFirst == null || g.sinceFirst >= 0.7)).slice(0, 5);
+  const recent = (grads ?? []).filter((g) => g.ageMin <= 90);
+  const fresh = recent.filter((g) => g.healthy !== false && (g.sinceFirst == null || g.sinceFirst >= 0.7)).slice(0, 5);
+  const skipped = recent.filter((g) => g.healthy === false);
+  const label: Record<string, string> = { drained: "drained", empty: "empty pools", born: "born graduated", mayhem: "Mayhem Mode", gone: "no longer listed", small: "pools under $5K", waiting: "without a reading yet" };
+  const skippedWhy = Object.entries(skipped.reduce<Record<string, number>>((a, g) => ((a[g.hiddenWhy ?? "small"] = (a[g.hiddenWhy ?? "small"] ?? 0) + 1), a), {})).map(([k, n]) => `${n} ${label[k] ?? k}`).join(", ");
+  const gradAge = gradAsOf ? Math.max(0, Math.round((Date.now() - new Date(gradAsOf).getTime()) / 60_000)) : null;
   const link = (href: string, text: string) => <a href={href} style={{ color: "#30b0c0", fontSize: 12, fontWeight: 600, textDecoration: "none" }}>{text}</a>;
 
   return (
@@ -105,11 +114,12 @@ export default function HomePage() {
 
         <div style={card}>
           <h3 style={h}>Fresh graduations</h3>
-          <div style={{ ...dim, marginBottom: 6 }}>Graduated from pump.fun in the last 90 minutes and not down more than 30% yet (laptop worker or lab daemon needed).</div>
-          {grads == null ? <div style={dim}>Loading…</div> : fresh.length === 0 ? <div style={dim}>{grads.length === 0 ? "No graduations recorded (the stream runs on the laptop)." : "None that fit right now."}</div> : fresh.map((g) => (
+          <div style={{ ...dim, marginBottom: 6 }}>Graduated from pump.fun in the last 90 minutes, with a real pool, not down more than 30% yet. Coins the lab has measured to end in an emptied pool (born graduated, Mayhem Mode) are left out.</div>
+          {gradAge != null && <div style={{ ...dim, marginBottom: 6, color: gradAge > 30 ? "#ff9f0a" : "#8a8a9e" }}>Snapshot from the laptop, {gradAge < 90 ? `${gradAge} min` : `${(gradAge / 60).toFixed(1)} h`} old{gradAge > 30 ? " (its stream may be off)" : ""}.</div>}
+          {grads == null ? <div style={dim}>Loading…</div> : fresh.length === 0 ? <div style={dim}>{grads.length === 0 ? "No graduations recorded (the stream runs on the laptop)." : recent.length === 0 ? "No graduation in the last 90 minutes." : `None worth a look right now: ${recent.length} graduated in the last 90 minutes${skippedWhy ? ` (${skippedWhy})` : ""}.`}</div> : fresh.map((g) => (
             <div key={g.mint} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 13, padding: "3px 0" }}>
               <a href={`/coin/${g.mint}`} style={{ color: "#fff", textDecoration: "none", fontWeight: 600 }}>{g.symbol ?? "?"}</a>
-              <span style={{ color: "#8a8a9e" }}>{Math.round(g.ageMin)} min · {usd(g.mcap)}{g.flags.some((f) => /within 2/.test(f)) ? " · born graduated" : ""}</span>
+              <span style={{ color: "#8a8a9e" }}>{Math.round(g.ageMin)} min · {usd(g.mcap)} · liquidity {usd(g.liq)}</span>
             </div>
           ))}
           <div style={{ marginTop: 6 }}>{link("/radar", "All graduations in the Radar →")}</div>
