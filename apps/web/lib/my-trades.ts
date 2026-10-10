@@ -133,7 +133,14 @@ export function summarize(trades: ApiTrade[]): TradeStats {
   };
 }
 
-const mcapOf = (p: Pair | undefined | null): number | null => (p ? num(p.marketCap) ?? num(p.fdv) : null);
+// A market cap of 0 means "not computed yet" (a pool minutes old): it must not stand in for a real value, or the card's own number is never used.
+const mcapOf = (p: Pair | undefined | null): number | null => {
+  if (!p) return null;
+  const m = num(p.marketCap);
+  if (m != null && m > 0) return m;
+  const f = num(p.fdv);
+  return f != null && f > 0 ? f : null;
+};
 
 export interface AddTradeInput {
   mint: unknown;

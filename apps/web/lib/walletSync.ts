@@ -159,7 +159,7 @@ const supplyCache = new Map<string, number>();
 async function supplyOf(mint: string, pair: Pair | undefined): Promise<number | null> {
   const known = supplyCache.get(mint);
   if (known) return known;
-  const mc = num(pair?.marketCap) ?? num(pair?.fdv);
+  const mc = [num(pair?.marketCap), num(pair?.fdv)].find((v) => v != null && v > 0) ?? null;
   const price = num(pair?.priceUsd);
   let supply = mc && price && price > 0 ? mc / price : null;
   if (!supply) supply = num((await rpc("getTokenSupply", [mint], { tries: 3 }))?.value?.uiAmount);
@@ -205,7 +205,7 @@ export async function applyToJournal(db: Queryable, address: string, opts: { min
     const exited = a.sold >= 0.95 * a.bought;
     const exitMcap = a.sold > 0 ? (a.usdOut / a.sold) * supply : null;
     const held = Math.max(0, a.bought - a.sold);
-    const lastMcap = num(pair?.marketCap) ?? num(pair?.fdv);
+    const lastMcap = [num(pair?.marketCap), num(pair?.fdv)].find((v) => v != null && v > 0) ?? null;
     const symbol = pair?.baseToken?.symbol ? String(pair.baseToken.symbol).replace(/[^\p{L}\p{N}_.\-$@ ]/gu, "").slice(0, 40) : null;
     const mine = existing.filter((e) => e.mint === a.mint);
     const target =
