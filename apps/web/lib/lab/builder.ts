@@ -137,7 +137,7 @@ export async function selectWatch(db: Queryable, opts: { limit: number; all?: bo
   }));
 }
 
-interface RawObs extends Obs {
+export interface RawObs extends Obs {
   eventId: string | null;
   /** the snapshot behind the reading, when the reading carries it itself (watch readings) */
   pay?: PayloadRow | null;
@@ -175,7 +175,7 @@ async function loadWatchObs(db: Queryable, mints: string[]): Promise<Map<string,
   return out;
 }
 
-async function loadObs(db: Queryable, rows: CandRow[]): Promise<Map<string, RawObs[]>> {
+export async function loadObs(db: Queryable, rows: CandRow[]): Promise<Map<string, RawObs[]>> {
   const watchRows = rows.filter((r) => r.watch);
   if (watchRows.length) {
     const out = await loadWatchObs(db, watchRows.map((r) => r.mint));

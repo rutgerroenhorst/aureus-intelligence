@@ -10,6 +10,7 @@ import { watchPay, type LabCoin } from "./builder";
 import { aiNameWide } from "./narrative";
 import { buildLanes } from "./reports/lanes";
 import { buildLoop } from "./reports/loop";
+import { buildPrior, crossingIndex, eventOf } from "./reports/prior";
 import type { Row } from "./reports/common";
 
 /** A path with one reading every `gap` seconds from the given prices; liquidity optional. */
@@ -352,5 +353,39 @@ describe("lanes and the loop", () => {
     expect(noisy.decisions.map((d) => d.id).sort()).toEqual(["coverage", "hyp-H9-x"]);
     expect(noisy.decisions[0]!.level).toBe("act");
     expect(noisy.scoreboard.find((x) => x.id === "coverage")!.trend).toEqual([{ day: "2026-10-09", v: 20 }]);
+  });
+});
+
+describe("runner prior", () => {
+  // a coin scanned every 10 minutes: price 1 until hour 10, then it runs to 2.5 and stays; market cap = price x 200K; liquidity $60K
+  const path = (hours: number): Obs[] =>
+    Array.from({ length: Math.round(hours * 6) }, (_, k) => {
+      const t = 1_790_000_000 + k * 600;
+      const h = (k * 600) / 3600;
+      const p = h < 10 ? 1 : h < 12 ? 1 + ((h - 10) / 2) * 1.5 : 2.5;
+      return { t, p, liq: 60_000, mcap: p * 200_000 };
+    });
+
+  it("finds the first reading that is big enough, deep enough and old enough", () => {
+    const obs = path(100);
+    const created = obs[0]!.t - 2 * 3600; // the pair is 2 hours old at the first reading
+    const i = crossingIndex(obs, created);
+    expect(obs[i]!.mcap!).toBeGreaterThanOrEqual(300_000);
+    expect((obs[i]!.t - created) / 3600).toBeGreaterThanOrEqual(3);
+    // never before the market cap condition holds: 200K at price 1, so it needs price 1.5
+    expect(obs[i]!.p).toBeGreaterThanOrEqual(1.5);
+    expect(crossingIndex(obs.map((o) => ({ ...o, liq: 10_000 })), created)).toBe(-1); // thin pool never qualifies
+  });
+
+  it("labels what followed only when the whole window was seen", () => {
+    const e = eventOf("A", path(100), 1_790_000_000 - 5 * 3600);
+    expect(e).not.toBeNull();
+    expect(e!.go2).toBe(false); // it was already at 2.5 and stayed: nothing doubled FROM the event
+    expect(e!.collapse24).toBe(false);
+    const short = eventOf("B", path(40), 1_790_000_000 - 5 * 3600);
+    expect(short!.go2).toBeNull(); // 72 hours not seen yet: undecided, not "no"
+    const report = buildPrior([e!, short!]);
+    expect(report.groups[0]!.n).toBe(2);
+    expect(report.groups[0]!.decided).toBe(1);
   });
 });

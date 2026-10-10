@@ -118,6 +118,10 @@ until 48 hours, then every 2 hours, for 7 days (hosted: 20 / 60 / 180 minutes, a
 
 The Radar's **Runners** tab (`/api/runners`) lists the watched runners with their latest reading, split into healthy, established
 ones and young, exploding ones, with the lab's result so far at the top (empty until the first runners have been followed 3 days).
+Until then it shows a **prior** from history (`scripts/lab-prior.ts`, report `prior`, run on the laptop and copied by `lab-push.ts`):
+what the Radar's own coins did after their first reading worth $300K+ with $40K+ of liquidity and a pair 3+ hours old. On 2026-10-10:
+87 such coins, 67 with the whole 72 hours seen: 19% held 2x, 12% held 3x, 65% were worth half or less a day later, and the fixed exit plan
+averaged -25%. Crossing $300K does not make a coin special; the runner lane tests whether looking healthy (organic score, holders) does.
 
 ## 6. The system loop (top of the Overview)
 
@@ -131,6 +135,10 @@ has not seen yet, adopt it only when it is proven, repeat. The loop card is that
   bigger than chance): a hypothesis confirmed or contradicted, a production rule that blocks coins that do better than the ones it lets
   through, a lane that does better than the Radar, scanning gaps. The default is "nothing needs you". Nothing changes behaviour by itself:
   a flag on Radar cards is information only, and hiding a coin always waits for a person.
+
+Results > My Trades also compares each open trade with an **example exit plan** (`lib/exitPlan.ts`: a quarter sold at 2x, 5x and 10x, a
+stop at -50% until the first sale and 40% below the peak after it) using only the journal's highest, lowest and latest market caps. It is a
+comparison, not advice, and shows two assumptions it has to make (price rose to its peak first; a stop fills at its level).
 
 Each Radar card also shows one **Lab** line when the lab has something checked to say: how often coins that scored the same way lost
 half within a day or doubled within three days (`/api/lab-odds`, from the stored live report).

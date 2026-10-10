@@ -71,6 +71,42 @@ export function Lanes({ d }: { d: LabData }) {
             ))}
         </div>
       )}
+      {d.prior && d.prior.groups[0]!.decided >= 10 && (
+        <>
+          <h3 style={{ margin: "22px 0 4px", fontSize: 14 }}>Until the lanes have data: what coins did after crossing $300K</h3>
+          <p className={s.small} style={{ margin: "0 0 8px", maxWidth: 820 }}>{d.prior.rule} {d.prior.note}</p>
+          <div className={s.tableWrap}>
+            <table className={s.table}>
+              <thead>
+                <tr>
+                  <th>Coins that crossed</th>
+                  <th className={s.num}>Found</th>
+                  <th className={s.num}>Whole window seen</th>
+                  <th className={s.num}>Held 2x</th>
+                  <th className={s.num}>Held 3x</th>
+                  <th className={s.num}>Held 5x</th>
+                  <th className={s.num}>Lost half in a day</th>
+                  <th className={s.num}>Fixed exit plan</th>
+                </tr>
+              </thead>
+              <tbody>
+                {d.prior.groups.filter((g) => g.n > 0).map((g) => (
+                  <tr key={g.id}>
+                    <td>{g.label}</td>
+                    <td className={s.num}>{g.n}</td>
+                    <td className={s.num}>{g.decided}</td>
+                    <td className={s.num}>{g.decided >= 8 ? <RateText r={g.go2} /> : <span className={s.dim}>too few</span>}</td>
+                    <td className={s.num}>{g.decided >= 8 ? <RateText r={g.go3} /> : <span className={s.dim}>too few</span>}</td>
+                    <td className={s.num}>{g.decided >= 8 ? <RateText r={g.go5} /> : <span className={s.dim}>too few</span>}</td>
+                    <td className={`${s.num} ${s.bad}`}>{g.decided >= 8 ? <RateText r={g.collapse24} /> : <span className={s.dim}>too few</span>}</td>
+                    <td className={`${s.num} ${g.ev == null ? s.dim : g.ev >= 1 ? s.good : s.bad}`}>{g.ev == null ? "-" : `${g.ev >= 1 ? "+" : "−"}${Math.abs((g.ev - 1) * 100).toFixed(0)}%`}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
       <span style={{ display: "none" }}>{pct(0)}</span>
     </Section>
   );

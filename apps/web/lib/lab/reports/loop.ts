@@ -13,6 +13,7 @@ import { fisherExact } from "../stats";
 import { rate, type Rate } from "./common";
 import type { HypothesisResult, HypothesisStatus } from "./hypotheses";
 import type { LanesReport } from "./lanes";
+import type { NoGoReport } from "./nogo";
 import type { RuleResult } from "./rulesboard";
 import type { TabsReport } from "./tabs";
 
@@ -69,6 +70,8 @@ export interface LoopInput {
   rules: { rules: RuleResult[] };
   hypotheses: HypothesisResult[];
   lanes: LanesReport;
+  /** the plain no-hoper rules searched on earlier coins and checked on later ones (optional so older callers keep working) */
+  nogo?: NoGoReport;
   /** hours of the last 24 in which at least one price reading was taken, null when unknown */
   coverageH: number | null;
   history: HistoryPoint[];
@@ -154,6 +157,16 @@ export function buildLoop(input: LoopInput): LoopReport {
       evidence: `At ${c.tau === 0 ? "the first look" : `+${c.tau} h`} the coins it blocks held 2x ${frac(c.blocked.go2)} against ${frac(c.passed.go2)} for the ones it lets through.`,
       suggestion: "Keep showing these coins but mark them with the warning, instead of hiding them. Try it in shadow first, so the Radar stays as it is while the result builds up.",
     });
+  }
+  for (const g of input.nogo?.rules ?? []) {
+    for (const c of g.candidates) {
+      if (!c.validated) continue;
+      decisions.push({
+        id: `nogo-${g.tau}-${c.text}`, level: "consider", title: `A plain rule for no-hopers holds up on later coins (at +${g.tau} h)`, why: c.text,
+        evidence: `On coins it was not fitted to it removed ${c.test.removed} (${pct(c.test.share)}); ${pct(c.test.precision.p)} of them were no-hopers against ${pct(c.test.baseNoGo)} overall, and it lost ${c.test.winnersLost} of ${c.test.winnersTotal} winners.`,
+        suggestion: "Mark matching coins with a low-odds warning on Radar cards (information only, nothing hidden) and keep watching whether it still holds.",
+      });
+    }
   }
   const fresh = input.lanes.groups.find((g) => g.id === "fresh");
   for (const g of input.lanes.groups) {

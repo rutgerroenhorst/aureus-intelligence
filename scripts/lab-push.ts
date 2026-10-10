@@ -45,7 +45,7 @@ async function main() {
   }
   console.log(`hypotheses: ${hyp.rows.length} copied`);
 
-  const cases = await from.query(`SELECT kind, computed_at, n_coins, payload FROM lab_reports WHERE kind = 'cases'`);
+  const cases = await from.query(`SELECT kind, computed_at, n_coins, payload FROM lab_reports WHERE kind IN ('cases', 'prior')`);
   for (const c of cases.rows) {
     await to.query(
       `INSERT INTO lab_reports (kind, computed_at, n_coins, payload) VALUES ($1, $2, $3, $4::jsonb)
@@ -53,7 +53,7 @@ async function main() {
       [c.kind, c.computed_at, c.n_coins, JSON.stringify(c.payload)],
     );
   }
-  console.log(`case studies: ${cases.rows.length} copied`);
+  console.log(`stored reports copied (case studies, runner prior): ${cases.rows.length}`);
 
   // lessons, keyset-paged by mint; the rows travel as JSON and are turned back into rows by the target's own column types
   let last = "";

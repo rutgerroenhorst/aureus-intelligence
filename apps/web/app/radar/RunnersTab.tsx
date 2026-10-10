@@ -30,6 +30,13 @@ export interface RunnersLab {
   held3: number | null;
 }
 
+export interface RunnersPrior {
+  decided: number;
+  held2: { p: number; k: number; n: number };
+  collapse24: { p: number; k: number; n: number };
+  ev: number | null;
+}
+
 const usd = (v: number | null | undefined) => {
   if (v == null || !Number.isFinite(v)) return "-";
   const a = Math.abs(v);
@@ -100,7 +107,7 @@ function Cell({ label, value, color }: { label: string; value: string; color?: s
   );
 }
 
-export function RunnersTab({ runners, lab, entered, failedMints, onEnter }: { runners: Runner[]; lab: RunnersLab | null; entered: Set<string>; failedMints: Set<string>; onEnter: (c: Runner) => void }) {
+export function RunnersTab({ runners, lab, prior, entered, failedMints, onEnter }: { runners: Runner[]; lab: RunnersLab | null; prior: RunnersPrior | null; entered: Set<string>; failedMints: Set<string>; onEnter: (c: Runner) => void }) {
   const [sort, setSort] = useState<SortKey>("new");
   const [kind, setKind] = useState<Kind>("all");
   const nLists = runners.filter((r) => r.via !== "too_big").length;
@@ -124,6 +131,12 @@ export function RunnersTab({ runners, lab, entered, failedMints, onEnter }: { ru
           : "(no result yet: a runner has to be followed for 3 days before it counts, so the first numbers appear in about three days)."}{" "}
         Not advice.
       </div>
+      {prior && (
+        <div style={{ fontSize: 12, color: "#b4b4c6", marginBottom: 12, lineHeight: 1.5, background: "#141418", border: "1px solid #2a2a2f", borderRadius: 8, padding: "8px 10px" }}>
+          <b style={{ color: "#fff" }}>For scale, from the Radar's own history:</b> of {prior.decided} coins that crossed $300K with real liquidity, {Math.round(prior.held2.p * 100)}% held 2x within 3 days, and{" "}
+          {Math.round(prior.collapse24.p * 100)}% were worth half or less a day later{prior.ev != null ? `; a fixed exit plan (stop at -50%, sell a quarter at 2x, 5x and 10x, trail the rest) averaged ${((prior.ev - 1) * 100).toFixed(0)}%` : ""}. Crossing $300K does not make a coin special by itself. The coins below also have to look healthy, which that history could not check.
+        </div>
+      )}
       <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
         {([["all", `All ${runners.length}`], ["lists", `Healthy and established ${nLists}`], ["young", `Young and exploding ${runners.length - nLists}`]] as Array<[Kind, string]>).map(([k, label]) => (
           <button key={k} onClick={() => setKind(k)} style={{ padding: "5px 10px", fontSize: 12, borderRadius: 6, cursor: "pointer", background: kind === k ? "#2a2a3e" : "#1a1a1f", color: kind === k ? "#fff" : "#8a8a8e", border: `1px solid ${kind === k ? "#4a4a66" : "#2a2a2f"}` }}>

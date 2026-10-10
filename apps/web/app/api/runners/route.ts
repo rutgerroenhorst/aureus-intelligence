@@ -96,11 +96,21 @@ export async function GET() {
       .then((r) => (r.rows[0]?.payload?.groups ?? []) as Array<{ id: string; n: number; basis: number; held2: { p: number; k: number; n: number }; held3: { p: number } }>)
       .catch(() => []);
     const g = lanes.find((x) => x.id === "runners");
+    // From history: what coins did after crossing $300K with real liquidity (scripts/lab-prior.ts), so the tab can say something now.
+    const prior = await pool
+      .query(`SELECT payload FROM lab_reports WHERE kind = 'prior'`)
+      .then((r) => {
+        const grp = (r.rows[0]?.payload?.groups ?? []) as Array<{ id: string; decided: number; go2: { p: number; k: number; n: number }; collapse24: { p: number; k: number; n: number }; ev: number | null }>;
+        const a = grp.find((x) => x.id === "all");
+        return a && a.decided >= 20 ? { decided: a.decided, held2: a.go2, collapse24: a.collapse24, ev: a.ev } : null;
+      })
+      .catch(() => null);
     return NextResponse.json(
       {
         at: new Date().toISOString(),
         candidates: coins,
         lab: g ? { coins: g.n, followed3d: g.basis, held2: g.basis >= 8 ? g.held2 : null, held3: g.basis >= 8 ? g.held3.p : null } : null,
+        prior,
       },
       { headers: noStore },
     );

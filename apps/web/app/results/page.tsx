@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { usePolling } from '@/lib/usePolling';
+import { ExitCheck } from './ExitCheck';
 
 interface ResultsCoin {
   symbol: string;
@@ -249,6 +250,8 @@ export default function ResultsPage() {
               />
             </div>
           )}
+
+          <ExitCheck trades={myTrades} />
 
           {myTrades.length === 0 ? (
             <div

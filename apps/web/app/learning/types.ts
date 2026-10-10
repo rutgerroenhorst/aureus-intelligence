@@ -9,6 +9,7 @@ import type { LiveReport } from "@/lib/lab/reports/live";
 import type { TabsReport } from "@/lib/lab/reports/tabs";
 import type { LanesReport } from "@/lib/lab/reports/lanes";
 import type { LoopReport } from "@/lib/lab/reports/loop";
+import type { PriorReport } from "@/lib/lab/reports/prior";
 import type { CaseStudy } from "@/lib/lab/cases";
 import type { Headline } from "@/lib/lab/reports";
 
@@ -24,6 +25,7 @@ export interface LabData {
   hypotheses?: { items: HypothesisResult[] };
   live?: LiveReport;
   lanes?: LanesReport;
+  prior?: PriorReport;
   loop?: LoopReport;
   cases?: { items: CaseStudy[] };
   tabs?: TabsReport;

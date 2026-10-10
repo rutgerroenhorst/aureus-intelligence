@@ -2,7 +2,7 @@
 import { useState } from "react";
 import ElitePageWrapper from "@/components/ElitePageWrapper";
 import { usePolling, useOnScanDone } from "@/lib/usePolling";
-import { RunnersTab, type Runner, type RunnersLab } from "./RunnersTab";
+import { RunnersTab, type Runner, type RunnersLab, type RunnersPrior } from "./RunnersTab";
 import { LabLine, type LabOdds } from "./LabLine";
 
 interface Candidate {
@@ -38,6 +38,7 @@ export default function RadarPageElite() {
   const [labOdds, setLabOdds] = useState<Record<string, LabOdds>>({});
   const [runners, setRunners] = useState<Runner[]>([]);
   const [runnersLab, setRunnersLab] = useState<RunnersLab | null>(null);
+  const [runnersPrior, setRunnersPrior] = useState<RunnersPrior | null>(null);
   const [failedEntries, setFailedEntries] = useState<Set<string>>(new Set());
   const [positions, setPositions] = useState<any[]>([]);
   const [trends, setTrends] = useState<any[]>([]);
@@ -80,6 +81,7 @@ export default function RadarPageElite() {
       if (d.runners) {
         setRunners(d.runners.candidates || []);
         setRunnersLab(d.runners.lab || null);
+        setRunnersPrior(d.runners.prior || null);
       }
       if (d.positions) setPositions(d.positions.positions || []);
       if (d.trends) setTrends(d.trends.candidates || []);
@@ -367,6 +369,7 @@ export default function RadarPageElite() {
           <RunnersTab
             runners={runners}
             lab={runnersLab}
+            prior={runnersPrior}
             entered={enteredCoins}
             failedMints={failedEntries}
             onEnter={async (c) => {

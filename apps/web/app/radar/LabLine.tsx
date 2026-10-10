@@ -22,7 +22,7 @@ export function LabLine({ odds }: { odds: LabOdds | undefined }) {
     <div style={{ fontSize: "10px", marginTop: "6px", color: "#8a8a9e", lineHeight: 1.5 }} title="From the Learning Lab: what happened to coins that looked like this one at this age, on coins its checked models had not seen. Frequencies, not promises.">
       <span style={{ color: "#30b0c0", fontWeight: 700 }}>🧪 Lab</span>
       {odds.collapse24 && (
-        <span> · lost half within a day: <b style={{ color: "#ff453a" }}>{pct(odds.collapse24.p)}</b> ({odds.collapse24.k} of {odds.collapse24.n})</span>
+        <span> · lost half within a day: <b style={{ color: "#ff453a" }}>{pct(odds.collapse24.p)}</b> ({odds.collapse24.k} of {odds.collapse24.n}){odds.collapse24.p >= 0.7 && <b style={{ color: "#ff453a" }}> · top risk group</b>}</span>
       )}
       {odds.go2 && (
         <span> · doubled within 3 days: <b style={{ color: "#34c759" }}>{pct(odds.go2.p)}</b> ({odds.go2.k} of {odds.go2.n})</span>

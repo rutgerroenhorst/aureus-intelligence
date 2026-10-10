@@ -125,7 +125,7 @@ export async function computeReports(db: Queryable): Promise<ReportMap> {
     },
   };
   const history: HistoryPoint[] = [...((prev.rows[0]?.payload?.points ?? []) as HistoryPoint[]).filter((p) => p.day !== today.day), today].slice(-120);
-  const loop = buildLoop({ tabs, rules, hypotheses, lanes, coverageH, history });
+  const loop = buildLoop({ tabs, rules, hypotheses, lanes, nogo, coverageH, history });
   const reports: Record<string, unknown> = {
     overview,
     insights,
