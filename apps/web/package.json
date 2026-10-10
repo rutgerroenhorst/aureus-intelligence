@@ -20,7 +20,7 @@
     "@aureus/watch-engine": "workspace:*",
     "@vercel/functions": "^3.9.11",
     "ioredis": "^5.4.2",
-    "next": "14.2.15",
+    "next": "14.2.35",
     "pg": "^8.13.1",
     "react": "18.3.1",
     "react-dom": "18.3.1"
