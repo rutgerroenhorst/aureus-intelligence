@@ -1,6 +1,5 @@
 import { getPool } from "@aureus/db";
 import { fetchPairs, type Pair } from "./learning-engine";
-import { syncWalletsLight } from "./walletSync";
 
 /**
  * The trade journal: the coins the user pressed "Enter" on (or logged by hand), the Radar tab they came from, a live
@@ -248,8 +247,6 @@ let inflight: Promise<unknown> | null = null;
 
 /** All trades (newest first) with live numbers; the refresh is shared by every caller within 15 s. */
 export async function listTrades(): Promise<{ trades: ApiTrade[]; stats: TradeStats }> {
-  // what the wallet did since the last look (a quick check at most once a minute; a no-op when no wallet is followed)
-  await syncWalletsLight(getPool()).catch(() => undefined);
   if (Date.now() - lastRefresh > REFRESH_EVERY_MS) {
     inflight ??= refreshActiveTrades()
       .catch((err) => console.error("[my-trades] refresh failed", err))

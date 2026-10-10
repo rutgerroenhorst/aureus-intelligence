@@ -1,4 +1,7 @@
 import { NextResponse } from "next/server";
+import { waitUntil } from "@vercel/functions";
+import { getPool } from "@aureus/db";
+import { syncWalletsLight } from "@/lib/walletSync";
 import { addTrade, exitTrade, listTrades } from "@/lib/my-trades";
 
 export const dynamic = "force-dynamic";
@@ -32,6 +35,9 @@ export async function POST(request: Request) {
 
 export async function GET() {
   try {
+    // what the wallet did since the last look: checked after this answer has been sent (at most once a minute, a no-op when no wallet is followed),
+    // so the page never waits for the chain; the next refresh shows the result
+    waitUntil(syncWalletsLight(getPool()).catch(() => undefined));
     const { trades, stats } = await listTrades();
     return NextResponse.json({ myTrades: trades, stats }, { headers: { "Cache-Control": "no-store" } });
   } catch (err) {

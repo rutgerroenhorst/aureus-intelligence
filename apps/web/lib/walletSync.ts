@@ -129,8 +129,9 @@ export async function syncWallet(db: Queryable, address: string, opts: { maxRead
   result.pending = Number((await db.query(`SELECT count(*)::int AS n FROM wallet_txs WHERE address = $1 AND state = 'pending'`, [address])).rows[0]?.n ?? 0);
   await db.query(`UPDATE wallet_watch SET synced_at = now() WHERE address = $1`, [address]);
 
-  // 3. the journal
-  if (result.read > 0 || result.newSignatures > 0) result.journal = await applyToJournal(db, address);
+  // 3. the journal, for the coins that just changed
+  const touched = [...new Set(fills.map((f) => f.mint))];
+  if (touched.length) result.journal = await applyToJournal(db, address, { mints: touched });
   return result;
 }
 
@@ -152,27 +153,34 @@ interface Agg {
   lastSell: Date | null;
 }
 
+const supplyCache = new Map<string, number>();
+
+/** Circulating supply of a coin: from DexScreener's market cap over its price, else asked of the chain; remembered, because it never changes here. */
 async function supplyOf(mint: string, pair: Pair | undefined): Promise<number | null> {
+  const known = supplyCache.get(mint);
+  if (known) return known;
   const mc = num(pair?.marketCap) ?? num(pair?.fdv);
   const price = num(pair?.priceUsd);
-  if (mc && price && price > 0) return mc / price;
-  const r = await rpc("getTokenSupply", [mint], { tries: 3 });
-  return num(r?.value?.uiAmount);
+  let supply = mc && price && price > 0 ? mc / price : null;
+  if (!supply) supply = num((await rpc("getTokenSupply", [mint], { tries: 3 }))?.value?.uiAmount);
+  if (supply && supply > 0) supplyCache.set(mint, supply);
+  return supply;
 }
 
 /**
  * One journal row per coin the wallet bought: the real average price paid (and so market cap at entry), dollars put in, what was sold.
  * A row the user already made with the Enter button (same coin, within a day and a half of the real buy) is corrected instead of
  * duplicated and keeps its tab; new rows are marked source = 'wallet'. Coins whose supply cannot be found are skipped and counted.
+ * `opts.mints` limits the work to the coins that just changed (a quick sync must not re-price the whole history).
  */
-export async function applyToJournal(db: Queryable, address: string): Promise<{ inserted: number; updated: number; skipped: number }> {
+export async function applyToJournal(db: Queryable, address: string, opts: { mints?: string[] } = {}): Promise<{ inserted: number; updated: number; skipped: number }> {
   const { rows } = await db.query(
     `SELECT mint,
             COALESCE(sum(tokens) FILTER (WHERE side = 'buy'), 0) AS bought, COALESCE(sum(usd) FILTER (WHERE side = 'buy'), 0) AS usd_in,
             COALESCE(sum(tokens) FILTER (WHERE side = 'sell'), 0) AS sold, COALESCE(sum(usd) FILTER (WHERE side = 'sell'), 0) AS usd_out,
             min(t) FILTER (WHERE side = 'buy') AS first_buy, max(t) FILTER (WHERE side = 'sell') AS last_sell
-       FROM wallet_fills WHERE address = $1 GROUP BY mint HAVING sum(tokens) FILTER (WHERE side = 'buy') > 0`,
-    [address],
+       FROM wallet_fills WHERE address = $1 AND ($2::text[] IS NULL OR mint = ANY($2::text[])) GROUP BY mint HAVING sum(tokens) FILTER (WHERE side = 'buy') > 0`,
+    [address, opts.mints ?? null],
   );
   const aggs: Agg[] = rows.map((r) => ({ mint: r.mint, bought: Number(r.bought), usdIn: Number(r.usd_in), sold: Number(r.sold), usdOut: Number(r.usd_out), firstBuy: new Date(r.first_buy), lastSell: r.last_sell ? new Date(r.last_sell) : null }));
   const out = { inserted: 0, updated: 0, skipped: 0 };
@@ -245,6 +253,36 @@ async function fillSymbols(db: Queryable): Promise<void> {
       /* the symbols stay empty and show as "?" */
     }
   }
+}
+
+/**
+ * Copy what the laptop has read since the hosted database last heard about this wallet, and update the hosted journal for those coins.
+ * Idempotent; a no-op when the hosted database is already level. Used by the worker loop when LAB_SYNC_URL is set.
+ */
+export async function pushWalletRows(local: Queryable, hosted: Queryable, address: string, opts: { full?: boolean } = {}): Promise<{ txs: number; fills: number; journal: { inserted: number; updated: number; skipped: number } | null } | null> {
+  const h = (await hosted.query(`SELECT max(block_time) AS m FROM wallet_txs WHERE address = $1`, [address])).rows[0];
+  const since = h?.m && !opts.full ? new Date(new Date(h.m).getTime() - 3_600_000) : new Date(0);
+  const txs = (await local.query(`SELECT signature, address, block_time, state, tries, last_try FROM wallet_txs WHERE address = $1 AND block_time > $2`, [address, since])).rows;
+  const fills = (await local.query(`SELECT * FROM wallet_fills WHERE address = $1 AND t > $2`, [address, since])).rows;
+  if (!txs.length && !fills.length) return null;
+  const w = (await local.query(`SELECT label, added_at, synced_at, newest_sig FROM wallet_watch WHERE address = $1`, [address])).rows[0];
+  await hosted.query(
+    `INSERT INTO wallet_watch (address, label, added_at, synced_at, newest_sig) VALUES ($1, $2, COALESCE($3, now()), $4, $5)
+     ON CONFLICT (address) DO UPDATE SET synced_at = EXCLUDED.synced_at, newest_sig = EXCLUDED.newest_sig`,
+    [address, w?.label ?? null, w?.added_at ?? null, w?.synced_at ?? null, w?.newest_sig ?? null],
+  );
+  for (let i = 0; i < txs.length; i += 400) {
+    await hosted.query(
+      `INSERT INTO wallet_txs SELECT * FROM jsonb_populate_recordset(NULL::wallet_txs, $1::jsonb) ON CONFLICT (signature) DO UPDATE SET state = EXCLUDED.state, tries = EXCLUDED.tries, last_try = EXCLUDED.last_try`,
+      [JSON.stringify(txs.slice(i, i + 400))],
+    );
+  }
+  for (let i = 0; i < fills.length; i += 400) {
+    await hosted.query(`INSERT INTO wallet_fills SELECT * FROM jsonb_populate_recordset(NULL::wallet_fills, $1::jsonb) ON CONFLICT (signature, mint, side) DO NOTHING`, [JSON.stringify(fills.slice(i, i + 400))]);
+  }
+  const mints = [...new Set(fills.filter((f) => f.side === "buy" || f.side === "sell").map((f) => f.mint as string))];
+  const journal = mints.length ? await applyToJournal(hosted, address, { mints }) : null;
+  return { txs: txs.length, fills: fills.length, journal };
 }
 
 let lastLight = 0;
