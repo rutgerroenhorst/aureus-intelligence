@@ -32,6 +32,9 @@ interface MyTrade {
   status: 'active' | 'exited';
   exitMcap?: number;
   exitedAt?: string;
+  soldUsd?: number | null;
+  soldFraction?: number | null;
+  peakKnown?: boolean;
 }
 
 export default function ResultsPage() {
@@ -296,6 +299,12 @@ export default function ResultsPage() {
                       Tab
                     </th>
                     <th style={{ padding: '12px', textAlign: 'left', color: '#8a8a8e' }}>
+                      In
+                    </th>
+                    <th style={{ padding: '12px', textAlign: 'left', color: '#8a8a8e' }}>
+                      Sold
+                    </th>
+                    <th style={{ padding: '12px', textAlign: 'left', color: '#8a8a8e' }}>
                       Entry MCap
                     </th>
                     <th style={{ padding: '12px', textAlign: 'left', color: '#8a8a8e' }}>
@@ -342,6 +351,12 @@ export default function ResultsPage() {
                           {trade.tab ? trade.tab.replace(/_/g, ' ') : '—'}
                         </td>
                         <td style={{ padding: '12px', color: '#8a8a8e' }}>
+                          {trade.sizeUsd != null ? `$${trade.sizeUsd.toFixed(2)}` : '—'}
+                        </td>
+                        <td style={{ padding: '12px', color: trade.soldUsd ? '#ececf4' : '#8a8a8e' }} title={trade.soldFraction != null ? `${Math.round(trade.soldFraction * 100)}% of the position sold` : undefined}>
+                          {trade.soldUsd ? `$${trade.soldUsd.toFixed(2)}${trade.soldFraction != null && trade.soldFraction < 0.95 ? ` (${Math.round(trade.soldFraction * 100)}%)` : ''}` : '—'}
+                        </td>
+                        <td style={{ padding: '12px', color: '#8a8a8e' }}>
                           ${Math.round(trade.entryMcap / 1000)}k
                         </td>
                         <td style={{ padding: '12px', color: '#8a8a8e' }}>
@@ -349,9 +364,9 @@ export default function ResultsPage() {
                         </td>
                         <td
                           style={{ padding: '12px', color: (trade.peakMultiple ?? 1) >= 2 ? '#FFB52F' : '#8a8a8e', fontWeight: 600 }}
-                          title="Highest market cap seen since entry, as a multiple of the entry"
+                          title={trade.peakKnown === false ? "Not recorded: this trade was added from your wallet history" : "Highest market cap seen since entry, as a multiple of the entry"}
                         >
-                          {(trade.peakMultiple ?? 1).toFixed(2)}x
+                          {trade.peakKnown === false ? '—' : `${(trade.peakMultiple ?? 1).toFixed(2)}x`}
                         </td>
                         <td style={{ padding: '12px', color: pnlColor, fontWeight: 700 }}>
                           {trade.multiplier.toFixed(2)}x

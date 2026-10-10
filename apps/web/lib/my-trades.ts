@@ -1,5 +1,6 @@
 import { getPool } from "@aureus/db";
 import { fetchPairs, type Pair } from "./learning-engine";
+import { syncWalletsLight } from "./walletSync";
 
 /**
  * The trade journal: the coins the user pressed "Enter" on (or logged by hand), the Radar tab they came from, a live
@@ -34,6 +35,10 @@ export type TradeRow = {
   last_checked_at: Date | string | null;
   exit_mcap_usd: string | number | null;
   exited_at: Date | string | null;
+  sold_usd?: string | number | null;
+  sold_fraction?: number | null;
+  tokens_held?: number | null;
+  peak_known?: boolean | null;
 };
 
 export interface ApiTrade {
@@ -58,6 +63,11 @@ export interface ApiTrade {
   sizeUsd: number | null;
   note: string | null;
   lastCheckedAt: string | null;
+  /** from the wallet: dollars taken out by sells and the share of the position sold */
+  soldUsd?: number | null;
+  soldFraction?: number | null;
+  /** false for trades added from the wallet history: nobody recorded their price path, so the peak is not known */
+  peakKnown?: boolean;
 }
 
 const num = (v: unknown): number | null => {
@@ -94,6 +104,9 @@ export function toApi(r: TradeRow): ApiTrade {
     sizeUsd: num(r.size_usd),
     note: r.note,
     lastCheckedAt: iso(r.last_checked_at),
+    ...(num(r.sold_usd) != null ? { soldUsd: num(r.sold_usd) } : {}),
+    ...(r.sold_fraction != null ? { soldFraction: r.sold_fraction } : {}),
+    peakKnown: r.peak_known !== false,
   };
 }
 
@@ -235,6 +248,8 @@ let inflight: Promise<unknown> | null = null;
 
 /** All trades (newest first) with live numbers; the refresh is shared by every caller within 15 s. */
 export async function listTrades(): Promise<{ trades: ApiTrade[]; stats: TradeStats }> {
+  // what the wallet did since the last look (a quick check at most once a minute; a no-op when no wallet is followed)
+  await syncWalletsLight(getPool()).catch(() => undefined);
   if (Date.now() - lastRefresh > REFRESH_EVERY_MS) {
     inflight ??= refreshActiveTrades()
       .catch((err) => console.error("[my-trades] refresh failed", err))

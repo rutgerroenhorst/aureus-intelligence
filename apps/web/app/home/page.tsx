@@ -4,7 +4,7 @@ import { usePolling } from "@/lib/usePolling";
 import { MarketStrip } from "@/components/MarketStrip";
 import { planCheck } from "@/lib/exitPlan";
 
-interface Trade { id?: string; symbol: string; mint?: string; status: "active" | "exited"; multiplier: number; peakMultiple: number; lowMultiple: number }
+interface Trade { id?: string; symbol: string; mint?: string; status: "active" | "exited"; multiplier: number; peakMultiple: number; lowMultiple: number; sizeUsd?: number | null; soldUsd?: number | null; soldFraction?: number | null; peakKnown?: boolean }
 interface Runner { mint: string; symbol: string | null; mcap: number | null; change24h: number | null; via: string; organic: number | null; holders: number | null; seenHoursAgo: number; flags: string[] }
 interface Grad { mint: string; symbol: string | null; ageMin: number; mcap: number | null; liq?: number | null; sinceFirst: number | null; flags: string[]; kind?: string; healthy?: boolean; hiddenWhy?: string | null; empty?: boolean; drained?: boolean }
 interface Loop { scoreboard: Array<{ id: string; label: string; value: number | null; n: number; format: "pct" | "hours" }>; decisions: Array<{ id: string; level: string; title: string; suggestion: string }>; }
@@ -45,13 +45,22 @@ export default function HomePage() {
     if (l) setLoop(l.loop ?? null);
   }, 60_000);
 
-  const open = (trades ?? []).filter((t) => t.status === "active");
+  const all = trades ?? [];
+  const open = all.filter((t) => t.status === "active");
+  // trades added from the wallet history have no recorded price path: only the ones followed since entry are judged against the example plan
+  const tracked = open.filter((t) => t.peakKnown !== false);
   const mean = useMemo(() => {
-    if (!open.length) return null;
-    const rows = open.map((t) => planCheck(t.peakMultiple, t.lowMultiple, t.multiplier));
+    if (!tracked.length) return null;
+    const rows = tracked.map((t) => planCheck(t.peakMultiple, t.lowMultiple, t.multiplier));
     return { hold: rows.reduce((a, r) => a + r.holdValue, 0) / rows.length, plan: rows.reduce((a, r) => a + r.planValue, 0) / rows.length };
-  }, [open]);
-  const givingBack = open.filter((t) => t.peakMultiple >= 2 && t.multiplier < 0.6 * t.peakMultiple).sort((a, b) => b.peakMultiple / Math.max(0.01, b.multiplier) - a.peakMultiple / Math.max(0.01, a.multiplier)).slice(0, 4);
+  }, [tracked]);
+  const givingBack = tracked.filter((t) => t.peakMultiple >= 2 && t.multiplier < 0.6 * t.peakMultiple).sort((a, b) => b.peakMultiple / Math.max(0.01, b.multiplier) - a.peakMultiple / Math.max(0.01, a.multiplier)).slice(0, 4);
+  // what is in the wallet's open positions now: dollars put in, taken out, and what is still held is worth (size x multiple x share not sold)
+  const money = useMemo(() => {
+    const withSize = all.filter((t) => t.sizeUsd != null);
+    const held = open.filter((t) => t.sizeUsd != null).map((t) => ({ t, value: (t.sizeUsd as number) * t.multiplier * (1 - (t.soldFraction ?? 0)) })).sort((a, b) => b.value - a.value);
+    return { put: withSize.reduce((a, t) => a + (t.sizeUsd as number), 0), out: all.reduce((a, t) => a + (t.soldUsd ?? 0), 0), value: held.reduce((a, h) => a + h.value, 0), worth: held.filter((h) => h.value >= 1).slice(0, 6), coins: withSize.length };
+  }, [all, open]);
   const healthy = (runners ?? []).filter((r) => r.via !== "too_big").sort((a, b) => (b.organic ?? 0) - (a.organic ?? 0)).slice(0, 5);
   const recent = (grads ?? []).filter((g) => g.ageMin <= 90);
   const fresh = recent.filter((g) => g.healthy !== false && (g.sinceFirst == null || g.sinceFirst >= 0.7)).slice(0, 5);
@@ -84,9 +93,27 @@ export default function HomePage() {
           <h3 style={h}>Your open trades</h3>
           {trades == null ? <div style={dim}>Loading…</div> : open.length === 0 ? <div style={dim}>No open trades. Press Enter on a coin in the Radar to start a journal.</div> : (
             <>
-              <div style={{ fontSize: 13 }}>
-                {open.length} open · holding is worth <b>{mean ? x(mean.hold) : "-"}</b> a stake, the example exit plan would have been <b style={{ color: mean && mean.plan >= mean.hold ? "#34c759" : "#ff9f0a" }}>{mean ? x(mean.plan) : "-"}</b>
-              </div>
+              {money.coins > 0 && (
+                <div style={{ fontSize: 13, lineHeight: 1.5 }}>
+                  You put in <b>${money.put.toFixed(0)}</b> over {money.coins} coins, took out <b>${money.out.toFixed(0)}</b>, and what you still hold is worth about <b>${money.value.toFixed(0)}</b>.
+                </div>
+              )}
+              {money.worth.length > 0 && (
+                <div style={{ marginTop: 8 }}>
+                  <div style={{ ...dim, marginBottom: 4 }}>Still worth something:</div>
+                  {money.worth.map(({ t, value }) => (
+                    <div key={t.id ?? t.symbol} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 13, padding: "2px 0" }}>
+                      {t.mint ? <a href={`https://dexscreener.com/solana/${t.mint}`} target="_blank" rel="noreferrer" style={{ color: "#fff", textDecoration: "none", fontWeight: 600 }}>{t.symbol}</a> : <b>{t.symbol}</b>}
+                      <span style={{ color: "#8a8a9e" }}>now {x(t.multiplier)} · ≈ ${value.toFixed(0)}{t.soldFraction ? ` · sold ${Math.round(t.soldFraction * 100)}%` : ""}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {mean && (
+                <div style={{ ...dim, marginTop: 8 }}>
+                  {tracked.length} followed since entry: holding is worth <b>{x(mean.hold)}</b> a stake, the example exit plan would have been <b style={{ color: mean.plan >= mean.hold ? "#34c759" : "#ff9f0a" }}>{x(mean.plan)}</b>.
+                </div>
+              )}
               {givingBack.length > 0 && (
                 <div style={{ marginTop: 8 }}>
                   <div style={{ ...dim, marginBottom: 4 }}>Giving back a gain:</div>

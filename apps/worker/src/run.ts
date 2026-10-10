@@ -28,6 +28,7 @@ import { ensurePartitions, currentMonthWritable, reconcileRuleCurrent } from "./
 import { noteTurnedAway, type TurnedAway } from "./labWatch.js";
 import { PumpFeed } from "./pumpFeed.js";
 import { startPhoneSync } from "./phoneSync.js";
+import { startWalletLoop } from "./walletLoop.js";
 
 const WORKER_ID = process.env.WORKER_ID ?? `worker-${process.pid}`;
 const log = (msg: string, extra: Record<string, unknown> = {}) =>
@@ -675,6 +676,11 @@ async function loop(): Promise<void> {
     // optional: copy the graduations to the hosted database for the phone (only when LAB_SYNC_URL is set)
     const stopSync = startPhoneSync(pool as never, log);
     process.once("exit", stopSync);
+  }
+  // the user's own wallet (public address registered in wallet_watch): what it bought and sold goes into the trade journal
+  if (!process.env.VERCEL) {
+    const stopWallet = startWalletLoop(pool as never, log);
+    process.once("exit", stopWallet);
   }
   log("started", { intervals: { discovery: workerConfig.discoveryIntervalMs, tick: workerConfig.cycleTickMs }, telegram: channel.mode, helius: heliusMode });
   while (!shuttingDown) {

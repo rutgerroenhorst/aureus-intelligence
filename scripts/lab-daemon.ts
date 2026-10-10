@@ -13,6 +13,7 @@ import { runLab } from "../apps/web/lib/lab/tick";
 import { collectWatch } from "../apps/web/lib/lab/lanes";
 import { PumpFeed } from "../apps/worker/src/pumpFeed";
 import { startPhoneSync } from "../apps/worker/src/phoneSync";
+import { startWalletLoop } from "../apps/worker/src/walletLoop";
 
 const log = (msg: string, extra: Record<string, unknown> = {}) => console.log(JSON.stringify({ t: new Date().toISOString(), worker: "lab-daemon", msg, ...extra }));
 const everyMs = Number(process.env.LAB_EVERY_MINUTES ?? 10) * 60_000;
@@ -23,11 +24,13 @@ async function main() {
   const feed = process.env.PUMP_FEED === "0" ? null : new PumpFeed(pool as never, log);
   void feed?.start();
   const stopSync = startPhoneSync(pool as never, log);
+  const stopWallet = startWalletLoop(pool as never, log);
   const shutdown = async () => {
     if (stopping) return;
     stopping = true;
     log("stopping");
     stopSync();
+    stopWallet();
     feed?.stop();
     await closePool().catch(() => undefined);
     process.exit(0);

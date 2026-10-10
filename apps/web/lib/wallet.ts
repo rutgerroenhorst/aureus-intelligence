@@ -8,7 +8,7 @@
  * A swap shows up as balance changes of the wallet in one transaction: a coin goes up while SOL, wrapped SOL, USDC or USDT goes
  * down (a buy), or the other way round (a sell). Gasless swaps (the fee is paid by the router) leave the wallet's SOL untouched,
  * so USDC and USDT count as quote money next to SOL. Money spent on opening a token account is rent that comes back when the account
- * is closed, so it is taken out of the price.
+ * is closed, so it is taken out of the price (when the wallet pays its own fees; a relayer pays the rent of a gasless swap).
  *
  * Everything is read-only. The wallet address is the user's own and is kept in the local database, never in the repository.
  */
@@ -99,8 +99,11 @@ export function decodeFills(tx: any, wallet: string): Decoded {
   let sol = 0;
   if (idx >= 0) {
     const raw = (num(meta.postBalances?.[idx]) - num(meta.preBalances?.[idx])) / 1e9;
-    const fee = idx === 0 ? num(meta.fee) / 1e9 : 0;
-    const rent = rentMoved(tx, keys, wallet);
+    // Only a wallet that pays its own transaction (fee payer) also pays the rent of the token accounts it opens; in a relayed
+    // (gasless) transaction the relayer does, and the wallet's SOL never moved for it.
+    const paysOwn = idx === 0;
+    const fee = paysOwn ? num(meta.fee) / 1e9 : 0;
+    const rent = paysOwn ? rentMoved(tx, keys, wallet) : { out: 0, back: 0 };
     sol = raw + fee + rent.out - rent.back;
   }
   sol += delta.get(WSOL) ?? 0;
@@ -186,32 +189,50 @@ export function aggregatePositions(fills: Fill[], solUsd: (t: number) => number)
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/** One JSON-RPC call against the free public endpoints, trying each in turn; back-off on rate limits. null when all fail. */
+// Each public endpoint is spaced out (the official one allows only a few calls a second) and cools down after a refusal: a
+// refused endpoint is left alone for a while that doubles with every refusal and resets after a success.
+const MIN_GAP_MS: Record<string, number> = { [PUBLICNODE]: 120, [OFFICIAL]: 350 };
+const nextFree = new Map<string, number>();
+const cooldown = new Map<string, number>();
+
+async function pace(url: string): Promise<void> {
+  const now = Date.now();
+  const at = Math.max(now, nextFree.get(url) ?? 0);
+  nextFree.set(url, at + (MIN_GAP_MS[url] ?? 200));
+  if (at > now) await sleep(at - now);
+}
+
+function refused(url: string): void {
+  const c = Math.min(60_000, (cooldown.get(url) ?? 1_500) * 2);
+  cooldown.set(url, c);
+  nextFree.set(url, Date.now() + c);
+}
+
+/** One JSON-RPC call against the free public endpoints, trying each in turn. null when all fail. */
 export async function rpc(method: string, params: unknown[], opts: { tries?: number; timeoutMs?: number; endpoints?: string[]; nullIsMiss?: boolean } = {}): Promise<any | null> {
   const tries = opts.tries ?? 4;
   const endpoints = opts.endpoints ?? [PUBLICNODE, OFFICIAL];
   for (let attempt = 0; attempt < tries; attempt++) {
     const url = endpoints[attempt % endpoints.length]!;
+    await pace(url);
     try {
       const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }), signal: AbortSignal.timeout(opts.timeoutMs ?? 25_000) });
       if (res.status === 429 || res.status >= 500) {
-        await sleep(1_200 * (attempt + 1));
+        refused(url);
         continue;
       }
       const j: any = await res.json();
       if (j?.error) {
-        // -32015 = this node does not serve the transaction version; -32004/-32009 = not available on this node: try the next endpoint
-        if ([-32015, -32004, -32009, -32007].includes(j.error.code)) continue;
-        if (j.error.code === 429 || /rate|too many/i.test(String(j.error.message))) {
-          await sleep(1_500 * (attempt + 1));
-          continue;
-        }
-        return null;
+        // Any refusal may be this node's own limit (a transaction version it cannot serve, data it does not keep, indexed calls that need
+        // a personal token, rate limits): ask the next endpoint. A request that is wrong everywhere runs out of tries and returns null.
+        if (j.error.code === 429 || /rate|too many/i.test(String(j.error.message))) refused(url);
+        continue;
       }
+      cooldown.delete(url);
       if (j.result == null && opts.nullIsMiss) continue; // this node does not have it: ask the next one
       return j.result ?? null;
     } catch {
-      await sleep(600 * (attempt + 1));
+      await sleep(400 * (attempt + 1));
     }
   }
   return null;
