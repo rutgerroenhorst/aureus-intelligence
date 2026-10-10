@@ -7,6 +7,10 @@ Two restore points are tagged in git (and pushed to GitHub):
 | `restore/2026-10-10-current` | the live system on 2026-10-10, before the overnight work: Learning Lab, lanes, system loop, Runners tab, Lab line on Radar cards, Next 14.2.35 (production `main` at commit `2b1a160`) |
 | `restore/2026-10-10-before-lab` | the system as it was that morning, before the Learning Lab existed (commit `0eef8a8`: trade journal, polling back-off) |
 
+A third tag marks the state after the overnight work, so you can always go forward again to it: `release/2026-10-10-overnight`
+(`scripts/restore-baseline.sh release/2026-10-10-overnight`). It contains everything described in `docs/LEARNING_LAB.md` and `docs/DATA_SOURCES.md`:
+free data sources, the pump.fun event stream, the coin dossier, Home, the Graduations tab, RugCheck holder snapshots, hypotheses H7-H10.
+
 ## Put the code back (one command, nothing is deleted from history)
 
 ```bash
