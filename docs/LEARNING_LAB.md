@@ -164,6 +164,16 @@ of that peak and under $5K; the one-hour judgement uses the first reading taken 
 show by default only coins that are real pools, still standing, and not born graduated or Mayhem; "Everything" shows the rest with the reason.
 Descriptive only: H7 and H8 are still judged on the 72-hour lessons, forward-only, by the loop.
 
+**Who holds the coin (RugCheck, laptop only).** `lib/lab/rugcheck.ts` takes one snapshot of RugCheck's free report for each new coin (watch list
+and the Radar's own, first seen in the last 6 hours, pool of at least $5K; 8 calls a round, 1.2 s apart, a 429 pauses it for 15 minutes) and keeps
+it in `lab_signals_ts` (source `rugcheck`). Holder shares leave out the pool's own token accounts (checked on real reports: a fresh coin's pool can hold
+90% of the supply). Features `rc_top1`, `rc_top10`, `rc_insider_pct`, `rc_insiders`, `rc_lp_locked`, `rc_risk_n`, `rc_holders` are read as of each
+snapshot (never before it was taken, except that the very first look accepts a snapshot up to 25 minutes later). They are not in the live-odds
+models until a forward test says they earn their place; hypothesis H10 (insider networks of 5% or more hold 2x less often than under 0.5%) is
+registered for graduations first seen after 2026-10-10 15:35 UTC. The Graduations cards show holders, largest wallet and insider share, and flag
+"insider networks hold N%", "one wallet holds N%" and "liquidity not locked" (warnings only; nothing is hidden because of them yet). First real
+example: a coin 12 minutes after graduation with 2,698 holders where insider networks of 4,759 wallets held 91% of the supply.
+
 **The phone.** The stream can only be held by a long-running process on the laptop. With `LAB_SYNC_URL` (a connection string for the hosted
 database) set, the worker or `scripts/lab-daemon.ts` copies one small snapshot (graduations of the last 72 hours with their readings, and the
 summary above) into the hosted `lab_reports` table every 3 minutes (kind `gradlist`, one row, replaced each time, left out of `/api/lab`

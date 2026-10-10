@@ -163,7 +163,11 @@ export function summarizeFates(rows: Array<{ kind: GradKind; fate: GradFate }>):
  * Plain-language flags for one graduation, strongest first. `fate` may be null for a coin without readings yet.
  * Kept free of numbers that need the summary: the page adds the measured rates next to them.
  */
-export function gradFlags(kind: GradKind, fate: GradFate | null, extra: { creatorLaunches72h?: number | null; devBuySol?: number | null; gone?: boolean } = {}): string[] {
+export function gradFlags(
+  kind: GradKind,
+  fate: GradFate | null,
+  extra: { creatorLaunches72h?: number | null; devBuySol?: number | null; gone?: boolean; rc?: { top1: number | null; insPct: number | null; lp: number | null } | null } = {},
+): string[] {
   const f: string[] = [];
   if (fate?.drained) f.push("pool drained");
   else if (fate?.empty) f.push("empty pool");
@@ -172,6 +176,10 @@ export function gradFlags(kind: GradKind, fate: GradFate | null, extra: { creato
   if ((extra.creatorLaunches72h ?? 0) >= 5) f.push(`serial creator (${extra.creatorLaunches72h} launches in 72 h)`);
   if (kind !== "born" && (extra.devBuySol ?? 0) >= 5) f.push(`creator bought ${Math.round(extra.devBuySol ?? 0)} SOL at launch`);
   if (fate?.firstP && fate.lastP && fate.lastP / fate.firstP < 0.5 && !fate.drained) f.push("down more than half since first seen");
+  const rc = extra.rc;
+  if (rc?.insPct != null && rc.insPct >= 0.05) f.push(`insider networks hold ${Math.round(rc.insPct * 100)}%`);
+  if (rc?.top1 != null && rc.top1 >= 0.2) f.push(`one wallet holds ${Math.round(rc.top1 * 100)}%`);
+  if (rc?.lp != null && rc.lp < 50) f.push("liquidity not locked");
   if (extra.gone) f.push("no longer listed");
   return f;
 }

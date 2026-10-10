@@ -16,6 +16,7 @@ import { staticsAt, type StaticRow } from "./statics";
 import { regimeAt } from "./regime";
 import type { Row } from "./reports/common";
 import { gradFate, gradFlags, gradKind, isHealthy, summarizeFates, type Reading } from "./pump";
+import { rugAt, rugSnapshot } from "./rugcheck";
 
 /** A path with one reading every `gap` seconds from the given prices; liquidity optional. */
 const path = (prices: number[], gap = 300, liq?: number[]): Obs[] => prices.map((p, i) => ({ t: 1_000_000 + i * gap, p, liq: liq ? liq[i]! : 20_000 }));
@@ -546,5 +547,49 @@ describe("pump.fun graduations: how they end", () => {
     expect(isHealthy("organic", null, null)).toBe(false);
     expect(gradFlags("born", dry, { devBuySol: 85 })).toEqual(["pool drained", "born graduated: the creator bought the whole curve"]);
     expect(gradFlags("organic", empty)).toEqual(["empty pool"]);
+  });
+});
+
+describe("RugCheck holder snapshots", () => {
+  const report = {
+    score_normalised: 12, rugged: false, totalHolders: 2541, totalMarketLiquidity: 61620, graphInsidersDetected: 40,
+    token: { supply: 1_000_000 }, mintAuthority: null, freezeAuthority: null,
+    risks: [{ name: "High holder concentration" }, { name: "Low Liquidity" }],
+    markets: [{ pubkey: "POOL", liquidityA: "POOLTOKENACCOUNT", liquidityB: "POOLSOL", lp: { lpLockedPct: 100 } }],
+    insiderNetworks: [{ currentHolding: 60_000 }, { currentHolding: 20_000 }],
+    topHolders: [
+      { address: "POOLTOKENACCOUNT", owner: "POOL", pct: 30 },
+      { address: "W1", owner: "O1", pct: 12 },
+      { address: "W2", owner: "O2", pct: 6 },
+      { address: "BURN", owner: "1nc1nerator11111111111111111111111111111111", pct: 5 },
+      { address: "W3", owner: "O3", pct: 2 },
+    ],
+  };
+  it("takes holder shares without the pool and burn accounts, and the insider networks' share of the supply", () => {
+    const r = rugSnapshot(report, 1_000)!;
+    expect(r.top1).toBeCloseTo(0.12, 6);
+    expect(r.top5).toBeCloseTo(0.2, 6);
+    expect(r.top10).toBeCloseTo(0.2, 6);
+    expect(r.insPct).toBeCloseTo(0.08, 6);
+    expect(r.ins).toBe(40);
+    expect(r.lp).toBe(100);
+    expect(r.holders).toBe(2541);
+    expect(r.mintOff).toBe(true);
+    expect(r.risks).toEqual(["High holder concentration", "Low Liquidity"]);
+  });
+  it("refuses an answer that is not a report", () => {
+    expect(rugSnapshot(null, 1)).toBeNull();
+    expect(rugSnapshot({ error: "not found" }, 1)).toBeNull();
+  });
+  it("reads a snapshot only for moments at or after it was taken, with a short allowance for the very first look", () => {
+    const row = rugSnapshot(report, 10_000)!;
+    // a later moment sees it
+    expect(rugAt([row], 10_000 + 3600, 1).rc_top1).toBeCloseTo(0.12, 6);
+    // an earlier moment does not, unless it is the first look and the snapshot came within 25 minutes after
+    expect(rugAt([row], 10_000 - 600, 1).rc_top1).toBeNull();
+    expect(rugAt([row], 10_000 - 600, 0).rc_top1).toBeCloseTo(0.12, 6);
+    expect(rugAt([row], 10_000 - 3600, 0).rc_top1).toBeNull();
+    expect(rugAt(undefined, 10_000, 0).rc_holders).toBeNull();
+    expect(rugAt([row], 10_000 + 1, 6).rc_lp_locked).toBe(1);
   });
 });

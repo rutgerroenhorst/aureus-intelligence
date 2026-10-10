@@ -51,7 +51,7 @@ async function main() {
   while (!stopping) {
     try {
       const r = await runLab();
-      log("lab", { ms: r.ms, runners: r.runners, watch: r.watch, statics: r.statics, regime: r.regime, lessons: r.lessons, reports: r.reports });
+      log("lab", { ms: r.ms, runners: r.runners, watch: r.watch, statics: r.statics, rugcheck: r.rugcheck, regime: r.regime, lessons: r.lessons, reports: r.reports });
     } catch (e) {
       log("lab failed", { error: String((e as Error)?.message ?? e).slice(0, 200) });
     }

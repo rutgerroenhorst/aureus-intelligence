@@ -26,6 +26,7 @@ export interface Graduate {
   empty?: boolean;
   drained?: boolean;
   peakMultiple?: number | null;
+  rc?: { holders: number | null; top1: number | null; top10: number | null; insPct: number | null; ins: number | null; lp: number | null; risks: string[] } | null;
 }
 
 export interface KindSummary {
@@ -170,11 +171,14 @@ export function GraduatesTab({ coins, lab, meta }: { coins: Graduate[]; lab: { f
               <Cell label="Last 5 min" value={pct(c.change5m)} color={col(c.change5m)} />
               <Cell label="Buys / sells, 1 h" value={c.buys1h != null && c.sells1h != null ? `${Math.round(c.buys1h)} / ${Math.round(c.sells1h)}` : "-"} />
               <Cell label="Creator's first buy" value={c.devBuySol == null ? "-" : `${c.devBuySol.toFixed(2)} SOL`} />
+              {c.rc && <Cell label="Holders (RugCheck)" value={c.rc.holders == null ? "-" : c.rc.holders.toLocaleString("en-US")} />}
+              {c.rc && <Cell label="Largest wallet" value={c.rc.top1 == null ? "-" : `${(c.rc.top1 * 100).toFixed(1)}%`} color={c.rc.top1 != null && c.rc.top1 >= 0.2 ? "#ff9f0a" : undefined} />}
+              {c.rc && <Cell label="Insider networks" value={c.rc.insPct == null ? "-" : `${(c.rc.insPct * 100).toFixed(c.rc.insPct < 0.1 ? 1 : 0)}%`} color={c.rc.insPct != null && c.rc.insPct >= 0.05 ? "#ff9f0a" : undefined} />}
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10, gap: 8, flexWrap: "wrap" }}>
               <div>
                 {c.flags.map((f) => (
-                  <span key={f} style={{ display: "inline-block", fontSize: 11, padding: "1px 7px", marginRight: 4, borderRadius: 6, border: "1px solid #2a2a2f", color: /down|serial|within 2|no longer|Mayhem|drained|empty|born/.test(f) ? "#ff9f0a" : "#b4b4c6" }}>{f}</span>
+                  <span key={f} style={{ display: "inline-block", fontSize: 11, padding: "1px 7px", marginRight: 4, borderRadius: 6, border: "1px solid #2a2a2f", color: /down|serial|within 2|no longer|Mayhem|drained|empty|born|insider|one wallet|not locked/.test(f) ? "#ff9f0a" : "#b4b4c6" }}>{f}</span>
                 ))}
               </div>
               <a href={`/coin/${c.mint}`} style={{ color: "#30b0c0", fontSize: 12, fontWeight: 600, textDecoration: "none" }}>Dossier →</a>

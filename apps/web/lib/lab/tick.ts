@@ -10,6 +10,7 @@ import { collectGeckoMulti, collectJupiter, collectPriceTail } from "./collector
 import { collectWatch, discoverRunners } from "./lanes";
 import { collectRegime } from "./regime";
 import { collectStatic } from "./statics";
+import { collectRugcheck } from "./rugcheck";
 import { computeReports, saveReports } from "./reports";
 
 const REPORT_EVERY_MIN = 55;
@@ -31,6 +32,8 @@ export async function runLab(opts: { force?: boolean; limit?: number } = {}): Pr
   // The market backdrop (hourly) and what each coin's team paid for (launchpad, DexScreener profile, boosts, ads): both free.
   out.regime = await collectRegime(db, { force: opts.force }).catch(failure);
   out.statics = await collectStatic(db, { maxOrders: process.env.VERCEL ? 15 : 40 }).catch(failure);
+  // who holds the newest coins (RugCheck's free report; laptop only)
+  out.rugcheck = await collectRugcheck(db, { maxCalls: 8 }).catch(failure);
   out.priceTail = await collectPriceTail(db, { limit: 150 }).catch(failure);
   out.geckoMulti = await collectGeckoMulti(db, { maxCalls: 3 }).catch(failure);
   out.jupiter = await collectJupiter(db, { maxCalls: 3 }).catch(failure);

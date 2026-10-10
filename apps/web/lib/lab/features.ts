@@ -273,6 +273,13 @@ export const FEATURES: FeatureMeta[] = [
   { key: "organic_score", label: "Organic score", group: "Collected", fmt: "num", about: "Jupiter's score for how organic the trading looks (0-100)." },
   { key: "holders", label: "Holders", group: "Collected", fmt: "num", about: "Number of holder wallets (Jupiter)." },
   { key: "net_buyer_share", label: "Net buyers / traders, 24 h", group: "Collected", fmt: "frac", about: "Of the wallets that traded in the last 24 hours, the share that bought more than they sold (Jupiter). Low = mostly sellers." },
+  { key: "rc_top1", label: "Largest holder (RugCheck)", group: "Holders", fmt: "frac", about: "Share of the supply held by the largest wallet, pool and burn accounts excluded, at RugCheck's first look at the coin (the 20 largest holders it lists)." },
+  { key: "rc_top10", label: "Top 10 holders (RugCheck)", group: "Holders", fmt: "frac", about: "Share held by the ten largest wallets, pool and burn accounts excluded, at RugCheck's first look." },
+  { key: "rc_insider_pct", label: "Insider networks' share (RugCheck)", group: "Holders", fmt: "frac", about: "Share of the supply still held by networks of wallets that funded each other (RugCheck's insider graph), at its first look." },
+  { key: "rc_insiders", label: "Wallets in insider networks", group: "Holders", fmt: "num", about: "How many wallets RugCheck puts in insider networks around the coin (an airdrop-style spread can make this very large)." },
+  { key: "rc_lp_locked", label: "Liquidity locked or burned (RugCheck)", group: "Holders", fmt: "frac", about: "Share of the pool's liquidity tokens that are locked or burned at RugCheck's first look." },
+  { key: "rc_risk_n", label: "RugCheck risks listed", group: "Holders", fmt: "num", about: "How many risks RugCheck lists for the coin (low liquidity, high concentration, creator history, ...)." },
+  { key: "rc_holders", label: "Holders (RugCheck)", group: "Holders", fmt: "num", about: "Number of holder wallets at RugCheck's first look." },
   { key: "organic_vol_share", label: "Organic share of volume, 24 h", group: "Collected", fmt: "frac", about: "Share of the last 24 hours' volume that Jupiter counts as organic (real traders, not bots or the same wallets) (only for coins seen from now on)." },
 ];
 

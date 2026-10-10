@@ -99,6 +99,13 @@ export const HYPOTHESES: HypothesisDef[] = [
     basis: "About one creator in five launches several coins within minutes of each other; a serial launcher is playing many tickets, a one-off is putting one project out (HOTBOT's creator launched only that coin). Written down before any graduation had run its three days.",
     unit: "coin", side: (_c, f) => (!f || f.creator_launches == null ? null : f.creator_launches <= 1 ? "in" : f.creator_launches >= 5 ? "out" : null), outcome: "held2", claim: "higher", minPerGroup: 25,
   },
+  {
+    id: "H10-insider-networks", lane: "graduate", registeredAt: "2026-10-10T15:35:00Z",
+    title: "Coins with insider networks holding 5% or more hold 2x less often",
+    statement: "Among pump.fun graduations, coins where RugCheck's insider networks (wallets that funded each other) still held 5% or more of the supply at its first look hold 2x within three days less often than coins where they held under half a percent.",
+    basis: "Insider networks are the standard sign of a coin whose early holders are one party. RugCheck's report lists them for free; the lab started collecting it a few minutes before this was written down, so only coins first seen after the registration time count (the first eight snapshots belong to coins first seen earlier and are not used). Written down before any coin that counts had its snapshot.",
+    unit: "coin", side: (_c, f) => (!f || f.rc_insider_pct == null ? null : f.rc_insider_pct >= 0.05 ? "in" : f.rc_insider_pct < 0.005 ? "out" : null), outcome: "held2", claim: "lower", minPerGroup: 25,
+  },
 ];
 
 export type HypothesisStatus = "supported" | "contradicted" | "open" | "collecting";

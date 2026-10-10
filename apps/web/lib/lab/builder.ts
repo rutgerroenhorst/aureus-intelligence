@@ -9,6 +9,7 @@ import { cleanObs, nearestIndex, type Obs } from "./paths";
 import { buildOutcome, forwardLabels, type Fwd, type Outcome } from "./outcomes";
 import { tagsFor } from "./narrative";
 import { staticsAt, type StaticRow } from "./statics";
+import { rugAt, type RugRow } from "./rugcheck";
 import { regimeAt, type RegimeHist } from "./regime";
 
 export interface Queryable {
@@ -352,6 +353,21 @@ async function loadStatics(db: Queryable, mints: string[]): Promise<Map<string, 
   return out;
 }
 
+/** RugCheck's holder snapshots per coin (usually one, taken shortly after the lab first saw the coin). */
+async function loadRug(db: Queryable, mints: string[]): Promise<Map<string, RugRow[]>> {
+  const out = new Map<string, RugRow[]>();
+  if (!mints.length) return out;
+  const { rows } = await db
+    .query(`SELECT mint, payload FROM lab_signals_ts WHERE source = 'rugcheck' AND mint = ANY($1::text[]) ORDER BY taken_at`, [mints])
+    .catch(() => ({ rows: [] as any[] }));
+  for (const r of rows) {
+    const l = out.get(r.mint);
+    if (l) l.push(r.payload as RugRow);
+    else out.set(r.mint, [r.payload as RugRow]);
+  }
+  return out;
+}
+
 /** What pump.fun's event stream knew about a coin when it graduated (only for coins that graduated while the feed was running). */
 async function loadPump(db: Queryable, mints: string[]): Promise<Map<string, { mayhem: boolean | null; buy: number | null; gradMin: number | null; launches: number | null }>> {
   const out = new Map<string, { mayhem: boolean | null; buy: number | null; gradMin: number | null; launches: number | null }>();
@@ -395,6 +411,7 @@ export async function buildCoins(db: Queryable, rows: CandRow[], now: number): P
   const sigBy = await loadSignals(db, rows.map((r) => r.mint));
   const stBy = await loadStatics(db, rows.map((r) => r.mint));
   const pumpBy = await loadPump(db, rows.map((r) => r.mint));
+  const rugBy = await loadRug(db, rows.map((r) => r.mint));
   const regimeHist = await loadRegimeHist(db);
 
   // Decide which readings need their stored snapshot, then fetch them in one go.
@@ -458,7 +475,7 @@ export async function buildCoins(db: Queryable, rows: CandRow[], now: number): P
       const pay = payOf(clean[idx]!);
       const tSnap = clean[idx]!.t;
       const pairS = pay?.created_ms ? pay.created_ms / 1000 : row.pool_created;
-      const f = buildFeatures({ tau, clean, idx, first, pay, enr, tags, signals: signalsNear(sigList, tSnap), statics: { ...staticsAt(stBy.get(row.mint), tSnap, pairS), ...pumpFeatures(pumpBy.get(row.mint)) } as unknown as Record<string, number | null>, regime: regimeAt(regimeHist, tSnap) as unknown as Record<string, number | null> });
+      const f = buildFeatures({ tau, clean, idx, first, pay, enr, tags, signals: signalsNear(sigList, tSnap), statics: { ...staticsAt(stBy.get(row.mint), tSnap, pairS), ...pumpFeatures(pumpBy.get(row.mint)), ...rugAt(rugBy.get(row.mint), tSnap, tau) } as unknown as Record<string, number | null>, regime: regimeAt(regimeHist, tSnap) as unknown as Record<string, number | null> });
       if (tau < 0) outcome.now = { ts: clean[idx]!.t, ageH: (clean[idx]!.t - t0) / 3600, f };
       else snaps.push({ tau, ts: clean[idx]!.t, f, y: forwardLabels(clean, idx, { rule }) });
     }

@@ -18,6 +18,11 @@ const SOURCE_TEXT: Record<string, string> = {
   jupiter: "Organic score and holders",
   watch: "Watch list readings (lanes beyond the door)",
   runner_scan: "Jupiter list scans (runner discovery)",
+  static: "Launchpad and paid promotion (one per coin)",
+  regime: "Market backdrop (SOL, DEX volume, narratives)",
+  regime_hist: "Market history (daily)",
+  rugcheck: "Holder structure (RugCheck, one per new coin)",
+  rugcheck_miss: "RugCheck did not know the coin yet (retried)",
 };
 
 export function Overview({ d }: { d: LabData }) {

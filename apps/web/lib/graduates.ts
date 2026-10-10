@@ -10,6 +10,17 @@ interface Queryable {
   query(text: string, params?: unknown[]): Promise<{ rows: any[]; rowCount?: number | null }>;
 }
 
+/** What RugCheck's report said about the holders shortly after the lab first saw the coin (fractions 0..1; lp is 0..100). */
+export interface HolderFacts {
+  holders: number | null;
+  top1: number | null;
+  top10: number | null;
+  insPct: number | null;
+  ins: number | null;
+  lp: number | null;
+  risks: string[];
+}
+
 export interface GraduateRow {
   mint: string;
   symbol: string | null;
@@ -36,6 +47,8 @@ export interface GraduateRow {
   sells1h: number | null;
   readingAgeMin: number | null;
   flags: string[];
+  /** holder structure from RugCheck, when the lab has taken a snapshot of this coin */
+  rc: HolderFacts | null;
 }
 
 export interface GraduatesReport {
@@ -86,6 +99,15 @@ export async function buildGraduates(db: Queryable): Promise<GraduatesReport> {
     )
     .then((r) => r.rows)
     .catch(() => [] as any[]);
+  const rcRows = await db
+    .query(`SELECT DISTINCT ON (mint) mint, payload FROM lab_signals_ts WHERE source = 'rugcheck' AND mint = ANY($1::text[]) ORDER BY mint, taken_at DESC`, [grads.map((g) => g.mint)])
+    .then((r) => r.rows)
+    .catch(() => [] as any[]);
+  const rcBy = new Map<string, HolderFacts>();
+  for (const r of rcRows) {
+    const p = r.payload ?? {};
+    rcBy.set(r.mint, { holders: num(p.holders), top1: num(p.top1), top10: num(p.top10), insPct: num(p.insPct), ins: num(p.ins), lp: num(p.lp), risks: Array.isArray(p.risks) ? p.risks.slice(0, 6) : [] });
+  }
   const byMint = new Map<string, any[]>();
   for (const r of reads) {
     const l = byMint.get(r.mint);
@@ -115,7 +137,8 @@ export async function buildGraduates(db: Queryable): Promise<GraduatesReport> {
       sinceFirst: fate?.firstP && fate.lastP ? fate.lastP / fate.firstP : null, peakMultiple: fate?.peakMultiple ?? null,
       buys1h: last ? at(last.b, 1) : null, sells1h: last ? at(last.s, 1) : null,
       readingAgeMin: last ? Math.round((nowS - last.t) / 60) : null,
-      flags: gradFlags(kind, fate, { creatorLaunches72h: num(g.creator_launches_72h), devBuySol: num(g.initial_buy_sol), gone }),
+      flags: gradFlags(kind, fate, { creatorLaunches72h: num(g.creator_launches_72h), devBuySol: num(g.initial_buy_sol), gone, rc: rcBy.get(g.mint) ?? null }),
+      rc: rcBy.get(g.mint) ?? null,
     });
   }
   return { at: new Date().toISOString(), candidates: rows, summary: summarizeFates(fates), lab, source: "local" };

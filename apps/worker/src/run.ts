@@ -514,7 +514,7 @@ function maybeRunLab(): void {
     try {
       const { runLab } = await import("../../web/lib/lab/tick.js");
       const r = await runLab();
-      log("lab", { ms: r.ms, runners: r.runners, watch: r.watch, lessons: r.lessons, reports: r.reports });
+      log("lab", { ms: r.ms, runners: r.runners, watch: r.watch, rugcheck: r.rugcheck, lessons: r.lessons, reports: r.reports });
     } catch (e) {
       log("lab failed", { error: (e as Error).message });
     } finally {
