@@ -4,6 +4,7 @@ import ElitePageWrapper from "@/components/ElitePageWrapper";
 import { usePolling, useOnScanDone } from "@/lib/usePolling";
 import { RunnersTab, type Runner, type RunnersLab, type RunnersPrior } from "./RunnersTab";
 import { LabLine, type LabOdds } from "./LabLine";
+import { GraduatesTab, type Graduate } from "./GraduatesTab";
 
 interface Candidate {
   id: string;
@@ -14,7 +15,7 @@ interface Candidate {
   discovered_at: string;
 }
 
-type Tab = "cate" | "signals" | "positions" | "trends" | "momentum" | "performance" | "elite-s" | "early" | "entry" | "qualified" | "stats" | "runners";
+type Tab = "cate" | "signals" | "positions" | "trends" | "momentum" | "performance" | "elite-s" | "early" | "entry" | "qualified" | "stats" | "runners" | "graduates";
 
 // The name the learning system and the trade journal use for each Radar tab.
 const JOURNAL_TAB: Partial<Record<Tab, string>> = {
@@ -35,6 +36,8 @@ export default function RadarPageElite() {
   const [cateCoins, setCateCoins] = useState<any[]>([]);
   const [cateSummary, setCateSummary] = useState<any>(null);
   const [buySignals, setBuySignals] = useState<any[]>([]);
+  const [graduates, setGraduates] = useState<Graduate[]>([]);
+  const [gradLab, setGradLab] = useState<{ followed3d: number; held2: { p: number } } | null>(null);
   const [labOdds, setLabOdds] = useState<Record<string, LabOdds>>({});
   const [runners, setRunners] = useState<Runner[]>([]);
   const [runnersLab, setRunnersLab] = useState<RunnersLab | null>(null);
@@ -53,7 +56,7 @@ export default function RadarPageElite() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [scrollPositions, setScrollPositions] = useState<{[key in Tab]: number}>({
     cate: 0, signals: 0, positions: 0, trends: 0, momentum: 0, performance: 0,
-    "elite-s": 0, early: 0, entry: 0, qualified: 0, stats: 0, runners: 0
+    "elite-s": 0, early: 0, entry: 0, qualified: 0, stats: 0, runners: 0, graduates: 0
   });
   const [enteredCoins, setEnteredCoins] = useState<Set<string>>(new Set());
 
@@ -78,6 +81,10 @@ export default function RadarPageElite() {
       }
       if (d.signals) setBuySignals(d.signals.buy_signals || []);
       if (d.labOdds) setLabOdds(d.labOdds.coins || {});
+      if (d.graduates) {
+        setGraduates(d.graduates.candidates || []);
+        setGradLab(d.graduates.lab || null);
+      }
       if (d.runners) {
         setRunners(d.runners.candidates || []);
         setRunnersLab(d.runners.lab || null);
@@ -245,6 +252,13 @@ export default function RadarPageElite() {
             >
               DexScreener
             </button>
+            <a
+              href={`/coin/${c.mint}`}
+              onClick={(e) => e.stopPropagation()}
+              style={{ padding: "4px 8px", background: "#1a1a1f", color: "#30b0c0", border: "1px solid #30b0c0", borderRadius: "4px", fontSize: "10px", fontWeight: 600, textDecoration: "none", whiteSpace: "nowrap", textAlign: "center" }}
+            >
+              Dossier
+            </a>
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -364,6 +378,8 @@ export default function RadarPageElite() {
             )}
           </div>
         );
+      case "graduates":
+        return <GraduatesTab coins={graduates} lab={gradLab} />;
       case "runners":
         return (
           <RunnersTab
@@ -554,6 +570,7 @@ export default function RadarPageElite() {
             <TabButton tab="elite-s" label="⭐ Elite" count={eliteCandidates.length} />
             <TabButton tab="qualified" label="💼 Incubation" count={incubationCandidates.length} />
             <TabButton tab="runners" label="🏃 Runners" count={runners.length} />
+            <TabButton tab="graduates" label="🎓 Graduations" count={graduates.length} />
             <TabButton tab="stats" label="📋 Stats" />
           </div>
 

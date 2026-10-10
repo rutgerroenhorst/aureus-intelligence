@@ -3,6 +3,7 @@ import s from "./lab.module.css";
 import { Note, Section, Stat } from "./parts";
 import { LoopCard } from "./Loop";
 import { Lanes } from "./Lanes";
+import { MarketStrip } from "@/components/MarketStrip";
 import { ago, pct, pctS } from "./format";
 import type { LabData } from "./types";
 
@@ -25,6 +26,7 @@ export function Overview({ d }: { d: LabData }) {
   const h = o.held;
   return (
     <>
+      <MarketStrip />
       <LoopCard d={d} />
       <Section title="What the lab knows" lede="Every coin the system has followed becomes one lesson: how it looked at the first look and at fixed moments after it, and what really happened next. Everything below is computed from those lessons, and every rate comes with its sample size.">
         <ul className={s.list} style={{ marginBottom: 18 }}>

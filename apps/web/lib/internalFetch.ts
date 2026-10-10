@@ -28,6 +28,7 @@ const routes: Record<string, () => Promise<RouteModule>> = {
   "/api/network-sentiment": () => import("@/app/api/network-sentiment/route"),
   "/api/runners": () => import("@/app/api/runners/route"),
   "/api/lab-odds": () => import("@/app/api/lab-odds/route"),
+  "/api/graduates": () => import("@/app/api/graduates/route"),
 };
 
 /**

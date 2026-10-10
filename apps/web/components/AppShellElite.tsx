@@ -26,6 +26,8 @@ const AureusLogo = ({ id = "aGrad" }: { id?: string }) => (
 const NavIcon = ({ type }: { type: string }) => {
   const iconProps = { width: "16", height: "16", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
   switch (type) {
+    case "home":
+      return <svg {...iconProps}><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>;
     case "radar":
       return <svg {...iconProps}><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="2"/></svg>;
     case "elite":
@@ -99,6 +101,7 @@ const primaryNav = [
 ];
 
 const moreNav = [
+  { label: "Home", href: "/home", type: "home" },
   { label: "Stream", href: "/stream", type: "stream" },
   { label: "Learning", href: "/learning", type: "learning" },
   { label: "Forensics", href: "/forensics", type: "forensics" },
@@ -156,6 +159,7 @@ export default function AppShellElite({ children }: AppShellEliteProps) {
   }, [pathname]);
 
   const mainNav = [
+    { label: "Home", href: "/home", type: "home", group: "Core" },
     { label: "Radar", href: "/radar", type: "radar", group: "Core" },
     { label: "Elite", href: "/elite", type: "elite", group: "Core" },
     { label: "Results", href: "/results", type: "results", group: "Core" },

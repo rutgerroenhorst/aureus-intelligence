@@ -1,5 +1,6 @@
 "use client";
 import { useMemo, useState } from "react";
+import { MarketStrip } from "@/components/MarketStrip";
 
 export interface Runner {
   mint: string;
@@ -86,6 +87,7 @@ function Row({ c, onEnter, entered, failed }: { c: Runner; onEnter: (c: Runner) 
             <span key={f} style={{ display: "inline-block", fontSize: 11, padding: "1px 7px", marginRight: 4, borderRadius: 6, border: "1px solid #2a2a2f", color: /fading|sellers/.test(f) ? "#ff9f0a" : "#b4b4c6" }}>{f}</span>
           ))}
         </div>
+        <a href={`/coin/${c.mint}`} style={{ color: "#30b0c0", fontSize: 12, fontWeight: 600, textDecoration: "none", marginLeft: "auto", marginRight: 10 }}>Dossier →</a>
         <button
           onClick={() => onEnter(c)}
           disabled={entered}
@@ -120,6 +122,7 @@ export function RunnersTab({ runners, lab, prior, entered, failedMints, onEnter 
   }, [runners, sort, kind]);
   return (
     <div style={{ padding: 16 }}>
+      <MarketStrip />
       <h3 style={{ color: "#30b0c0", marginBottom: 8 }}>🏃 Runners ({runners.length})</h3>
       <div style={{ fontSize: 12, color: "#b4b4c6", marginBottom: 6, lineHeight: 1.5 }}>
         Coins the other tabs never show because they are older or bigger than the Radar's door allows ($150K, an hour old). They come from Jupiter's free lists of the most organic, most traded and trending coins and have to look healthy: $0.3M to $150M, real liquidity, thousands of holders. HOTBOT was exactly this kind of coin.

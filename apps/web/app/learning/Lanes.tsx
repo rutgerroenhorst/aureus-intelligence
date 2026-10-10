@@ -71,6 +71,38 @@ export function Lanes({ d }: { d: LabData }) {
             ))}
         </div>
       )}
+      {l.pumpAnatomy && l.pumpAnatomy.length > 1 && (
+        <>
+          <h3 style={{ margin: "22px 0 4px", fontSize: 14 }}>Anatomy of pump.fun graduations</h3>
+          <p className={s.small} style={{ margin: "0 0 8px", maxWidth: 820 }}>
+            What pump.fun's event stream knew at the moment each coin graduated, against what the coin did over the next three days. A split only appears when it has at least 8 coins. These are descriptions of what happened, not yet confirmed rules.
+          </p>
+          <div className={s.tableWrap}>
+            <table className={s.table}>
+              <thead>
+                <tr>
+                  <th>Graduations that</th>
+                  <th className={s.num}>Coins</th>
+                  <th className={s.num}>Held 2x</th>
+                  <th className={s.num}>Held 3x</th>
+                  <th className={s.num}>Worth half within a day</th>
+                </tr>
+              </thead>
+              <tbody>
+                {l.pumpAnatomy.map((r) => (
+                  <tr key={r.label}>
+                    <td>{r.label}</td>
+                    <td className={s.num}>{r.n}</td>
+                    <td className={s.num}><RateText r={r.held2} /></td>
+                    <td className={s.num}><RateText r={r.held3} /></td>
+                    <td className={`${s.num} ${s.bad}`}><RateText r={r.halved24} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
       {d.prior && d.prior.groups[0]!.decided >= 10 && (
         <>
           <h3 style={{ margin: "22px 0 4px", fontSize: 14 }}>Until the lanes have data: what coins did after crossing $300K</h3>

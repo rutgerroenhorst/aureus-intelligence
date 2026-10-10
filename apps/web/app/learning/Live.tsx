@@ -24,7 +24,7 @@ function Odds({ r, tone, what }: { r: Rate | null; tone: "good" | "bad"; what: s
   );
 }
 
-const LANE_LABEL: Record<string, string> = { fresh: "Radar", graduate: "too young for the door", runner: "runner" };
+const LANE_LABEL: Record<string, string> = { fresh: "Radar", graduate: "graduate, first hour", runner: "runner" };
 
 export function Live({ d }: { d: LabData }) {
   const live = d.live;
@@ -68,7 +68,7 @@ export function Live({ d }: { d: LabData }) {
             return (
               <div key={c.mint} className={s.liveRow}>
                 <div className={s.liveCoin}>
-                  <b>{c.symbol ?? "?"}</b>
+                  <a href={`/coin/${c.mint}`} style={{ color: "inherit" }}><b>{c.symbol ?? "?"}</b></a>
                   <div className={s.small}>{c.name}</div>
                   {c.lane !== "fresh" && <span className={`${s.tag} ${s.tagGood}`}>{LANE_LABEL[c.lane] ?? c.lane}</span>}
                 </div>
