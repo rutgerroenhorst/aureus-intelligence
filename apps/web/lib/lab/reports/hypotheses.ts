@@ -106,6 +106,20 @@ export const HYPOTHESES: HypothesisDef[] = [
     basis: "Insider networks are the standard sign of a coin whose early holders are one party. RugCheck's report lists them for free; the lab started collecting it a few minutes before this was written down, so only coins first seen after the registration time count (the first eight snapshots belong to coins first seen earlier and are not used). Written down before any coin that counts had its snapshot.",
     unit: "coin", side: (_c, f) => (!f || f.rc_insider_pct == null ? null : f.rc_insider_pct >= 0.05 ? "in" : f.rc_insider_pct < 0.005 ? "out" : null), outcome: "held2", claim: "lower", minPerGroup: 25,
   },
+  {
+    id: "H11-wash-like", lane: "fresh", registeredAt: "2026-10-10T23:50:00Z",
+    title: "Coins where a few wallets make most of the trades hold 2x less often",
+    statement: "Among the Radar's coins, those where the average wallet traded 10 or more times in the hour before the first look (a few wallets making most of the trades) hold 2x within three days less often than coins where the average wallet traded under 3 times.",
+    basis: "Outside research on pump.fun names wash trading (the same few wallets buying and selling to fake volume) as the most common manipulation, and this system found that busy first looks lose half more often than quiet ones. The lab has the figure only for coins seen since its unique-buyer collector started (about 200 so far, about 18 of them above 10), none with a decided window yet. Written down before any coin that counts had run its three days.",
+    unit: "coin", side: (c) => { const v = snapAt(c, 0)?.f.wallet_trades; return !num(v) ? null : v >= 10 ? "in" : v < 3 ? "out" : null; }, outcome: "held2", claim: "lower", minPerGroup: 25,
+  },
+  {
+    id: "H12-independent-buyers", lane: "fresh", registeredAt: "2026-10-10T23:50:00Z",
+    title: "Coins with many different buyers in the first hour hold 2x more often",
+    statement: "Among the Radar's coins, those with 300 or more different buying wallets in the hour before the first look hold 2x within three days more often than coins with under 100.",
+    basis: "Outside research argues that new independent buyers are a stronger sign than raw trade counts or volume. The lab has the figure only for coins seen since its unique-buyer collector started (about 240 so far), none with a decided window yet. Written down before any coin that counts had run its three days.",
+    unit: "coin", side: (c) => { const v = snapAt(c, 0)?.f.uniq_buyers_h1; return !num(v) ? null : v >= 300 ? "in" : v < 100 ? "out" : null; }, outcome: "held2", claim: "higher", minPerGroup: 25,
+  },
 ];
 
 export type HypothesisStatus = "supported" | "contradicted" | "open" | "collecting";

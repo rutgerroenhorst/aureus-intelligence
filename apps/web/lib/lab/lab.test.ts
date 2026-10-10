@@ -17,6 +17,7 @@ import { regimeAt } from "./regime";
 import type { Row } from "./reports/common";
 import { gradFate, gradFlags, gradKind, isHealthy, summarizeFates, type Reading } from "./pump";
 import { rugAt, rugSnapshot } from "./rugcheck";
+import { buildStructure } from "./reports/structure";
 
 /** A path with one reading every `gap` seconds from the given prices; liquidity optional. */
 const path = (prices: number[], gap = 300, liq?: number[]): Obs[] => prices.map((p, i) => ({ t: 1_000_000 + i * gap, p, liq: liq ? liq[i]! : 20_000 }));
@@ -594,5 +595,41 @@ describe("RugCheck holder snapshots", () => {
     expect(rugAt([row], 10_000 - 3600, 0).rc_top1).toBeNull();
     expect(rugAt(undefined, 10_000, 0).rc_holders).toBeNull();
     expect(rugAt([row], 10_000 + 1, 6).rc_lp_locked).toBe(1);
+  });
+});
+
+
+describe("where a coin trades", () => {
+  /** A lesson reduced to what the venue comparison reads: the exchange, the pair's age and the first look's decided outcome. */
+  const coin = (i: number, dex: "pumpswap" | "raydium", ageH: number, lost: boolean, doubled = false): LabCoin =>
+    ({
+      mint: `m${i}`, chain: "solana", candidateId: null, symbol: null, name: null, lane: "fresh", firstSeenAt: 1_000_000 + i, pairCreatedAt: null, firstPrice: 1, firstMcap: 1, firstLiq: 1, lastSeenAt: 2_000_000,
+      observations: 10, phantoms: 0, tags: [], status: "final", outcome: {} as never,
+      snaps: [{ tau: 0, ts: 0, f: { dex_pumpswap: dex === "pumpswap" ? 1 : 0, dex_raydium: dex === "raydium" ? 1 : 0, pair_age_h: ageH }, y: { go15: null, go2: doubled, go3: null, go5: false, collapse6: null, collapse24: lost, fwd24: null, fwd72: null, peak72: 1, ev: lost ? 0.5 : 1.2 } }],
+    }) as unknown as LabCoin;
+  const many = (n: number, dex: "pumpswap" | "raydium", ageH: number, shareLost: number, offset = 0) => Array.from({ length: n }, (_, i) => coin(offset + i, dex, ageH, i / n < shareLost));
+
+  it("raises a finding only when the gap is large, beyond chance, and the same in every age band", () => {
+    const coins = [...many(150, "pumpswap", 3, 0.75, 0), ...many(60, "pumpswap", 10, 0.67, 1000), ...many(130, "raydium", 3, 0.4, 2000), ...many(50, "raydium", 10, 0.25, 3000)];
+    const r = buildStructure(coins);
+    expect(r.venue.finding).not.toBeNull();
+    expect(r.venue.finding!.p).toBeLessThan(0.01);
+    expect(r.venue.groups[0]!.lostHalf.n).toBe(210);
+    expect(r.venue.finding!.text).toContain("PumpSwap");
+  });
+
+  it("stays quiet when the two venues look alike, when a band points the other way, or when there are too few coins", () => {
+    expect(buildStructure([...many(150, "pumpswap", 3, 0.5, 0), ...many(150, "raydium", 3, 0.5, 1000)]).venue.finding).toBeNull();
+    // overall gap but reversed inside the second band
+    const reversed = [...many(150, "pumpswap", 3, 0.8, 0), ...many(60, "pumpswap", 10, 0.2, 1000), ...many(150, "raydium", 3, 0.3, 2000), ...many(60, "raydium", 10, 0.4, 3000)];
+    expect(buildStructure(reversed).venue.finding).toBeNull();
+    expect(buildStructure([...many(40, "pumpswap", 3, 0.9, 0), ...many(40, "raydium", 3, 0.1, 1000)]).venue.finding).toBeNull();
+  });
+
+  it("becomes a decision in the loop", () => {
+    const coins = [...many(150, "pumpswap", 3, 0.75, 0), ...many(60, "pumpswap", 10, 0.67, 1000), ...many(130, "raydium", 3, 0.4, 2000), ...many(50, "raydium", 10, 0.25, 3000)];
+    const structure = buildStructure(coins);
+    const loop = buildLoop({ tabs: { tabs: [], note: "" } as never, rules: { rules: [] }, hypotheses: [], lanes: { groups: [], pumpAnatomy: [], note: "" } as never, structure, coverageH: 24, history: [] });
+    expect(loop.decisions.some((d) => d.id === "venue-pumpswap")).toBe(true);
   });
 });

@@ -190,6 +190,8 @@ organic stats, DexScreener orders, price history, the lab's lesson and odds, wha
 and live-list row links to it. `/home` is a one-screen view for a phone: market, what needs a decision, your open trades against the example
 exit plan, runners, fresh graduations.
 
+Outside research (an AI chat, a paper) is tested on our own coins before anything is built on it: see [RESEARCH_CHECKS.md](RESEARCH_CHECKS.md). It added the venue comparison (PumpSwap against Raydium) and hypotheses H11 and H12.
+
 ## 6. The system loop (top of the Overview)
 
 A system improves itself through a closed loop, not through more analysis: measure, propose one small change, test it on coins it

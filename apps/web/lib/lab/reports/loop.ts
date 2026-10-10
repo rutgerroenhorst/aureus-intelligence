@@ -15,6 +15,7 @@ import type { HypothesisResult, HypothesisStatus } from "./hypotheses";
 import type { LanesReport } from "./lanes";
 import type { NoGoReport } from "./nogo";
 import type { RuleResult } from "./rulesboard";
+import type { StructureReport } from "./structure";
 import type { TabsReport } from "./tabs";
 
 export interface ScoreItem {
@@ -72,6 +73,8 @@ export interface LoopInput {
   lanes: LanesReport;
   /** the plain no-hoper rules searched on earlier coins and checked on later ones (optional so older callers keep working) */
   nogo?: NoGoReport;
+  /** where coins trade and how they end (optional so older callers keep working) */
+  structure?: StructureReport;
   /** hours of the last 24 in which at least one price reading was taken, null when unknown */
   coverageH: number | null;
   history: HistoryPoint[];
@@ -139,6 +142,17 @@ export function buildLoop(input: LoopInput): LoopReport {
     .map((h) => ({ id: h.id, title: h.title, status: h.status, inN: h.forward.inGroup.n, outN: h.forward.outGroup.n, need: h.need, registeredAt: h.registeredAt }));
 
   const decisions: Decision[] = [];
+  const venue = input.structure?.venue.finding;
+  if (venue) {
+    const P = input.structure!.venue.groups[0]!;
+    const R = input.structure!.venue.groups[1]!;
+    decisions.push({
+      id: "venue-pumpswap", level: "consider", title: "Coins on PumpSwap lose half far more often than coins on Raydium",
+      why: "Where a coin trades is the one split of the Radar's coins that needs no threshold and holds in every age band.",
+      evidence: `${pct(P.lostHalf.p)} of ${P.lostHalf.n} PumpSwap coins lost half within a day against ${pct(R.lostHalf.p)} of ${R.lostHalf.n} on Raydium; a 5x was about as likely (${pct(P.held5.p, 1)} against ${pct(R.held5.p, 1)}); the example exit plan averaged ${P.ev == null ? "-" : pct(P.ev - 1)} against ${R.ev == null ? "-" : pct(R.ev - 1)}.`,
+      suggestion: "Show the exchange on the cards, or add a switch that hides PumpSwap coins. It would cut losses without lowering the chance of a big winner, but it also hides coins like HOTBOT. Say if you want either.",
+    });
+  }
   for (const h of input.hypotheses) {
     const inR = h.forward.inGroup.rate;
     const outR = h.forward.outGroup.rate;

@@ -2,6 +2,7 @@ import { loadLabCoins, type LabCoin, type Queryable } from "../builder";
 import { fmtValue, FEATURE_BY_KEY } from "../features";
 import { buildHypotheses, HYPOTHESES } from "./hypotheses";
 import { buildInsights, type InsightsReport } from "./insights";
+import { buildStructure } from "./structure";
 import { buildLanes } from "./lanes";
 import { buildLifecycle } from "./lifecycle";
 import { buildLive } from "./live";
@@ -44,6 +45,8 @@ function headlinesOf(reports: Record<string, any>): Headline[] {
       text: `${ov.coins.total} coins followed${ov.firstSeen ? ` over ${ov.firstSeen.days.toFixed(0)} days` : ""}. Of the ${h.basis} followed for the full 3 days, ${pct(h.x2.p, 1)} held 2x, ${pct(h.x3.p, 1)} held 3x and ${pct(h.x10.p, 1)} held 10x of their first price.`,
     });
   }
+  const venue = reports.structure?.venue?.finding;
+  if (venue) out.push({ kind: "finding", text: venue.text });
   const ins = reports.insights as InsightsReport | undefined;
   const strong = ins?.headlines.filter((h) => h.tier === "strong") ?? [];
   if (strong.length) {
@@ -107,6 +110,7 @@ export async function computeReports(db: Queryable): Promise<ReportMap> {
   const hypotheses = buildHypotheses(all, registered, nowS);
   const live = buildLive(all, trained, models, nowS);
   const lanes = buildLanes(all, watching);
+  const structure = buildStructure(coins);
   const tabs = await buildTabs(db, coins);
   // The loop card: today's scoreboard values are appended to a small daily history so that trends exist without keeping raw reports.
   const cov = await db
@@ -125,7 +129,7 @@ export async function computeReports(db: Queryable): Promise<ReportMap> {
     },
   };
   const history: HistoryPoint[] = [...((prev.rows[0]?.payload?.points ?? []) as HistoryPoint[]).filter((p) => p.day !== today.day), today].slice(-120);
-  const loop = buildLoop({ tabs, rules, hypotheses, lanes, nogo, coverageH, history });
+  const loop = buildLoop({ tabs, rules, hypotheses, lanes, nogo, structure, coverageH, history });
   const reports: Record<string, unknown> = {
     overview,
     insights,
@@ -136,6 +140,7 @@ export async function computeReports(db: Queryable): Promise<ReportMap> {
     hypotheses: { items: hypotheses },
     live,
     lanes,
+    structure,
     tabs,
     loop,
     history: { points: history },
