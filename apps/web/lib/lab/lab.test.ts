@@ -547,6 +547,9 @@ describe("pump.fun graduations: how they end", () => {
     expect(isHealthy("organic", null, null)).toBe(false);
     expect(gradFlags("born", dry, { devBuySol: 85 })).toEqual(["pool drained", "born graduated: the creator bought the whole curve"]);
     expect(gradFlags("organic", empty)).toEqual(["empty pool"]);
+    expect(gradFlags("organic", real, { createToMigrateMin: 1 })).toEqual(["graduated within 2 minutes of launch"]);
+    expect(gradFlags("organic", real, { createToMigrateMin: 30 })).toEqual([]);
+    expect(gradFlags("organic", real, { rc: { top1: 0.31, insPct: 0.12, lp: 20 } })).toEqual(["insider networks hold 12%", "one wallet holds 31%", "liquidity not locked"]);
   });
 });
 

@@ -166,13 +166,15 @@ export function summarizeFates(rows: Array<{ kind: GradKind; fate: GradFate }>):
 export function gradFlags(
   kind: GradKind,
   fate: GradFate | null,
-  extra: { creatorLaunches72h?: number | null; devBuySol?: number | null; gone?: boolean; rc?: { top1: number | null; insPct: number | null; lp: number | null } | null } = {},
+  extra: { creatorLaunches72h?: number | null; devBuySol?: number | null; createToMigrateMin?: number | null; gone?: boolean; rc?: { top1: number | null; insPct: number | null; lp: number | null } | null } = {},
 ): string[] {
   const f: string[] = [];
   if (fate?.drained) f.push("pool drained");
   else if (fate?.empty) f.push("empty pool");
   if (kind === "born") f.push("born graduated: the creator bought the whole curve");
   if (kind === "mayhem") f.push("Mayhem Mode");
+  // the curve filled in under two minutes without the creator buying it all: buyers that fast are rarely independent
+  if (kind === "organic" && extra.createToMigrateMin != null && extra.createToMigrateMin < 2) f.push("graduated within 2 minutes of launch");
   if ((extra.creatorLaunches72h ?? 0) >= 5) f.push(`serial creator (${extra.creatorLaunches72h} launches in 72 h)`);
   if (kind !== "born" && (extra.devBuySol ?? 0) >= 5) f.push(`creator bought ${Math.round(extra.devBuySol ?? 0)} SOL at launch`);
   if (fate?.firstP && fate.lastP && fate.lastP / fate.firstP < 0.5 && !fate.drained) f.push("down more than half since first seen");

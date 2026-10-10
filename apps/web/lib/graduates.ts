@@ -137,7 +137,7 @@ export async function buildGraduates(db: Queryable): Promise<GraduatesReport> {
       sinceFirst: fate?.firstP && fate.lastP ? fate.lastP / fate.firstP : null, peakMultiple: fate?.peakMultiple ?? null,
       buys1h: last ? at(last.b, 1) : null, sells1h: last ? at(last.s, 1) : null,
       readingAgeMin: last ? Math.round((nowS - last.t) / 60) : null,
-      flags: gradFlags(kind, fate, { creatorLaunches72h: num(g.creator_launches_72h), devBuySol: num(g.initial_buy_sol), gone, rc: rcBy.get(g.mint) ?? null }),
+      flags: gradFlags(kind, fate, { creatorLaunches72h: num(g.creator_launches_72h), devBuySol: num(g.initial_buy_sol), createToMigrateMin: num(g.create_to_migrate_min), gone, rc: rcBy.get(g.mint) ?? null }),
       rc: rcBy.get(g.mint) ?? null,
     });
   }
