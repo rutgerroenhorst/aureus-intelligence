@@ -8,7 +8,7 @@ import type { LabCoin } from "../builder";
 import { CLASS_ORDER, type OutcomeClass } from "../outcomes";
 import { primaryTag } from "../narrative";
 import { fisherExact, median, quantile } from "../stats";
-import { rate, type Rate } from "./common";
+import { rate, type Rate, followedFully } from "./common";
 import { CLASS_TEXT } from "./overview";
 
 export interface ClassRow {
@@ -61,7 +61,7 @@ export interface LifecycleReport {
 }
 
 const FULL_H = 72 * 0.95;
-const eligible = (c: LabCoin) => c.outcome.readings >= 8 && c.outcome.ageH >= FULL_H;
+const eligible = (c: LabCoin) => followedFully(c.outcome);
 
 function split(key: string, label: string, cs: LabCoin[]): SplitRow {
   const h = (x: number) => rate(cs.filter((c) => c.outcome.peakHeld.h72 >= x).length, cs.length);

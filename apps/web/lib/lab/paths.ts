@@ -16,6 +16,8 @@ export interface Obs {
   /** pool liquidity in USD at that moment, when known */
   liq: number | null;
   mcap?: number | null;
+  /** the coin stopped being listed (pool drained or delisted): a terminal reading that stands for "nothing more can happen" */
+  dead?: boolean;
 }
 
 const med = (xs: number[]): number => {

@@ -11,6 +11,9 @@ import { aiNameWide } from "./narrative";
 import { buildLanes } from "./reports/lanes";
 import { buildLoop } from "./reports/loop";
 import { buildPrior, crossingIndex, eventOf } from "./reports/prior";
+import { followedFully } from "./reports/common";
+import { staticsAt, type StaticRow } from "./statics";
+import { regimeAt } from "./regime";
 import type { Row } from "./reports/common";
 
 /** A path with one reading every `gap` seconds from the given prices; liquidity optional. */
@@ -387,5 +390,79 @@ describe("runner prior", () => {
     const report = buildPrior([e!, short!]);
     expect(report.groups[0]!.n).toBe(2);
     expect(report.groups[0]!.decided).toBe(1);
+  });
+});
+
+describe("coins that stop being listed", () => {
+  // 3 hours of readings every 5 minutes at 1.0 then a slide to 0.2, then the exchange stops listing it (a dead terminal reading)
+  const path = (dead: boolean): Obs[] => {
+    const out: Obs[] = Array.from({ length: 36 }, (_, k) => ({ t: 1_790_000_000 + k * 300, p: k < 18 ? 1 : 1 - ((k - 18) / 18) * 0.8, liq: k < 30 ? 20_000 : 800, mcap: 100_000 }));
+    if (dead) out.push({ t: out[out.length - 1]!.t + 1800, p: out[out.length - 1]!.p * 1e-4, liq: 0, mcap: 0, dead: true });
+    return out;
+  };
+  it("decides every window as 'did not happen' instead of leaving the coin out", () => {
+    const alive = forwardLabels(path(false), 0, { rule: "auto" })!;
+    expect(alive.go2).toBeNull(); // only 3 hours seen: undecided, as before
+    const dead = forwardLabels(path(true), 0, { rule: "auto" })!;
+    expect(dead.go2).toBe(false);
+    expect(dead.go3).toBe(false);
+    expect(dead.collapse24).toBe(true); // it was worth 0.2 and then nothing
+  });
+
+  it("counts as followed for the whole window, and its outcome is a rug, not 'too early'", () => {
+    const clean = path(true);
+    const o = buildOutcome(clean, { now: clean[clean.length - 1]!.t + 7200, trackingEnded: false })!;
+    expect(o.deadEnd).toBe(true);
+    expect(o.censored).toBe(false);
+    expect(o.cls).toBe("RUG");
+    expect(followedFully(o)).toBe(true);
+    expect(followedFully({ ...o, deadEnd: false })).toBe(false);
+  });
+});
+
+describe("facts about the team and the market, read as of a moment", () => {
+  const row: StaticRow = { lp: "pump.fun", dm: 1, dg: 1, prof: 1_000_660, cto: 1_090_000, ads: [1_020_000, 1_200_000], bo: [[1_030_000, 50], [1_300_000, 100]], at: 2_000_000 };
+  it("never counts anything that was paid after the moment", () => {
+    const early = staticsAt(row, 1_000_300, 1_000_000); // 5 minutes after the pair, before the profile was paid
+    expect(early.paid_profile).toBe(0);
+    expect(early.profile_delay_min).toBeNull();
+    expect(early.boost_amount).toBe(0);
+    expect(early.ad_n).toBe(0);
+    expect(early.cto).toBe(0);
+    const later = staticsAt(row, 1_100_000, 1_000_000);
+    expect(later.paid_profile).toBe(1);
+    expect(later.profile_delay_min).toBeCloseTo(11); // paid 660 s after the pair
+    expect(later.boost_amount).toBe(50); // the 100 boost came after
+    expect(later.boost_n).toBe(1);
+    expect(later.ad_n).toBe(1);
+    expect(later.cto).toBe(1);
+    expect(later.lp_pump).toBe(1);
+    expect(later.lp_other).toBe(0);
+    expect(later.dev_serial).toBe(0);
+  });
+  it("knows nothing when nothing was collected", () => {
+    const none = staticsAt(null, 1_100_000, 1_000_000);
+    expect(Object.values(none).every((v) => v == null)).toBe(true);
+    expect(staticsAt({ ...row, lp: "stonkfun", dm: 12 }, 1_100_000, null).lp_other).toBe(1);
+    expect(staticsAt({ ...row, dm: 12 }, 1_100_000, null).dev_serial).toBe(1);
+  });
+
+  const DAY = 86_400;
+  const t0 = 1_790_000_000 - (1_790_000_000 % DAY); // a UTC midnight
+  const hist = {
+    sol: Array.from({ length: 24 * 12 }, (_, k) => [t0 + k * 7200, 100 * (1 + (k * 7200) / (10 * DAY) / 5)] as [number, number]), // +2% a day
+    dex: Array.from({ length: 12 }, (_, k) => [t0 + k * DAY, k === 9 ? 3e9 : 1e9] as [number, number]), // day 9 is three times the usual
+    at: t0 + 24 * DAY,
+  };
+  it("measures SOL over the previous 24 hours and the last full day's volume against the week before", () => {
+    const r = regimeAt(hist, t0 + 5 * DAY + 3600);
+    expect(r.regime_sol_24h).toBeGreaterThan(1.5);
+    expect(r.regime_sol_24h).toBeLessThan(2.5);
+    expect(regimeAt(hist, t0 + 10 * DAY + 3600).regime_dex_vol).toBeCloseTo(3, 3); // day 9 = 3e9 against 1e9 on the 7 days before it
+    expect(regimeAt(hist, t0 + 5 * DAY).regime_dex_vol).toBeNull(); // not enough days before: no number rather than a guess
+  });
+  it("gives nothing for a moment outside the history it has", () => {
+    expect(regimeAt(hist, t0 + 40 * DAY).regime_sol_24h).toBeNull();
+    expect(regimeAt(null, t0).regime_sol_24h).toBeNull();
   });
 });

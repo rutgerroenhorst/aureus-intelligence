@@ -123,6 +123,40 @@ what the Radar's own coins did after their first reading worth $300K+ with $40K+
 87 such coins, 67 with the whole 72 hours seen: 19% held 2x, 12% held 3x, 65% were worth half or less a day later, and the fixed exit plan
 averaged -25%. Crossing $300K does not make a coin special; the runner lane tests whether looking healthy (organic score, holders) does.
 
+### Free facts per coin (added 2026-10-10, see docs/DATA_SOURCES.md)
+
+- **Static facts** (`lib/lab/statics.ts`, one `static` row per coin): the launchpad (Jupiter) and what the team paid DexScreener for, with times:
+  profile, boosts (with amounts), ads, community takeover. Features `lp_pump`, `lp_other`, `paid_profile`, `profile_delay_min`, `boost_amount`,
+  `boost_n`, `ad_n`, `cto`, read AS OF each snapshot (nothing paid later is counted; tested). Backfilled for every lesson; new coins are
+  filled in a few per round. Developer counts are kept only for coins that were new when checked (an older coin's count would include coins
+  launched after it).
+- **Market backdrop** (`lib/lab/regime.ts`): SOL price, Solana DEX volume per day (DefiLlama, with history so old lessons get it), pump.fun
+  volume, fear and greed, DexScreener's trending narratives. Features `regime_sol_24h`, `regime_dex_vol`; the "Market now" strip on the
+  Learning overview, Home and the Runners/Graduations tabs.
+- **Jupiter organic flow**: net buyers and organic volume are now collected with the same call (`net_buyer_share`, `organic_vol_share`, for
+  coins seen from now on).
+
+### pump.fun's event stream (laptop only)
+
+`apps/worker/src/pumpFeed.ts` holds PumpPortal's free websocket (one connection in the whole system, guarded by a database lock): every
+launch goes to `pump_launches` (72 h), every graduation to `pump_graduates` with what was known (minutes from launch to graduation, the
+creator's first buy, Mayhem Mode, the creator's launches in the 72 h before) and into the watch list from minute 0 (lane `graduate`, reason
+`pump_migration`; polled every 2 minutes at first, then thinning out; watched 5 days). The long-running worker starts it (`PUMP_FEED=0`
+switches it off); `scripts/lab-daemon.ts` runs the same stream plus the lab rounds when the worker is not running. About a thousand
+graduations a day, and a large share graduate within minutes because the creator bought the whole curve (85 SOL): those are split out in the
+"Anatomy of pump.fun graduations" table once enough coins have run their three days, and hypotheses H7 (born graduated), H8 (Mayhem Mode) and
+H9 (one-off creators) were written down before any of them had.
+
+A watched coin that the exchange stops listing is closed with a terminal "dead" reading: every window of such a coin is decided as "did not
+happen" and it counts as followed for the whole window (leaving dead coins out would make the survivors look like everybody).
+
+### Pages
+
+`/coin/<mint>` is a dossier for any coin from free sources, each reported on its own (RugCheck insider networks and liquidity lock, Jupiter
+organic stats, DexScreener orders, price history, the lab's lesson and odds, what the stream knew, your own entry); every Radar card, runner
+and live-list row links to it. `/home` is a one-screen view for a phone: market, what needs a decision, your open trades against the example
+exit plan, runners, fresh graduations.
+
 ## 6. The system loop (top of the Overview)
 
 A system improves itself through a closed loop, not through more analysis: measure, propose one small change, test it on coins it
@@ -174,17 +208,27 @@ phone) · Life of a coin (hazard and survival, narrative/venue/hour splits) · M
 beat chance) · Hypotheses (registered ideas and their forward evidence) · Case: HOTBOT (the coin the door could not let in, with its market cap against the door) · Tabs (how each Radar tab's listings did, plus the
 legacy Self-Optimizer).
 
-## 9. What it says today (2026-10-10, 1,420 coins over 28 days; read the page for the current numbers)
+## 9. What it says today (2026-10-10, 1,439 coins over 28 days; read the page for the current numbers)
 
-- Of the 463 coins followed for the full 3 days, 19% held 2x, 11% held 3x, 3.2% held 10x.
-- No listing-time feature predicts winners strongly. Volume, trades and liquidity ratios drive **both** doubling and crashing:
-  a busy coin is more likely to double and more likely to die.
-- Crash risk is predictable to a degree (AUC 0.68-0.71 at 1, 3 and 6 h, valid on later coins); doubling only at 6 h (AUC 0.71, 17
-  test positives, wide interval).
-- No plain "no-hoper" rule held up on later coins; the system's one-wallet rule is neutral to costly; the dump gate protects at
-  some moments and costs winners at others (see the scoreboard).
-- Break-even for a blind-entry strategy needs an AUC of 0.70-0.75; the lab's best models are at the edge of that, so the lab's
-  job today is to raise the cost of bad coins, not to promise winners.
+- Of the 1,040 coins followed for the full 3 days, **16.1% held 2x, 9.7% held 3x, 5.8% held 5x and 2.7% held 10x** of their first price.
+  Before the candle repair completed the tails of the 649 coins the scanner had dropped, the same figures read 19.0%, 11.0%, 6.0% and
+  3.2% on only 463 coins: leaving the dropped coins out made the survivors look like everybody.
+- No listing-time feature predicts winners strongly. Volume, trades and liquidity ratios drive **both** doubling and crashing: a busy
+  coin is more likely to double and more likely to die. Crash risk is predictable (AUC 0.74, 0.69 and 0.67 at 1, 3 and 6 h, valid on later
+  coins); doubling only at 6 h (AUC 0.68, 31 test positives, wide interval).
+- The production dump gate ("fell 80% in 24 hours") is **costly at +6 h**: the coins it hides did better than the ones it lets through
+  (173 coins). One plain no-hoper rule held up on later coins. Break-even for a blind-entry strategy needs an AUC of 0.70-0.75.
+- Coins past $300K with real liquidity are not special: of 67 (whole window seen) 19% held 2x and 65% were worth half within a day.
+
+### A data-quality incident, kept here so it is not repeated
+
+The first candle repair (hourly closes from GeckoTerminal for coins the scanner dropped) merged series in the wrong units for coins whose
+pool lists ANOTHER token first (GeckoTerminal returns the first token's price unless asked for `token=<mint>`): dead coins became
+"moonshots" (173 of them, median 270,000x their first price) and the headline said 17% of coins held 10x. It was caught by a unit check
+on the first rebuild, before anything was published. Fixed by: always asking for `token=<mint>`; a plausibility guard (the first
+close after the scanner's last reading must be within 20x of that reading, checked when fetching and again when building); a forced
+rebuild option (`LAB_FORCE=1`, because the "keep the richer lesson" rule also protects a lesson built from bad data); and re-fetching.
+Cross-checked against GeckoTerminal's daily highs for the biggest winners afterwards. A series that fails the guard is refused, never merged.
 
 ## 10. Known limits
 

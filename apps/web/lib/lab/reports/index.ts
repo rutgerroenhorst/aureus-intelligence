@@ -95,7 +95,7 @@ export async function computeReports(db: Queryable): Promise<ReportMap> {
   const watching: Record<string, number> = {};
   const w = await db.query(`SELECT lane, reason, count(*)::int AS n FROM lab_watch WHERE active GROUP BY 1, 2`).catch(() => ({ rows: [] as any[] }));
   for (const r of w.rows) {
-    const id = r.lane === "graduate" ? "young" : r.reason === "too_big" ? "big" : "runners";
+    const id = r.lane === "graduate" ? (r.reason === "pump_migration" ? "pump" : "young") : r.reason === "too_big" ? "big" : "runners";
     watching[id] = (watching[id] ?? 0) + r.n;
   }
   const overview = buildOverview(coins);

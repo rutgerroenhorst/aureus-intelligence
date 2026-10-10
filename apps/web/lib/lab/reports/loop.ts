@@ -101,7 +101,7 @@ export function scoreValues(input: Pick<LoopInput, "tabs" | "lanes" | "coverageH
   const baseDoubled = wmean((x) => x.baseline.go2);
   const baseHalved = wmean((x) => x.baseline.collapse24);
   const radar = input.lanes.groups.find((g) => g.id === "fresh");
-  const away = input.lanes.groups.filter((g) => g.id === "young" || g.id === "big" || g.id === "runners");
+  const away = input.lanes.groups.filter((g) => g.id === "young" || g.id === "pump" || g.id === "big" || g.id === "runners");
   const awayBasis = away.reduce((a, g) => a + g.basis, 0);
   const awayHeld3 = away.reduce((a, g) => a + g.held3.k, 0);
   return { doubled, halved, baseDoubled, baseHalved, radar, awayBasis, awayHeld3, coverageH: input.coverageH };

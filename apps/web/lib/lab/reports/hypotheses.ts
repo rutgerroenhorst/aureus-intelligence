@@ -8,7 +8,7 @@ import type { LabCoin } from "../builder";
 import type { Features } from "../features";
 import { bootDiffCi, fisherExact, mean } from "../stats";
 import { aiNameWide } from "../narrative";
-import { num, rate, type Rate } from "./common";
+import { num, rate, type Rate, followedFully } from "./common";
 
 type Side = "in" | "out" | null;
 
@@ -78,6 +78,27 @@ export const HYPOTHESES: HypothesisDef[] = [
     basis: "From HOTBOT, a coin the user holds that went about 10x: an AI-agent trading product, found by hand. Among the Radar's own coins the AI-or-tool-name effect only showed after the winners were known (H1). This tests the idea on a different population and with a wider name rule, written down before any runner coin had been collected.",
     unit: "coin", side: (c) => (aiNameWide(c.name, c.symbol) ? "in" : "out"), outcome: "held2", claim: "higher", minPerGroup: 25,
   },
+  {
+    id: "H7-born-graduated", lane: "graduate", registeredAt: "2026-10-10T14:26:00Z",
+    title: "Coins that graduate within two minutes of launch do worse",
+    statement: "pump.fun graduations that happen within 2 minutes of launch because the creator bought the whole bonding curve (50 SOL or more in the launch transaction) hold 2x within three days less often than ordinary graduations (more than 2 minutes, creator buy under 50 SOL).",
+    basis: "Seen in the first half hour of pump.fun's event stream: every graduation whose launch the stream also saw was of this kind (an 85 SOL creator buy), and several were worth $370K-490K ten minutes later, which is not how an organic graduation looks. Written down before any of these coins had run their three days.",
+    unit: "coin", side: (_c, f) => (!f || !num(f.grad_minutes) && f.grad_minutes !== 0 ? null : f.grad_minutes! < 2 && (f.dev_buy_sol ?? 0) >= 50 ? "in" : f.grad_minutes! >= 2 && (f.dev_buy_sol ?? 0) < 50 ? "out" : null), outcome: "held2", claim: "lower", minPerGroup: 25,
+  },
+  {
+    id: "H8-mayhem", lane: "graduate", registeredAt: "2026-10-10T14:26:00Z",
+    title: "Mayhem Mode graduations hold 2x less often",
+    statement: "Graduations of coins launched in pump.fun's Mayhem Mode hold 2x within three days less often than graduations of coins launched without it.",
+    basis: "Mayhem Mode puts an AI trading agent into a coin's first 24 hours with an extra billion tokens, so early volume and trade counts are partly the agent's. About 22% of launches use it. The lab suspects such coins look busier than they are. Written down before any had run their three days.",
+    unit: "coin", side: (_c, f) => (!f || f.pump_mayhem == null ? null : f.pump_mayhem === 1 ? "in" : "out"), outcome: "held2", claim: "lower", minPerGroup: 25,
+  },
+  {
+    id: "H9-one-off-creators", lane: "graduate", registeredAt: "2026-10-10T14:26:00Z",
+    title: "Graduations from one-off creators hold 2x more often than from serial launchers",
+    statement: "Coins whose creator launched no other coin in the 72 hours before hold 2x within three days more often than coins whose creator launched five or more.",
+    basis: "About one creator in five launches several coins within minutes of each other; a serial launcher is playing many tickets, a one-off is putting one project out (HOTBOT's creator launched only that coin). Written down before any graduation had run its three days.",
+    unit: "coin", side: (_c, f) => (!f || f.creator_launches == null ? null : f.creator_launches <= 1 ? "in" : f.creator_launches >= 5 ? "out" : null), outcome: "held2", claim: "higher", minPerGroup: 25,
+  },
 ];
 
 export type HypothesisStatus = "supported" | "contradicted" | "open" | "collecting";
@@ -109,7 +130,7 @@ function itemsOf(def: HypothesisDef, coins: LabCoin[]): Item[] {
   for (const c of coins) {
     if (c.lane !== (def.lane ?? "fresh")) continue;
     if (def.unit === "coin") {
-      if (c.outcome.readings < 8 || c.outcome.ageH < 72 * 0.95) continue;
+      if (!followedFully(c.outcome)) continue;
       const side = def.side(c, snapAt(c, 0)?.f ?? null);
       if (!side) continue;
       const hit = def.outcome === "held3" ? c.outcome.peakHeld.h72 >= 3 : def.outcome === "held2" ? c.outcome.peakHeld.h72 >= 2 : null;

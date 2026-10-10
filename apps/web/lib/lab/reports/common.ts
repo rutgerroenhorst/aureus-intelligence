@@ -73,6 +73,12 @@ export function rateOf(rows: Row[], t: Target): Rate {
 
 export const evOf = (rows: Row[]): number[] => rows.map((r) => r.y.ev).filter((x): x is number => x != null);
 
+/**
+ * Followed for the whole 72 hours with enough readings to judge, or ended for good (the pool was drained or delisted: nothing more can
+ * happen to it, so leaving it out would make the survivors look like everybody).
+ */
+export const followedFully = (o: { readings: number; ageH: number; deadEnd?: boolean }): boolean => (o.deadEnd === true && o.readings >= 3) || (o.readings >= 8 && o.ageH >= 72 * 0.95);
+
 export const num = (v: number | null | undefined): v is number => v != null && Number.isFinite(v);
 
 export function isoDay(epochS: number): string {

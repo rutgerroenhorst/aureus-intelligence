@@ -17,15 +17,18 @@ const HEADERS = { accept: "application/json", "user-agent": "Aureus-Lab/1.0" };
 const HOSTED = Boolean(process.env.VERCEL);
 
 /** How many coins may be watched at once, and how many new ones one pass may add (the hosted database is small). */
-export const WATCH_CAP = HOSTED ? 120 : 600;
+export const WATCH_CAP = HOSTED ? 120 : Number(process.env.LAB_WATCH_CAP ?? 2500);
 const MAX_NEW_PER_SCAN = HOSTED ? 12 : 30;
 export const WATCH_DAYS = 7;
-/** Minutes between two readings of one coin: first 6 hours, then up to 48 hours, then the rest of the week. */
-const POLL_EVERY_MIN = HOSTED ? [20, 60, 180] : [8, 30, 120];
+/** Minutes between two readings of one coin by age: first hour, up to 6 hours, up to 24 hours, up to 48 hours, then the rest. */
+const POLL_EVERY_MIN = HOSTED ? [20, 20, 60, 120, 180] : [8, 8, 30, 60, 120];
+/** pump.fun graduations are the busiest lane (about a thousand a day): denser at the start, where the first hour is the question, sparser later. */
+const POLL_EVERY_MIN_GRAD = HOSTED ? [20, 20, 60, 120, 180] : [5, 15, 45, 120, 180];
 /** How often Jupiter's lists are read. */
 const RUNNER_SCAN_EVERY_MIN = HOSTED ? 50 : 20;
-/** A coin the exchange has not listed this many polls in a row is dropped from the watch list. */
+/** A coin the exchange stops listing for this many polls in a row is closed (dead); one it has never listed gets longer (new pairs take a while to be indexed). */
 const GONE_AFTER = 4;
+const NEVER_LISTED_AFTER = 12;
 
 const fin = (x: unknown): number | null => {
   const n = typeof x === "number" ? x : x == null ? NaN : Number(x);
@@ -191,14 +194,21 @@ export async function collectWatch(db: Queryable, opts: { maxCalls?: number } = 
       WHERE w.active AND EXISTS (SELECT 1 FROM tokens t JOIN candidates c ON c.token_id = t.id WHERE t.mint = w.mint)`,
   );
   const expired = await db.query(`UPDATE lab_watch SET active = false, note = COALESCE(note, 'done') WHERE active AND watch_until < now()`);
+  const g = POLL_EVERY_MIN_GRAD;
+  const o = POLL_EVERY_MIN;
   const { rows } = await db.query(
     `SELECT mint FROM lab_watch w
       WHERE w.active AND (w.last_polled_at IS NULL OR w.last_polled_at < now() - make_interval(mins =>
-              CASE WHEN w.first_seen_at > now() - interval '6 hours' THEN $1::int
-                   WHEN w.first_seen_at > now() - interval '48 hours' THEN $2::int ELSE $3::int END))
+              CASE WHEN w.reason = 'pump_migration' THEN
+                     CASE WHEN w.first_seen_at > now() - interval '1 hour' THEN $1::int WHEN w.first_seen_at > now() - interval '6 hours' THEN $2::int
+                          WHEN w.first_seen_at > now() - interval '24 hours' THEN $3::int WHEN w.first_seen_at > now() - interval '48 hours' THEN $4::int ELSE $5::int END
+                   ELSE
+                     CASE WHEN w.first_seen_at > now() - interval '1 hour' THEN $6::int WHEN w.first_seen_at > now() - interval '6 hours' THEN $7::int
+                          WHEN w.first_seen_at > now() - interval '24 hours' THEN $8::int WHEN w.first_seen_at > now() - interval '48 hours' THEN $9::int ELSE $10::int END
+              END))
       ORDER BY w.last_polled_at NULLS FIRST, w.first_seen_at DESC
-      LIMIT $4`,
-    [POLL_EVERY_MIN[0], POLL_EVERY_MIN[1], POLL_EVERY_MIN[2], (opts.maxCalls ?? 5) * 30],
+      LIMIT $11`,
+    [g[0], g[1], g[2], g[3], g[4], o[0], o[1], o[2], o[3], o[4], (opts.maxCalls ?? 5) * 30],
   );
   const mints: string[] = rows.map((r) => r.mint);
   const out: Array<{ mint: string; payload: unknown }> = [];
@@ -250,9 +260,10 @@ export async function collectWatch(db: Queryable, opts: { maxCalls?: number } = 
   if (goneNow.length) {
     const r = await db.query(
       `UPDATE lab_watch SET last_polled_at = now(), polls = polls + 1, gone_polls = gone_polls + 1,
-              active = (gone_polls + 1 < $2::int), note = CASE WHEN gone_polls + 1 >= $2::int THEN 'gone' ELSE note END
+              active = (gone_polls + 1 < CASE WHEN polls = gone_polls THEN $3::int ELSE $2::int END),
+              note = CASE WHEN gone_polls + 1 >= CASE WHEN polls = gone_polls THEN $3::int ELSE $2::int END THEN CASE WHEN polls = gone_polls THEN 'never_listed' ELSE 'gone' END ELSE note END
         WHERE mint = ANY($1::text[]) RETURNING active`,
-      [goneNow, GONE_AFTER],
+      [goneNow, GONE_AFTER, NEVER_LISTED_AFTER],
     );
     closed = r.rows.filter((x) => !x.active).length;
   }

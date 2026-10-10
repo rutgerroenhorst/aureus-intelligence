@@ -29,6 +29,9 @@ if (fromUrl === toUrl) {
 const from = new pg.Pool({ connectionString: fromUrl, max: 2 });
 const to = new pg.Pool({ connectionString: toUrl, max: 2, statement_timeout: 120_000 });
 const PAGE = 60;
+/** The laptop follows far more coins in the lanes beyond the door than the hosted database should hold: only the newest few per lane travel. */
+const LANE_CAP = Number(process.env.LAB_PUSH_LANE_CAP ?? 400);
+const ELIGIBLE = `(l.lane = 'fresh' OR l.mint IN (SELECT mint FROM (SELECT mint, row_number() OVER (PARTITION BY lane ORDER BY first_seen_at DESC) AS rn FROM lab_coins WHERE lane <> 'fresh') x WHERE rn <= ${LANE_CAP}))`;
 
 async function main() {
   const t0 = Date.now();
@@ -60,7 +63,7 @@ async function main() {
   let seen = 0;
   let written = 0;
   for (;;) {
-    const { rows } = await from.query(`SELECT to_jsonb(l) AS j, l.mint FROM lab_coins l WHERE l.mint > $1 ORDER BY l.mint LIMIT ${PAGE}`, [last]);
+    const { rows } = await from.query(`SELECT to_jsonb(l) AS j, l.mint FROM lab_coins l WHERE l.mint > $1 AND ${ELIGIBLE} ORDER BY l.mint LIMIT ${PAGE}`, [last]);
     if (!rows.length) break;
     last = rows[rows.length - 1].mint;
     const r = await to.query(
@@ -79,6 +82,27 @@ async function main() {
     if ((seen / PAGE) % 5 === 0 || rows.length < PAGE) console.log(`  ${seen} lessons read, ${written} written`);
   }
   console.log(`lessons: ${seen} read, ${written} written, ${seen - written} kept (target already had a more complete one)`);
+
+  // what the team paid for / the launchpad, per coin (one row each), and the latest market backdrop: the lessons' features were built from them
+  const statics = await from.query(`SELECT s.mint, s.taken_at, s.payload FROM lab_signals_ts s JOIN lab_coins l ON l.mint = s.mint WHERE s.source = 'static' AND ${ELIGIBLE}`);
+  let staticWritten = 0;
+  for (let i = 0; i < statics.rows.length; i += 400) {
+    const r = await to.query(
+      `INSERT INTO lab_signals_ts (mint, source, taken_at, payload)
+       SELECT v.mint, 'static', v.taken_at, v.payload FROM jsonb_to_recordset($1::jsonb) AS v(mint text, taken_at timestamptz, payload jsonb)
+        WHERE NOT EXISTS (SELECT 1 FROM lab_signals_ts x WHERE x.mint = v.mint AND x.source = 'static')`,
+      [JSON.stringify(statics.rows.slice(i, i + 400))],
+    );
+    staticWritten += r.rowCount ?? 0;
+  }
+  console.log(`static facts: ${statics.rows.length} read, ${staticWritten} written`);
+  for (const src of ["regime_hist", "regime"]) {
+    const r = await from.query(`SELECT mint, taken_at, payload FROM lab_signals_ts WHERE source = $1 ORDER BY taken_at DESC LIMIT 1`, [src]);
+    if (r.rows[0]) {
+      await to.query(`INSERT INTO lab_signals_ts (mint, source, taken_at, payload) VALUES ($1, $2, $3, $4::jsonb)`, [r.rows[0].mint, src, r.rows[0].taken_at, JSON.stringify(r.rows[0].payload)]);
+      await to.query(`DELETE FROM lab_signals_ts WHERE source = $1 AND taken_at < $2`, [src, r.rows[0].taken_at]);
+    }
+  }
 
   if (process.env.LAB_REPORTS) {
     const reports = await computeReports(to);

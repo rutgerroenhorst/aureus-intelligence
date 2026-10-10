@@ -3,6 +3,7 @@
  *
  *   corepack pnpm exec tsx scripts/lab-build.ts            # laptop database (DATABASE_URL, default localhost)
  *   LAB_REPORTS_ONLY=1 corepack pnpm exec tsx scripts/lab-build.ts   # only recompute the reports from the stored lessons
+ *   LAB_FORCE=1 corepack pnpm exec tsx scripts/lab-build.ts           # replace every stored lesson, even with a poorer one (after fixing bad data)
  *
  * The laptop database holds a month of history; the hosted one keeps 7 days. Run this on the laptop, then copy the
  * lessons across with scripts/lab-push.ts so the hosted site starts with the same depth.
@@ -26,7 +27,7 @@ async function main() {
     let skipped = 0;
     for (let i = 0; i < cands.length; i += batch) {
       const { coins, skipped: sk } = await buildCoins(pool, cands.slice(i, i + batch), now);
-      built += await saveCoins(pool, coins, source);
+      built += await saveCoins(pool, coins, source, { force: Boolean(process.env.LAB_FORCE) });
       skipped += sk.length;
       if ((i / batch) % 5 === 4 || i + batch >= cands.length) console.log(`  ${Math.min(i + batch, cands.length)}/${cands.length}  built ${built}  skipped ${skipped}  ${((Date.now() - t0) / 1000).toFixed(0)} s`);
     }

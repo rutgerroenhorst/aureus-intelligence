@@ -1,7 +1,7 @@
 import type { LabCoin } from "../builder";
 import { CLASS_ORDER, type OutcomeClass } from "../outcomes";
 import { median } from "../stats";
-import { rate, type Rate } from "./common";
+import { rate, type Rate, followedFully } from "./common";
 
 export const CLASS_TEXT: Record<OutcomeClass, { label: string; definition: string }> = {
   MOONSHOT: { label: "Moonshot", definition: "Held 10x or more (the price stayed there about half an hour)." },
@@ -30,7 +30,7 @@ export interface OverviewReport {
 export function buildOverview(coins: LabCoin[]): OverviewReport {
   const byCls = new Map<OutcomeClass, number>();
   for (const c of coins) byCls.set(c.outcome.cls, (byCls.get(c.outcome.cls) ?? 0) + 1);
-  const full = coins.filter((c) => c.outcome.readings >= 8 && c.outcome.ageH >= 72 * 0.95);
+  const full = coins.filter((c) => followedFully(c.outcome));
   const held = (x: number) => rate(full.filter((c) => c.outcome.peakHeld.h72 >= x).length, full.length);
   const firsts = coins.map((c) => c.firstSeenAt);
   const from = firsts.length ? Math.min(...firsts) : 0;

@@ -15,7 +15,7 @@ import type { Queryable } from "./builder";
 
 const HEADERS = { accept: "application/json", "user-agent": "Aureus-Lab/1.0" };
 
-async function getJson(url: string, headers: Record<string, string> = {}, timeoutMs = 15_000, tries = 2): Promise<any | null> {
+export async function getJson(url: string, headers: Record<string, string> = {}, timeoutMs = 15_000, tries = 2): Promise<any | null> {
   for (let attempt = 0; attempt < tries; attempt++) {
     try {
       const res = await fetch(url, { headers: { ...HEADERS, ...headers }, signal: AbortSignal.timeout(timeoutMs) });
@@ -32,7 +32,7 @@ async function getJson(url: string, headers: Record<string, string> = {}, timeou
   return null;
 }
 
-const fin = (x: unknown): number | null => {
+export const fin = (x: unknown): number | null => {
   const n = typeof x === "number" ? x : x == null ? NaN : Number(x);
   return Number.isFinite(n) ? n : null;
 };
@@ -54,13 +54,26 @@ const SCANNED = `
    WHERE w.pool_address IS NOT NULL
      AND NOT EXISTS (SELECT 1 FROM tokens t JOIN candidates c ON c.token_id = t.id WHERE t.mint = w.mint)`;
 
-async function insertRows(db: Queryable, rows: Array<{ mint: string; source: string; payload: unknown }>): Promise<void> {
+export async function insertRows(db: Queryable, rows: Array<{ mint: string; source: string; payload: unknown }>): Promise<void> {
   if (!rows.length) return;
   await db.query(
     `INSERT INTO lab_signals_ts (mint, source, payload)
      SELECT m, s, p::jsonb FROM unnest($1::text[], $2::text[], $3::text[]) AS v(m, s, p)`,
     [rows.map((r) => r.mint), rows.map((r) => r.source), rows.map((r) => JSON.stringify(r.payload))],
   );
+}
+
+/**
+ * Do these hourly closes carry the same price units as the scanner's last reading of the coin? The first close after the last
+ * reading must be within a factor of 20 of it in either direction (a real move in the hour after the scanner's last look is far smaller).
+ * A series for the pool's OTHER token (SOL at $100, or the other memecoin of a pair, against a coin at $0.00004) is typically off by a
+ * factor of 100 or millions and is refused. Checked with a 300 bound first, which let one pair at 213x through.
+ */
+export function candlesPlausible(lastPrice: number | null | undefined, candles: Array<[number, number]>): boolean {
+  if (!candles.length) return true;
+  if (lastPrice == null || !(lastPrice > 0)) return true; // nothing to compare with: accept (the builder compares against the path it has)
+  const ratio = candles[0]![1] / lastPrice;
+  return ratio <= 20 && ratio >= 1 / 20;
 }
 
 /** Coins the scanner no longer follows, still inside their first 100 hours, without a reading in the last 55 minutes (hourly is enough: paths are judged with the sparse-readings rule). */
@@ -165,6 +178,8 @@ export async function collectJupiter(db: Queryable, opts: { maxCalls?: number } 
         payload: {
           organic_score: fin(t.organicScore), holders: fin(t.holderCount), organic_buyers_h24: fin(t.stats24h?.numOrganicBuyers),
           traders_h24: fin(t.stats24h?.numTraders), traders_h1: fin(t.stats1h?.numTraders), holder_change_24h: fin(t.stats24h?.holderChange),
+          net_buyers_h24: fin(t.stats24h?.numNetBuyers), buy_vol_h24: fin(t.stats24h?.buyVolume), sell_vol_h24: fin(t.stats24h?.sellVolume),
+          org_buy_vol_h24: fin(t.stats24h?.buyOrganicVolume), org_sell_vol_h24: fin(t.stats24h?.sellOrganicVolume),
           dev_mints: fin(t.audit?.devMints), dev_migrations: fin(t.audit?.devMigrations), top_holders_pct: fin(t.audit?.topHoldersPercentage),
           launchpad: t.launchpad ?? null,
         },
@@ -182,7 +197,8 @@ export async function collectJupiter(db: Queryable, opts: { maxCalls?: number } 
  */
 export async function repairWithCandles(db: Queryable, opts: { limit: number; delayMs: number; onProgress?: (done: number, total: number) => void }): Promise<{ done: number; empty: number; failed: number }> {
   const { rows } = await db.query(
-    `SELECT l.mint, s.pool_address, EXTRACT(EPOCH FROM l.last_seen_at)::float8 AS last_seen
+    `SELECT l.mint, s.pool_address, EXTRACT(EPOCH FROM l.last_seen_at)::float8 AS last_seen,
+            (SELECT pr.price_usd::float8 FROM prices pr JOIN pools po ON po.id = pr.pool_id WHERE po.pool_address = s.pool_address ORDER BY pr.observed_at DESC LIMIT 1) AS last_price
        FROM lab_coins l JOIN (${SCANNED}) s ON s.mint = l.mint
       WHERE l.outcome->>'censored' = 'true' AND l.first_seen_at > now() - interval '40 days'
         AND NOT EXISTS (SELECT 1 FROM lab_signals_ts s WHERE s.mint = l.mint AND s.source = 'candle_tail')
@@ -195,7 +211,7 @@ export async function repairWithCandles(db: Queryable, opts: { limit: number; de
   let failed = 0;
   for (const r of rows) {
     const json = await getJson(
-      `https://api.geckoterminal.com/api/v2/networks/solana/pools/${r.pool_address}/ohlcv/hour?aggregate=1&limit=1000&currency=usd`,
+      `https://api.geckoterminal.com/api/v2/networks/solana/pools/${r.pool_address}/ohlcv/hour?aggregate=1&limit=1000&currency=usd&token=${r.mint}`,
       { accept: "application/json;version=20230302" }, 25_000, 4,
     );
     if (json === null) {
@@ -208,7 +224,9 @@ export async function repairWithCandles(db: Queryable, opts: { limit: number; de
         .filter((c) => c[0] > r.last_seen && c[0] <= r.last_seen + 5 * 86400 && c[1] > 0)
         .sort((a, b) => a[0] - b[0]);
       if (!candles.length) empty++;
-      await insertRows(db, [{ mint: r.mint, source: "candle_tail", payload: { candles } }]);
+      // A series in other units (the pool's other token, e.g. SOL at $100) would turn a dead coin into a "moonshot": refuse it.
+      const bad = candles.length > 0 && !candlesPlausible(r.last_price, candles);
+      await insertRows(db, [{ mint: r.mint, source: "candle_tail", payload: bad ? { candles: [], bad: true } : { candles } }]);
       done++;
     }
     opts.onProgress?.(done + failed, rows.length);

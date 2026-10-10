@@ -31,7 +31,7 @@ export interface TurnedAway {
 }
 
 /** How many coins the lab keeps under watch at once (hosted: the free database is small). */
-const ACTIVE_CAP = process.env.VERCEL ? 120 : 600;
+const ACTIVE_CAP = process.env.VERCEL ? 120 : Number(process.env.LAB_WATCH_CAP ?? 2500);
 const MAX_NEW_PER_PASS = 25;
 /** A coin is watched for this long from the moment it is first seen (the lab's windows need 24 h + 72 h). */
 const WATCH_DAYS = 7;

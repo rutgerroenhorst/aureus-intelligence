@@ -56,6 +56,12 @@ export interface Signals {
   organic_score?: number | null;
   holders?: number | null;
   organic_buyers_h24?: number | null;
+  traders_h24?: number | null;
+  net_buyers_h24?: number | null;
+  buy_vol_h24?: number | null;
+  sell_vol_h24?: number | null;
+  org_buy_vol_h24?: number | null;
+  org_sell_vol_h24?: number | null;
 }
 
 export type FeatureValue = number | null;
@@ -70,6 +76,10 @@ export interface SnapInput {
   enr: Enrich | null;
   tags: string[];
   signals?: Signals | null;
+  /** launchpad, developer and paid-promotion facts as they stood at this moment (lib/lab/statics.ts) */
+  statics?: Record<string, number | null> | null;
+  /** the market around the coin at this moment (lib/lab/regime.ts) */
+  regime?: Record<string, number | null> | null;
 }
 
 const fin = (x: number | null | undefined): number | null => (x != null && Number.isFinite(x) ? x : null);
@@ -172,7 +182,14 @@ export function buildFeatures(inp: SnapInput): Features {
     wallet_trades: walletTrades,
     organic_score: fin(sig?.organic_score),
     holders: fin(sig?.holders),
+    net_buyer_share: sig && sig.net_buyers_h24 != null && sig.traders_h24 != null && sig.traders_h24 > 0 ? sig.net_buyers_h24 / sig.traders_h24 : null,
+    organic_vol_share:
+      sig && sig.org_buy_vol_h24 != null && sig.org_sell_vol_h24 != null && sig.buy_vol_h24 != null && sig.sell_vol_h24 != null && sig.buy_vol_h24 + sig.sell_vol_h24 > 0
+        ? (sig.org_buy_vol_h24 + sig.org_sell_vol_h24) / (sig.buy_vol_h24 + sig.sell_vol_h24)
+        : null,
   };
+  for (const [k, v] of Object.entries(inp.statics ?? {})) f[k] = fin(v);
+  for (const [k, v] of Object.entries(inp.regime ?? {})) f[k] = fin(v);
   return f;
 }
 
@@ -235,11 +252,28 @@ export const FEATURES: FeatureMeta[] = [
   { key: "tag_product", label: "AI or tool name", group: "Narrative", fmt: "bool", about: "Either of the two above." },
   { key: "tag_animal", label: "Animal meme name", group: "Narrative", fmt: "bool", about: "The name or symbol is an animal." },
   { key: "tag_person", label: "Person / celebrity name", group: "Narrative", fmt: "bool", about: "The name or symbol is a public figure." },
+  { key: "lp_pump", label: "Launched on pump.fun", group: "Project", fmt: "bool", about: "The coin came from the pump.fun launchpad (Jupiter's launchpad field)." },
+  { key: "lp_other", label: "Launched on another launchpad", group: "Project", fmt: "bool", about: "From a launchpad other than pump.fun: stonk.fun, bags.fun, LetsBonk, Meteora DBC and others." },
+  { key: "paid_profile", label: "Token profile paid by then", group: "Project", fmt: "bool", about: "The team had paid DexScreener for an enhanced token profile at that moment." },
+  { key: "profile_delay_min", label: "Minutes until the profile was paid", group: "Project", fmt: "num", about: "Minutes between the pair being created and the token profile being paid for (only once it was paid)." },
+  { key: "boost_amount", label: "Boosts bought so far", group: "Project", fmt: "num", about: "Total of DexScreener boost purchases up to that moment (paid attention)." },
+  { key: "boost_n", label: "Boost purchases so far", group: "Project", fmt: "num", about: "How many separate boost purchases had been made." },
+  { key: "ad_n", label: "Ads bought so far", group: "Project", fmt: "num", about: "DexScreener ads bought for the coin up to that moment." },
+  { key: "cto", label: "Community takeover claimed", group: "Project", fmt: "bool", about: "A community takeover of the coin's profile had been claimed (often after the original team left)." },
+  { key: "dev_serial", label: "Developer launched 5+ coins", group: "Collected", fmt: "bool", about: "Jupiter's count of coins this developer has launched is 5 or more (only for coins seen from now on)." },
+  { key: "regime_sol_24h", label: "SOL, previous 24 h", group: "Market", fmt: "pct", about: "How much SOL's price changed in the 24 hours before that moment: the market's mood." },
+  { key: "regime_dex_vol", label: "Solana DEX volume, previous day", group: "Market", fmt: "x", about: "The last full day's volume on Solana's exchanges against the average of the 7 days before it. Above 1 = trading heating up." },
+  { key: "pump_mayhem", label: "Launched in Mayhem Mode", group: "Collected", fmt: "bool", about: "pump.fun's Mayhem Mode: an AI agent trades the coin for its first 24 hours and the supply is 2 billion instead of 1 billion, so early volume is partly the agent's (only for coins whose graduation the lab saw live)." },
+  { key: "dev_buy_sol", label: "Creator's first buy (SOL)", group: "Collected", fmt: "num", about: "What the creator bought in the very transaction that created the coin (only for graduations the lab saw live)." },
+  { key: "grad_minutes", label: "Minutes from launch to graduation", group: "Collected", fmt: "num", about: "How long the coin took to fill its bonding curve and graduate to PumpSwap (HOTBOT took 347)." },
+  { key: "creator_launches", label: "Creator's launches in the 72 h before", group: "Collected", fmt: "num", about: "How many coins the same wallet created in the 72 hours before this one: 1 = a one-off project, many = a serial launcher." },
   { key: "uniq_buyers_h1", label: "Unique buyers, 1 h", group: "Collected", fmt: "num", about: "Different wallets that bought in the last hour (GeckoTerminal)." },
   { key: "uniq_sellers_h1", label: "Unique sellers, 1 h", group: "Collected", fmt: "num", about: "Different wallets that sold in the last hour." },
   { key: "wallet_trades", label: "Trades per wallet, 1 h", group: "Collected", fmt: "num", about: "Trades divided by distinct wallets: high means a few wallets trading with each other." },
   { key: "organic_score", label: "Organic score", group: "Collected", fmt: "num", about: "Jupiter's score for how organic the trading looks (0-100)." },
   { key: "holders", label: "Holders", group: "Collected", fmt: "num", about: "Number of holder wallets (Jupiter)." },
+  { key: "net_buyer_share", label: "Net buyers / traders, 24 h", group: "Collected", fmt: "frac", about: "Of the wallets that traded in the last 24 hours, the share that bought more than they sold (Jupiter). Low = mostly sellers." },
+  { key: "organic_vol_share", label: "Organic share of volume, 24 h", group: "Collected", fmt: "frac", about: "Share of the last 24 hours' volume that Jupiter counts as organic (real traders, not bots or the same wallets) (only for coins seen from now on)." },
 ];
 
 export const FEATURE_BY_KEY = new Map(FEATURES.map((f) => [f.key, f]));

@@ -26,6 +26,7 @@ import { measurePhaseSnapshots } from "./watchStatus.js";
 import { measureVerdictOutcomes } from "./verdicts.js";
 import { ensurePartitions, currentMonthWritable, reconcileRuleCurrent } from "./partitions.js";
 import { noteTurnedAway, type TurnedAway } from "./labWatch.js";
+import { PumpFeed } from "./pumpFeed.js";
 
 const WORKER_ID = process.env.WORKER_ID ?? `worker-${process.pid}`;
 const log = (msg: string, extra: Record<string, unknown> = {}) =>
@@ -486,6 +487,24 @@ const LAB_IN_WORKER = (process.env.LAB_IN_WORKER ?? "1") !== "0" && !process.env
 const LAB_EVERY_MS = Number(process.env.LAB_EVERY_MINUTES ?? 10) * 60_000;
 let lastLabMs = 0;
 let labRunning = false;
+// Watched coins (above all fresh graduations) are read every couple of minutes, not only every lab round, so a new graduation has a price within minutes.
+let lastWatchMs = 0;
+let watchRunning = false;
+function maybePollWatch(): void {
+  if (!LAB_IN_WORKER || watchRunning || Date.now() - lastWatchMs < 120_000) return;
+  lastWatchMs = Date.now();
+  watchRunning = true;
+  void (async () => {
+    try {
+      const { collectWatch } = await import("../../web/lib/lab/lanes.js");
+      await collectWatch(pool as never, { maxCalls: 30 });
+    } catch (e) {
+      log("lab watch poll failed", { error: (e as Error).message });
+    } finally {
+      watchRunning = false;
+    }
+  })();
+}
 function maybeRunLab(): void {
   if (!LAB_IN_WORKER || labRunning || Date.now() - lastLabMs < LAB_EVERY_MS) return;
   lastLabMs = Date.now();
@@ -646,6 +665,13 @@ async function loop(): Promise<void> {
   process.on("SIGINT", () => void shutdown("SIGINT"));
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
 
+  // pump.fun's free event stream (every launch and graduation) for the Learning Lab. One connection in the whole system: the feed
+  // takes a database lock, so if scripts/lab-daemon.ts already holds it this one waits quietly. PUMP_FEED=0 switches it off.
+  if (process.env.PUMP_FEED !== "0" && !process.env.VERCEL) {
+    const feed = new PumpFeed(pool as never, log);
+    void feed.start();
+    process.once("exit", () => feed.stop());
+  }
   log("started", { intervals: { discovery: workerConfig.discoveryIntervalMs, tick: workerConfig.cycleTickMs }, telegram: channel.mode, helius: heliusMode });
   while (!shuttingDown) {
     const gotLock = await lock.acquire(workerConfig.cycleTickMs * 3);
@@ -656,6 +682,7 @@ async function loop(): Promise<void> {
       log("cycle skipped: another worker holds the lock");
     }
     maybeRunLab();
+    maybePollWatch();
     await new Promise((r) => setTimeout(r, workerConfig.cycleTickMs));
   }
 }

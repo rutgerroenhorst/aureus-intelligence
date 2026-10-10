@@ -8,6 +8,8 @@ import { buildFeatures, type Enrich, type Features, type PayloadRow, type Signal
 import { cleanObs, nearestIndex, type Obs } from "./paths";
 import { buildOutcome, forwardLabels, type Fwd, type Outcome } from "./outcomes";
 import { tagsFor } from "./narrative";
+import { staticsAt, type StaticRow } from "./statics";
+import { regimeAt, type RegimeHist } from "./regime";
 
 export interface Queryable {
   query(text: string, params?: unknown[]): Promise<{ rows: any[]; rowCount?: number | null }>;
@@ -63,6 +65,8 @@ export interface CandRow {
   lane?: string;
   /** read from the lab's watch readings instead of the scanner's price history */
   watch?: boolean;
+  /** epoch seconds the exchange stopped listing a watched coin (it closes with a dead terminal reading), if it did */
+  closedAt?: number | null;
 }
 
 const fin = (x: unknown): number | null => {
@@ -120,7 +124,7 @@ export async function selectWatch(db: Queryable, opts: { limit: number; all?: bo
   }
   params.push(opts.limit);
   const { rows } = await db.query(
-    `SELECT w.mint, w.chain, w.symbol, w.name, w.lane, w.reason, w.note,
+    `SELECT w.mint, w.chain, w.symbol, w.name, w.lane, w.reason, w.note, EXTRACT(EPOCH FROM w.last_polled_at)::float8 AS closed_at,
             EXTRACT(EPOCH FROM w.first_seen_at)::float8 AS discovered_at, EXTRACT(EPOCH FROM w.pair_created_at)::float8 AS pool_created,
             (l.mint IS NULL) AS is_new, l.built_at
        FROM lab_watch w LEFT JOIN lab_coins l ON l.mint = w.mint
@@ -132,8 +136,8 @@ export async function selectWatch(db: Queryable, opts: { limit: number; all?: bo
   return rows.map((r) => ({
     candidate_id: null, mint: r.mint, chain: r.chain ?? "solana", symbol: r.symbol, name: r.name, pool_id: `watch:${r.mint}`,
     discovered_at: r.discovered_at, pool_created: r.pool_created,
-    // a coin the exchange stopped listing counts as dropped by its tracker (like a rejected one), so its end is not mistaken for a result
-    state: r.note === "gone" ? "REJECTED" : "WATCH", tier: null, discovery_source: r.reason, lane: r.lane, watch: true,
+    // a coin the exchange stopped listing ends with a dead reading (it is a result, not a gap in the data)
+    state: "WATCH", tier: null, discovery_source: r.reason, lane: r.lane, watch: true, closedAt: r.note === "gone" ? r.closed_at : null,
   }));
 }
 
@@ -179,6 +183,12 @@ export async function loadObs(db: Queryable, rows: CandRow[]): Promise<Map<strin
   const watchRows = rows.filter((r) => r.watch);
   if (watchRows.length) {
     const out = await loadWatchObs(db, watchRows.map((r) => r.mint));
+    // a watched coin the exchange stopped listing gets one terminal "dead" reading at the moment it was closed
+    for (const r of watchRows) {
+      const a = out.get(r.pool_id);
+      const last = a?.[a.length - 1];
+      if (a && last && r.closedAt && r.closedAt > last.t) a.push({ t: r.closedAt, p: last.p * 1e-4, liq: 0, mcap: 0, eventId: null, dead: true });
+    }
     const rest = rows.filter((r) => !r.watch);
     if (rest.length) for (const [k, v] of await loadObs(db, rest)) out.set(k, v);
     return out;
@@ -240,10 +250,12 @@ export async function loadObs(db: Queryable, rows: CandRow[]): Promise<Map<strin
     const pid = poolOfMint.get(r.mint);
     if (!pid) continue;
     const a = out.get(pid) ?? [];
-    const lastScan = a.length ? a[a.length - 1]!.t : 0;
-    for (const c of (r.payload?.candles ?? []) as Array<[number, number]>) {
-      if (c[0] > lastScan + 600 && c[1] > 0) a.push({ t: c[0], p: c[1], liq: null, mcap: null, eventId: null });
-    }
+    const last = a.length ? a[a.length - 1]! : null;
+    const lastScan = last ? last.t : 0;
+    const fresh = ((r.payload?.candles ?? []) as Array<[number, number]>).filter((c) => c[0] > lastScan + 600 && c[1] > 0);
+    // hourly closes in other units than the scanner's readings (the pool's other token) are refused, never merged
+    if (last && fresh.length && (fresh[0]![1] / last.p > 20 || fresh[0]![1] / last.p < 1 / 20)) continue;
+    for (const c of fresh) a.push({ t: c[0], p: c[1], liq: null, mcap: null, eventId: null });
     out.set(pid, a);
   }
   for (const a of out.values()) a.sort((x, y) => x.t - y.t);
@@ -314,11 +326,49 @@ async function loadSignals(db: Queryable, mints: string[]): Promise<Map<string, 
       sig.buyers_h24 = fin(p.buyers_h24); sig.sellers_h24 = fin(p.sellers_h24);
     } else {
       sig.organic_score = fin(p.organic_score); sig.holders = fin(p.holders); sig.organic_buyers_h24 = fin(p.organic_buyers_h24);
+      sig.traders_h24 = fin(p.traders_h24); sig.net_buyers_h24 = fin(p.net_buyers_h24); sig.buy_vol_h24 = fin(p.buy_vol_h24); sig.sell_vol_h24 = fin(p.sell_vol_h24);
+      sig.org_buy_vol_h24 = fin(p.org_buy_vol_h24); sig.org_sell_vol_h24 = fin(p.org_sell_vol_h24);
     }
     a.push({ ts: r.ts, s: sig });
     out.set(r.mint, a);
   }
   return out;
+}
+
+function pumpFeatures(p: { mayhem: boolean | null; buy: number | null; gradMin: number | null; launches: number | null } | undefined) {
+  return p
+    ? { pump_mayhem: p.mayhem == null ? null : p.mayhem ? 1 : 0, dev_buy_sol: p.buy, grad_minutes: p.gradMin, creator_launches: p.launches }
+    : { pump_mayhem: null, dev_buy_sol: null, grad_minutes: null, creator_launches: null };
+}
+
+/** One static row (launchpad, developer, paid promotion) per coin. */
+async function loadStatics(db: Queryable, mints: string[]): Promise<Map<string, StaticRow>> {
+  const out = new Map<string, StaticRow>();
+  if (!mints.length) return out;
+  const { rows } = await db
+    .query(`SELECT DISTINCT ON (mint) mint, payload FROM lab_signals_ts WHERE source = 'static' AND mint = ANY($1::text[]) ORDER BY mint, taken_at DESC`, [mints])
+    .catch(() => ({ rows: [] as any[] }));
+  for (const r of rows) out.set(r.mint, r.payload as StaticRow);
+  return out;
+}
+
+/** What pump.fun's event stream knew about a coin when it graduated (only for coins that graduated while the feed was running). */
+async function loadPump(db: Queryable, mints: string[]): Promise<Map<string, { mayhem: boolean | null; buy: number | null; gradMin: number | null; launches: number | null }>> {
+  const out = new Map<string, { mayhem: boolean | null; buy: number | null; gradMin: number | null; launches: number | null }>();
+  if (!mints.length) return out;
+  const { rows } = await db
+    .query(`SELECT mint, mayhem, initial_buy_sol, create_to_migrate_min, creator_launches_72h FROM pump_graduates WHERE mint = ANY($1::text[])`, [mints])
+    .catch(() => ({ rows: [] as any[] }));
+  for (const r of rows) out.set(r.mint, { mayhem: r.mayhem, buy: fin(r.initial_buy_sol), gradMin: fin(r.create_to_migrate_min), launches: fin(r.creator_launches_72h) });
+  return out;
+}
+
+/** The latest history of the market backdrop (SOL price, Solana DEX volume), or null before the lab has collected it. */
+async function loadRegimeHist(db: Queryable): Promise<RegimeHist | null> {
+  const { rows } = await db
+    .query(`SELECT payload FROM lab_signals_ts WHERE source = 'regime_hist' ORDER BY taken_at DESC LIMIT 1`)
+    .catch(() => ({ rows: [] as any[] }));
+  return (rows[0]?.payload as RegimeHist | undefined) ?? null;
 }
 
 function signalsNear(list: Array<{ ts: number; s: Signals }> | undefined, t: number): Signals | null {
@@ -343,6 +393,9 @@ export async function buildCoins(db: Queryable, rows: CandRow[], now: number): P
   const obsBy = await loadObs(db, rows);
   const enrBy = await loadEnrichment(db, rows.map((r) => r.candidate_id).filter((x): x is string => !!x));
   const sigBy = await loadSignals(db, rows.map((r) => r.mint));
+  const stBy = await loadStatics(db, rows.map((r) => r.mint));
+  const pumpBy = await loadPump(db, rows.map((r) => r.mint));
+  const regimeHist = await loadRegimeHist(db);
 
   // Decide which readings need their stored snapshot, then fetch them in one go.
   interface Prep { row: CandRow; raw: RawObs[]; clean: RawObs[]; phantoms: number; picks: Array<{ tau: number; idx: number }> }
@@ -403,12 +456,14 @@ export async function buildCoins(db: Queryable, rows: CandRow[], now: number): P
     const snaps: Snap[] = [];
     for (const { tau, idx } of pr.picks) {
       const pay = payOf(clean[idx]!);
-      const f = buildFeatures({ tau, clean, idx, first, pay, enr, tags, signals: signalsNear(sigList, clean[idx]!.t) });
+      const tSnap = clean[idx]!.t;
+      const pairS = pay?.created_ms ? pay.created_ms / 1000 : row.pool_created;
+      const f = buildFeatures({ tau, clean, idx, first, pay, enr, tags, signals: signalsNear(sigList, tSnap), statics: { ...staticsAt(stBy.get(row.mint), tSnap, pairS), ...pumpFeatures(pumpBy.get(row.mint)) } as unknown as Record<string, number | null>, regime: regimeAt(regimeHist, tSnap) as unknown as Record<string, number | null> });
       if (tau < 0) outcome.now = { ts: clean[idx]!.t, ageH: (clean[idx]!.t - t0) / 3600, f };
       else snaps.push({ tau, ts: clean[idx]!.t, f, y: forwardLabels(clean, idx, { rule }) });
     }
     const ageH = outcome.ageH;
-    const status: "open" | "final" = outcome.censored || (outcome.cls !== "OPEN" && ageH >= 100) || now - t0 > 8 * 86400 ? "final" : "open";
+    const status: "open" | "final" = outcome.censored || outcome.deadEnd || (outcome.cls !== "OPEN" && ageH >= 100) || now - t0 > 8 * 86400 ? "final" : "open";
     result.coins.push({
       mint: row.mint,
       chain: row.chain || "solana",
@@ -444,8 +499,11 @@ export const REPLACE_IF_MORE_COMPLETE = `(
   OR (EXCLUDED.first_seen_at <= lab_coins.first_seen_at + interval '45 minutes'
       AND (EXCLUDED.observations >= lab_coins.observations OR EXCLUDED.last_seen_at > lab_coins.last_seen_at)))`;
 
-/** Write lessons; a stored lesson is only replaced by one that is at least as complete (see REPLACE_IF_MORE_COMPLETE). */
-export async function saveCoins(db: Queryable, coins: LabCoin[], source: string): Promise<number> {
+/**
+ * Write lessons; a stored lesson is only replaced by one that is at least as complete (see REPLACE_IF_MORE_COMPLETE), unless `force` is set:
+ * a full rebuild from the raw data (scripts/lab-build.ts with LAB_FORCE=1) must be able to replace a lesson that was built from bad data.
+ */
+export async function saveCoins(db: Queryable, coins: LabCoin[], source: string, opts: { force?: boolean } = {}): Promise<number> {
   let n = 0;
   for (const c of coins) {
     const r = await db.query(
@@ -459,7 +517,7 @@ export async function saveCoins(db: Queryable, coins: LabCoin[], source: string)
          first_mcap = EXCLUDED.first_mcap, first_liq = EXCLUDED.first_liq, last_seen_at = EXCLUDED.last_seen_at,
          observations = EXCLUDED.observations, phantoms = EXCLUDED.phantoms, tags = EXCLUDED.tags, snaps = EXCLUDED.snaps,
          outcome = EXCLUDED.outcome, status = EXCLUDED.status, source = EXCLUDED.source, built_at = now()
-       WHERE ${REPLACE_IF_MORE_COMPLETE}`,
+       ${opts.force ? "" : `WHERE ${REPLACE_IF_MORE_COMPLETE}`}`,
       [
         c.mint, c.chain, c.candidateId, c.symbol, c.name, c.lane, c.firstSeenAt, c.pairCreatedAt, c.firstPrice, c.firstMcap, c.firstLiq,
         c.lastSeenAt, c.observations, c.phantoms, c.tags, JSON.stringify(c.snaps), JSON.stringify(c.outcome), c.status, source,

@@ -8,6 +8,8 @@ import { getPool } from "@aureus/db";
 import { buildCoins, saveCoins, selectCandidates, selectWatch } from "./builder";
 import { collectGeckoMulti, collectJupiter, collectPriceTail } from "./collectors";
 import { collectWatch, discoverRunners } from "./lanes";
+import { collectRegime } from "./regime";
+import { collectStatic } from "./statics";
 import { computeReports, saveReports } from "./reports";
 
 const REPORT_EVERY_MIN = 55;
@@ -15,7 +17,7 @@ const REPORT_AFTER_CHANGES = 12;
 /** Collector rows are folded into the lessons within a few days; the hosted database is small, the laptop keeps them for rebuilds. */
 const KEEP_SIGNALS_DAYS = process.env.VERCEL ? 6 : 60;
 /** Watch readings feed lessons that stay open for 8 days. */
-const KEEP_WATCH_DAYS = process.env.VERCEL ? 9 : 30;
+const KEEP_WATCH_DAYS = process.env.VERCEL ? 9 : 14;
 
 export async function runLab(opts: { force?: boolean; limit?: number } = {}): Promise<Record<string, unknown>> {
   const db = getPool();
@@ -25,14 +27,17 @@ export async function runLab(opts: { force?: boolean; limit?: number } = {}): Pr
 
   // The lab's own watch list: find runners on Jupiter's lists, read every watched coin that is due.
   out.runners = await discoverRunners(db, { force: opts.force }).catch(failure);
-  out.watch = await collectWatch(db, { maxCalls: process.env.VERCEL ? 3 : 6 }).catch(failure);
+  out.watch = await collectWatch(db, { maxCalls: process.env.VERCEL ? 3 : 30 }).catch(failure);
+  // The market backdrop (hourly) and what each coin's team paid for (launchpad, DexScreener profile, boosts, ads): both free.
+  out.regime = await collectRegime(db, { force: opts.force }).catch(failure);
+  out.statics = await collectStatic(db, { maxOrders: process.env.VERCEL ? 15 : 40 }).catch(failure);
   out.priceTail = await collectPriceTail(db, { limit: 150 }).catch(failure);
   out.geckoMulti = await collectGeckoMulti(db, { maxCalls: 3 }).catch(failure);
   out.jupiter = await collectJupiter(db, { maxCalls: 3 }).catch(failure);
 
   const now = Date.now() / 1000;
   const cands = await selectCandidates(db, { limit: opts.limit ?? 25 });
-  const watched = await selectWatch(db, { limit: 12 });
+  const watched = await selectWatch(db, { limit: process.env.VERCEL ? 12 : 150 });
   const built = await buildCoins(db, [...cands, ...watched], now);
   const saved = await saveCoins(db, built.coins, process.env.VERCEL ? "hosted" : "local");
   out.lessons = { due: cands.length, watched: watched.length, saved, skipped: built.skipped.length };

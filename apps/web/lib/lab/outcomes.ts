@@ -42,6 +42,8 @@ export interface Outcome {
   readings: number;
   /** the scanner stopped following this coin before its windows matured; labels that need more data stay empty */
   censored: boolean;
+  /** the coin stopped being listed (its pool was drained or delisted): that is how it ended, every window is decided */
+  deadEnd?: boolean;
   lastT: number;
   /** the coin as it stands at its last reading, for coins still being followed (feeds the live view) */
   now?: { ts: number; ageH: number; f: Record<string, number | null> };
@@ -111,6 +113,7 @@ export function buildOutcome(clean: Obs[], ctx: OutcomeCtx): Outcome | null {
     gapS: Number.isFinite(gapS) ? gapS : 0,
     readings: clean.length,
     censored: ctx.trackingEnded && ctx.now - lastT > CENSOR_AFTER_S,
+    deadEnd: clean[clean.length - 1]!.dead === true,
     lastT,
   };
   o.cls = classify(o);
@@ -174,7 +177,9 @@ export function forwardLabels(clean: Obs[], i: number, ctx: FwdCtx): Fwd | null 
   if (!(pi > 0)) return null;
   const lastT = clean[clean.length - 1]!.t;
   const cover = lastT - ti;
-  const done = (hours: number) => cover >= hours * H * 0.95;
+  // a coin that stopped being listed has no further price: what it could still do within the window is nothing, so the window is decided
+  const dead = clean[clean.length - 1]!.dead === true;
+  const done = (hours: number) => dead || cover >= hours * H * 0.95;
 
   const hp = heldPeak(clean, ctx.rule, i, ti + 72 * H);
   const peak72 = hp ? hp.level / pi : 0;

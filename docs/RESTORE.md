@@ -25,7 +25,11 @@ Every database change of the overnight work only ADDS (new tables, new rows); no
 previous code runs unchanged against the current databases and simply ignores the new tables. Nothing has to be undone in Supabase or in
 the laptop database. (If a migration ever has to be removed: `DROP TABLE` of the tables it created, named in the migration file.)
 
+Migrations added since the restore point: `0029_lab_watch.sql` and `0030_pump_feed.sql`; both only create tables (`lab_watch`, `pump_launches`, `pump_graduates`) and grants. The restore point's code ignores them.
+
 Environment variables on Vercel: none were added or changed overnight (this line is updated if that ever changes).
+
+Background processes started on the laptop during the overnight work: `scripts/lab-daemon.ts` (holds pump.fun's event stream and runs a lab round every 10 minutes). Stop it with `pkill -f lab-daemon`. The restore point's worker does not start it or the stream.
 
 ## The laptop worker
 
