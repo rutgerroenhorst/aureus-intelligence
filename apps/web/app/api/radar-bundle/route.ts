@@ -19,7 +19,6 @@ const SOURCES = {
   performance: "/api/performance",
   networks: "/api/network-sentiment",
   runners: "/api/runners",
-  labOdds: "/api/lab-odds",
   graduates: "/api/graduates",
 } as const;
 

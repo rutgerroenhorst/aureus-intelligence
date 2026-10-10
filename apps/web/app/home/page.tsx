@@ -105,7 +105,7 @@ export default function HomePage() {
           <div style={{ ...dim, marginBottom: 6 }}>Healthy, established coins from Jupiter's lists (the kind HOTBOT was), best organic score first. They are already up.</div>
           {runners == null ? <div style={dim}>Loading…</div> : healthy.length === 0 ? <div style={dim}>None on the list right now.</div> : healthy.map((r) => (
             <div key={r.mint} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 13, padding: "3px 0" }}>
-              <a href={`/coin/${r.mint}`} style={{ color: "#fff", textDecoration: "none", fontWeight: 600 }}>{r.symbol ?? "?"}</a>
+              <a href={`https://dexscreener.com/solana/${r.mint}`} target="_blank" rel="noreferrer" style={{ color: "#fff", textDecoration: "none", fontWeight: 600 }}>{r.symbol ?? "?"}</a>
               <span style={{ color: "#8a8a9e" }}>{usd(r.mcap)} · organic {r.organic != null ? Math.round(r.organic) : "-"} · {r.change24h != null ? `${r.change24h >= 0 ? "+" : "−"}${Math.abs(r.change24h).toFixed(0)}% 24 h` : ""}</span>
             </div>
           ))}
@@ -118,7 +118,7 @@ export default function HomePage() {
           {gradAge != null && <div style={{ ...dim, marginBottom: 6, color: gradAge > 30 ? "#ff9f0a" : "#8a8a9e" }}>Snapshot from the laptop, {gradAge < 90 ? `${gradAge} min` : `${(gradAge / 60).toFixed(1)} h`} old{gradAge > 30 ? " (its stream may be off)" : ""}.</div>}
           {grads == null ? <div style={dim}>Loading…</div> : fresh.length === 0 ? <div style={dim}>{grads.length === 0 ? "No graduations recorded (the stream runs on the laptop)." : recent.length === 0 ? "No graduation in the last 90 minutes." : `None worth a look right now: ${recent.length} graduated in the last 90 minutes${skippedWhy ? ` (${skippedWhy})` : ""}.`}</div> : fresh.map((g) => (
             <div key={g.mint} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 13, padding: "3px 0" }}>
-              <a href={`/coin/${g.mint}`} style={{ color: "#fff", textDecoration: "none", fontWeight: 600 }}>{g.symbol ?? "?"}</a>
+              <a href={`https://dexscreener.com/solana/${g.mint}`} target="_blank" rel="noreferrer" style={{ color: "#fff", textDecoration: "none", fontWeight: 600 }}>{g.symbol ?? "?"}</a>
               <span style={{ color: "#8a8a9e" }}>{Math.round(g.ageMin)} min · {usd(g.mcap)} · liquidity {usd(g.liq)}</span>
             </div>
           ))}

@@ -3,7 +3,6 @@ import { useState } from "react";
 import ElitePageWrapper from "@/components/ElitePageWrapper";
 import { usePolling, useOnScanDone } from "@/lib/usePolling";
 import { RunnersTab, type Runner, type RunnersLab, type RunnersPrior } from "./RunnersTab";
-import { LabLine, type LabOdds } from "./LabLine";
 import { GraduatesTab, type Graduate, type GradMeta } from "./GraduatesTab";
 
 interface Candidate {
@@ -25,6 +24,7 @@ const JOURNAL_TAB: Partial<Record<Tab, string>> = {
   "elite-s": "elite",
   qualified: "incubation",
   runners: "runners",
+  graduates: "graduates",
 };
 
 export default function RadarPageElite() {
@@ -39,7 +39,6 @@ export default function RadarPageElite() {
   const [graduates, setGraduates] = useState<Graduate[]>([]);
   const [gradMeta, setGradMeta] = useState<GradMeta | null>(null);
   const [gradLab, setGradLab] = useState<{ followed3d: number; held2: { p: number } } | null>(null);
-  const [labOdds, setLabOdds] = useState<Record<string, LabOdds>>({});
   const [runners, setRunners] = useState<Runner[]>([]);
   const [runnersLab, setRunnersLab] = useState<RunnersLab | null>(null);
   const [runnersPrior, setRunnersPrior] = useState<RunnersPrior | null>(null);
@@ -81,7 +80,6 @@ export default function RadarPageElite() {
         setCateSummary(d.cate.summary || null);
       }
       if (d.signals) setBuySignals(d.signals.buy_signals || []);
-      if (d.labOdds) setLabOdds(d.labOdds.coins || {});
       if (d.graduates) {
         setGraduates(d.graduates.candidates || []);
         setGradLab(d.graduates.lab || null);
@@ -140,6 +138,23 @@ export default function RadarPageElite() {
       {label} {count !== undefined && <span style={{ opacity: 0.8 }}>({count})</span>}
     </button>
   );
+
+  /** "I entered this" for the lanes beyond the Radar's door (Runners, Graduations): one record in the trade journal, with the tab it came from. */
+  const enterCoin = async (c: { symbol: string | null; mint: string; mcap: number | null }, tabKey: "runners" | "graduates") => {
+    try {
+      const res = await fetch("/api/my-trades", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ symbol: c.symbol, mint: c.mint, entryMcap: c.mcap, tab: JOURNAL_TAB[tabKey] ?? null, action: "add-entry" }),
+      });
+      if (!res.ok) throw new Error(`my-trades ${res.status}`);
+      setEnteredCoins((prev) => new Set([...prev, c.mint]));
+      setFailedEntries((prev) => { const n = new Set(prev); n.delete(c.mint); return n; });
+    } catch (err) {
+      console.error("Could not save the entry:", err);
+      setFailedEntries((prev) => new Set([...prev, c.mint]));
+    }
+  };
 
   const CoinRow = ({ c, color, score, isBuySignal }: { c: any; color: string; score?: number; isBuySignal?: boolean }) => {
     const [entered, setEntered] = useState(false);
@@ -211,7 +226,6 @@ export default function RadarPageElite() {
               <span style={{ color: "#8a8a8e" }}>{slippage}</span>
             </div>
           )}
-          <LabLine odds={labOdds[c.mint]} />
         </div>
         <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
           {score && <span style={{ fontSize: "11px", color: "#fff", fontWeight: 700 }}>{Math.round(score)}</span>}
@@ -254,13 +268,6 @@ export default function RadarPageElite() {
             >
               DexScreener
             </button>
-            <a
-              href={`/coin/${c.mint}`}
-              onClick={(e) => e.stopPropagation()}
-              style={{ padding: "4px 8px", background: "#1a1a1f", color: "#30b0c0", border: "1px solid #30b0c0", borderRadius: "4px", fontSize: "10px", fontWeight: 600, textDecoration: "none", whiteSpace: "nowrap", textAlign: "center" }}
-            >
-              Dossier
-            </a>
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -381,7 +388,7 @@ export default function RadarPageElite() {
           </div>
         );
       case "graduates":
-        return <GraduatesTab coins={graduates} lab={gradLab} meta={gradMeta} />;
+        return <GraduatesTab coins={graduates} lab={gradLab} meta={gradMeta} entered={enteredCoins} failedMints={failedEntries} onEnter={(c) => enterCoin(c, "graduates")} />;
       case "runners":
         return (
           <RunnersTab
@@ -390,21 +397,7 @@ export default function RadarPageElite() {
             prior={runnersPrior}
             entered={enteredCoins}
             failedMints={failedEntries}
-            onEnter={async (c) => {
-              try {
-                const res = await fetch("/api/my-trades", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ symbol: c.symbol, mint: c.mint, entryMcap: c.mcap, tab: JOURNAL_TAB.runners ?? null, action: "add-entry" }),
-                });
-                if (!res.ok) throw new Error(`my-trades ${res.status}`);
-                setEnteredCoins((prev) => new Set([...prev, c.mint]));
-                setFailedEntries((prev) => { const n = new Set(prev); n.delete(c.mint); return n; });
-              } catch (err) {
-                console.error("Could not save the entry:", err);
-                setFailedEntries((prev) => new Set([...prev, c.mint]));
-              }
-            }}
+            onEnter={(c) => enterCoin(c, "runners")}
           />
         );
       case "early":

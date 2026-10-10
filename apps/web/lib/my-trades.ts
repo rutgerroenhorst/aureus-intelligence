@@ -7,7 +7,7 @@ import { fetchPairs, type Pair } from "./learning-engine";
  */
 
 /** The learning tabs an entry can come from; anything else is stored as "unknown". */
-export const TRADE_TABS = ["cate", "buy_signals", "ultra_momentum", "elite", "incubation", "runners"] as const;
+export const TRADE_TABS = ["cate", "buy_signals", "ultra_momentum", "elite", "incubation", "runners", "graduates"] as const;
 const MINT_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 /** The site's address is public, so the journal is bounded: no more open trades than this, and a repeat click is idempotent. */
 const MAX_ACTIVE = 300;
