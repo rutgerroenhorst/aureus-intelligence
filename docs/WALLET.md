@@ -21,7 +21,7 @@ and keeps the trade journal (Results > My Trades, Home) in step with it, so you 
 ## Privacy
 
 The address is only in the database tables `wallet_watch` (laptop and hosted). It is not in the repository, no API returns it and logs show it masked
-(`FSsd…aAGH`). The journal itself (your trades, amounts and coins) is shown on the site like before, and the site's address is public: anyone with the
+(for example `7xKX…gAsU`). The journal itself (your trades, amounts and coins) is shown on the site like before, and the site's address is public: anyone with the
 address can see it. Decide whether the site should be behind a password.
 
 ## Operating it
