@@ -1,6 +1,7 @@
 "use client";
 import { useMemo, useState } from "react";
 import { gradSnapshot, gradAgeText } from "@/lib/gradStale";
+import { CheckBadge, CheckButton, CheckPanel, useCoinCheck, type CheckNote } from "./CoinCheck";
 
 export interface Graduate {
   mint: string;
@@ -71,7 +72,44 @@ const chip = (on: boolean): React.CSSProperties => ({ padding: "5px 10px", fontS
 /** The warnings worth a place on the card: a pool that is gone or never was, the kinds measured to end in a drain, and heavy concentration. */
 const SHOW = /drained|empty|born|Mayhem|insider networks hold ([2-9]\d|100)%|one wallet holds|within 2 minutes|down more than half|no longer listed/;
 
-export function GraduatesTab({ coins, lab, meta, entered, failedMints, onEnter }: { coins: Graduate[]; lab: { followed3d: number; held2: { p: number } } | null; meta?: GradMeta | null; entered: Set<string>; failedMints: Set<string>; onEnter: (c: Graduate) => void }) {
+/** One graduation: its own component because the Check button keeps state per coin. */
+function GraduateCard({ c, entered, failed, onEnter, note }: { c: Graduate; entered: boolean; failed: boolean; onEnter: (c: Graduate) => void; note?: CheckNote }) {
+  const check = useCoinCheck(c.mint, "solana", "graduates", c.symbol);
+  const warn = c.flags.filter((f) => SHOW.test(f)).slice(0, 3);
+  return (
+    <>
+      <div style={{ background: "#141418", border: "1px solid #2a2a2f", borderRadius: 8, padding: 12, marginBottom: 8 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+          <div style={{ minWidth: 0 }}>
+            <b style={{ color: "#fff", fontSize: 15 }}>{c.symbol ?? "?"}</b> <span style={{ color: "#8a8a8e", fontSize: 12 }}>{c.name}</span>
+            <div style={{ fontSize: 12, color: "#b4b4c6", marginTop: 3 }}>
+              graduated {age(c.ageMin)} ago
+              {c.sinceFirst != null && <> · <span style={{ color: c.sinceFirst >= 1 ? "#34c759" : "#ff453a" }}>{c.sinceFirst.toFixed(2)}x</span> since first seen</>}
+            </div>
+            {warn.length > 0 && <div style={{ fontSize: 11, color: "#ff9f0a", marginTop: 3 }}>⚠ {warn.join(" · ")}</div>}
+            <CheckBadge note={note} />
+          </div>
+          <div style={{ textAlign: "right", flexShrink: 0 }}>
+            <div style={{ color: "#fff", fontWeight: 700 }}>{usd(c.mcap)}</div>
+            <div style={{ fontSize: 11, color: "#8a8a8e" }}>liquidity {usd(c.liq)}</div>
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+          <button onClick={() => onEnter(c)} disabled={entered} style={{ ...btn, background: entered ? "#34c759" : "#1a1a1f", color: entered ? "#000" : failed ? "#ff9f0a" : "#34c759", borderColor: failed ? "#ff9f0a" : "#34c759" }}>
+            {entered ? "✅ Entered" : failed ? "⚠ Not saved" : "✔ Enter"}
+          </button>
+          <a href={`https://dexscreener.com/solana/${c.mint}`} target="_blank" rel="noreferrer" style={btn}>
+            DexScreener
+          </a>
+          <CheckButton state={check} fontSize={12} />
+        </div>
+      </div>
+      <CheckPanel state={check} />
+    </>
+  );
+}
+
+export function GraduatesTab({ coins, lab, meta, entered, failedMints, onEnter, notes }: { coins: Graduate[]; lab: { followed3d: number; held2: { p: number } } | null; meta?: GradMeta | null; entered: Set<string>; failedMints: Set<string>; onEnter: (c: Graduate) => void; notes?: Map<string, CheckNote> }) {
   const [sort, setSort] = useState<SortKey>("new");
   const [showAll, setShowAll] = useState(false);
   // older snapshots (before the kinds existed) have no verdict: show everything then
@@ -147,37 +185,7 @@ export function GraduatesTab({ coins, lab, meta, entered, failedMints, onEnter }
           {coins.length > 0 && !showAll ? "Nothing worth a look right now: every recent graduation is one of the kinds above." : <>No graduations recorded. They come from pump.fun's event stream, which needs the laptop worker (<code>pnpm worker:start</code>) or <code>scripts/lab-daemon.ts</code> running; the hosted site shows the laptop's last snapshot.</>}
         </div>
       ) : (
-        list.map((c) => {
-          const warn = c.flags.filter((f) => SHOW.test(f)).slice(0, 3);
-          const isEntered = entered.has(c.mint);
-          const failed = failedMints.has(c.mint);
-          return (
-            <div key={c.mint} style={{ background: "#141418", border: "1px solid #2a2a2f", borderRadius: 8, padding: 12, marginBottom: 8 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-                <div style={{ minWidth: 0 }}>
-                  <b style={{ color: "#fff", fontSize: 15 }}>{c.symbol ?? "?"}</b> <span style={{ color: "#8a8a8e", fontSize: 12 }}>{c.name}</span>
-                  <div style={{ fontSize: 12, color: "#b4b4c6", marginTop: 3 }}>
-                    graduated {age(c.ageMin)} ago
-                    {c.sinceFirst != null && <> · <span style={{ color: c.sinceFirst >= 1 ? "#34c759" : "#ff453a" }}>{c.sinceFirst.toFixed(2)}x</span> since first seen</>}
-                  </div>
-                  {warn.length > 0 && <div style={{ fontSize: 11, color: "#ff9f0a", marginTop: 3 }}>⚠ {warn.join(" · ")}</div>}
-                </div>
-                <div style={{ textAlign: "right", flexShrink: 0 }}>
-                  <div style={{ color: "#fff", fontWeight: 700 }}>{usd(c.mcap)}</div>
-                  <div style={{ fontSize: 11, color: "#8a8a8e" }}>liquidity {usd(c.liq)}</div>
-                </div>
-              </div>
-              <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-                <button onClick={() => onEnter(c)} disabled={isEntered} style={{ ...btn, background: isEntered ? "#34c759" : "#1a1a1f", color: isEntered ? "#000" : failed ? "#ff9f0a" : "#34c759", borderColor: failed ? "#ff9f0a" : "#34c759" }}>
-                  {isEntered ? "✅ Entered" : failed ? "⚠ Not saved" : "✔ Enter"}
-                </button>
-                <a href={`https://dexscreener.com/solana/${c.mint}`} target="_blank" rel="noreferrer" style={btn}>
-                  DexScreener
-                </a>
-              </div>
-            </div>
-          );
-        })
+        list.map((c) => <GraduateCard key={c.mint} c={c} entered={entered.has(c.mint)} failed={failedMints.has(c.mint)} onEnter={onEnter} note={notes?.get(`graduates|${c.mint}`)} />)
       )}
     </div>
   );

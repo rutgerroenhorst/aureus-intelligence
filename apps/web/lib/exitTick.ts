@@ -89,8 +89,9 @@ export async function exitTick(opts: { test?: boolean } = {}, over: Partial<Tick
     const html = testText();
     const buttons = testButtons();
     const res = await tg.send(cfg.chatId, html, { buttons });
-    await store.logMessage({ kind: "test", ok: res.ok, messageId: res.ok ? res.messageId : null, html: loggedText(html, buttons), error: res.ok ? null : res.error });
-    return res.ok ? { ok: true, test: true } : { ok: false, test: true, error: res.error };
+    const failure = "error" in res ? res.error : null;
+    await store.logMessage({ kind: "test", ok: res.ok, messageId: "messageId" in res ? res.messageId : null, html: loggedText(html, buttons), error: failure });
+    return failure == null ? { ok: true, test: true } : { ok: false, test: true, error: failure };
   }
 
   // one tick at a time: the row is claimed (inserted or moved forward) only when the last tick is older than the minimum gap

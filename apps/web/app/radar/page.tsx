@@ -5,6 +5,7 @@ import { usePolling, useOnScanDone } from "@/lib/usePolling";
 import { RunnersTab, type Runner, type RunnersLab, type RunnersPrior } from "./RunnersTab";
 import { GraduatesTab, type Graduate, type GradMeta } from "./GraduatesTab";
 import { HotChainsBar, HotTab, isNewSmall, type HotClient } from "./HotChains";
+import { CheckBadge, CheckButton, CheckPanel, useCoinCheck, type CheckNote } from "./CoinCheck";
 
 interface Candidate {
   id: string;
@@ -63,6 +64,8 @@ export default function RadarPageElite() {
     "elite-s": 0, early: 0, entry: 0, qualified: 0, stats: 0, runners: 0, graduates: 0
   });
   const [enteredCoins, setEnteredCoins] = useState<Set<string>>(new Set());
+  // the coins the user checked before, by "<tab>|<mint>" (the Check button: lib/coinCheck.ts)
+  const [checkNotes, setCheckNotes] = useState<Map<string, CheckNote>>(new Map());
 
   // One request for everything (/api/radar-bundle), and only while the screen is visible.
   // A source that failed comes back as null: keep showing its previous data instead of blanking it.
@@ -89,6 +92,7 @@ export default function RadarPageElite() {
         setGradLab(d.graduates.lab || null);
         setGradMeta({ summary: d.graduates.summary || [], source: d.graduates.source, asOf: d.graduates.asOf });
       }
+      if (d.checks) setCheckNotes(new Map(((d.checks.checks ?? []) as CheckNote[]).map((n) => [`${n.tab}|${n.mint}`, n])));
       if (d.runners) {
         setRunners(d.runners.candidates || []);
         setRunnersLab(d.runners.lab || null);
@@ -174,6 +178,9 @@ export default function RadarPageElite() {
   const CoinRow = ({ c, color, score, isBuySignal }: { c: any; color: string; score?: number; isBuySignal?: boolean }) => {
     const [entered, setEntered] = useState(false);
     const [saveFailed, setSaveFailed] = useState(false);
+    const tabName = JOURNAL_TAB[activeTab];
+    const check = useCoinCheck(c.mint, c.chain, tabName, c.symbol);
+    const note = checkNotes.get(`${tabName}|${c.mint}`);
     const mcap = Number(c.market_cap_usd || c.marketCapUsd || 0);
     const conf = Number(c.confidence || c.buy_ratio || c.cateScore || c.buy_score || 0);
     const minutesOld = c.minutesOld || Math.floor((Date.now() - new Date(c.discovered_at).getTime()) / (1000 * 60));
@@ -212,6 +219,7 @@ export default function RadarPageElite() {
     };
 
     return (
+      <>
       <div
         style={{
           background: "#0f1116",
@@ -241,6 +249,7 @@ export default function RadarPageElite() {
               <span style={{ color: "#8a8a8e" }}>{slippage}</span>
             </div>
           )}
+          <CheckBadge note={note} />
         </div>
         <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
           {score && <span style={{ fontSize: "11px", color: "#fff", fontWeight: 700 }}>{Math.round(score)}</span>}
@@ -283,6 +292,7 @@ export default function RadarPageElite() {
             >
               DexScreener
             </button>
+            <CheckButton state={check} />
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -310,6 +320,8 @@ export default function RadarPageElite() {
           </div>
         </div>
       </div>
+      <CheckPanel state={check} />
+      </>
     );
   };
 
@@ -388,7 +400,7 @@ export default function RadarPageElite() {
   const renderContent = () => {
     switch (activeTab) {
       case "hot":
-        return <HotTab hot={hot} chain={hotChain} entered={enteredCoins} failedMints={failedEntries} onEnter={(p) => enterCoin({ symbol: p.symbol, mint: p.address, mcap: p.mcap, chain: p.chain }, "hot")} />;
+        return <HotTab hot={hot} chain={hotChain} entered={enteredCoins} failedMints={failedEntries} notes={checkNotes} onEnter={(p) => enterCoin({ symbol: p.symbol, mint: p.address, mcap: p.mcap, chain: p.chain }, "hot")} />;
       case "cate":
         return renderCATECoins();
       case "signals":
@@ -405,7 +417,7 @@ export default function RadarPageElite() {
           </div>
         );
       case "graduates":
-        return <GraduatesTab coins={graduates} lab={gradLab} meta={gradMeta} entered={enteredCoins} failedMints={failedEntries} onEnter={(c) => enterCoin(c, "graduates")} />;
+        return <GraduatesTab coins={graduates} lab={gradLab} meta={gradMeta} entered={enteredCoins} failedMints={failedEntries} notes={checkNotes} onEnter={(c) => enterCoin(c, "graduates")} />;
       case "runners":
         return (
           <RunnersTab
@@ -414,6 +426,7 @@ export default function RadarPageElite() {
             prior={runnersPrior}
             entered={enteredCoins}
             failedMints={failedEntries}
+            notes={checkNotes}
             onEnter={(c) => enterCoin(c, "runners")}
           />
         );

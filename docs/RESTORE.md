@@ -43,6 +43,9 @@ every rule of every candidate is kept). Applied to both databases; only the host
 The laptop database is never pruned. Going back to the 0026 version of the function is `CREATE OR REPLACE FUNCTION` with the body in `0026_cloud_retention.sql`; rows deleted from the hosted
 database are gone (the hosted copy is a rolling window by design; the laptop database keeps its own, separate record of the laptop's own scans).
 
+`0037_wallet_flows.sql` (2026-10-11, docs/WALLET.md) adds `wallet_flows` (deposits and withdrawals of SOL found in the wallet's transactions) and one column, `wallet_txs.flows_read` (default false); `0038_coin_checks.sql` (docs/COIN_CHECK.md)
+adds `coin_checks` (the user's Check presses with what was measured). Both additive, applied to both databases; code from before ignores them (`DROP TABLE wallet_flows` / `coin_checks` removes them).
+
 Environment variables on Vercel: none were added or changed overnight. On 2026-10-11 three production variables of type *sensitive* were added for the 24/7 exit
 check: `CRON_SECRET`, `EXIT_ALERT_TOKEN`, `EXIT_ALERT_CHAT_ID` (docs/EXIT_ALERTS.md). Without them the route answers 401 or "no bot token configured" and nothing else changes.
 

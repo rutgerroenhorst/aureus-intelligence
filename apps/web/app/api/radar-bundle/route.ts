@@ -21,6 +21,7 @@ const SOURCES = {
   networks: "/api/network-sentiment",
   runners: "/api/runners",
   graduates: "/api/graduates",
+  checks: "/api/coin-checks",
 } as const;
 
 // Shared by every device that asks within the window, so a second phone or tablet costs no extra CPU. One build reads about 200 KB from the

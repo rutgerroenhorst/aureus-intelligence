@@ -1,6 +1,7 @@
 "use client";
 import { useMemo, useState } from "react";
 import { dexUrl } from "@/lib/chains";
+import { CheckBadge, CheckButton, CheckPanel, useCoinCheck, type CheckNote } from "./CoinCheck";
 import type { HotChain, HotPool } from "@/lib/hotChains";
 
 export interface HotClient {
@@ -58,8 +59,42 @@ export function HotChainsBar({ hot, selected, onSelect }: { hot: HotClient | nul
   );
 }
 
+/** One trending pool: its own component because the Check button keeps state per coin. */
+function HotCard({ p, entered, failed, onEnter, note }: { p: HotPool; entered: boolean; failed: boolean; onEnter: (p: HotPool) => void; note?: CheckNote }) {
+  const check = useCoinCheck(p.address, p.chain, "hot", p.symbol);
+  return (
+    <>
+      <div style={{ background: "#141418", border: "1px solid #2a2a2f", borderRadius: 8, padding: 12, marginBottom: 8 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+          <div style={{ minWidth: 0 }}>
+            <b style={{ color: "#fff", fontSize: 15 }}>{p.symbol}</b> <span style={{ color: "#8a8a8e", fontSize: 12 }}>{p.name}</span>
+            <div style={{ fontSize: 12, color: "#b4b4c6", marginTop: 3 }}>
+              {age(p.ageH) ? `${age(p.ageH)} old · ` : ""}1 h <span style={{ color: col(p.ch1) }}>{pct(p.ch1)}</span> · 6 h <span style={{ color: col(p.ch6) }}>{pct(p.ch6)}</span> · 24 h <span style={{ color: col(p.ch24) }}>{pct(p.ch24)}</span>
+            </div>
+            <CheckBadge note={note} />
+          </div>
+          <div style={{ textAlign: "right", flexShrink: 0 }}>
+            <div style={{ color: "#fff", fontWeight: 700 }}>{usd(p.mcap)}</div>
+            <div style={{ fontSize: 11, color: "#8a8a8e" }}>liquidity {usd(p.liq)}</div>
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+          <button onClick={() => onEnter(p)} disabled={entered} style={{ ...btn, background: entered ? "#34c759" : "#1a1a1f", color: entered ? "#000" : failed ? "#ff9f0a" : "#34c759", borderColor: failed ? "#ff9f0a" : "#34c759" }}>
+            {entered ? "✅ Entered" : failed ? "⚠ Not saved" : "✔ Enter"}
+          </button>
+          <a href={dexUrl(p.chain, p.pair)} target="_blank" rel="noreferrer" style={btn}>
+            DexScreener
+          </a>
+          <CheckButton state={check} fontSize={12} />
+        </div>
+      </div>
+      <CheckPanel state={check} />
+    </>
+  );
+}
+
 /** What is trending on the chosen network, with the same Enter and DexScreener buttons as every other tab. */
-export function HotTab({ hot, chain, entered, failedMints, onEnter }: { hot: HotClient | null; chain: string | null; entered: Set<string>; failedMints: Set<string>; onEnter: (p: HotPool) => void }) {
+export function HotTab({ hot, chain, entered, failedMints, onEnter, notes }: { hot: HotClient | null; chain: string | null; entered: Set<string>; failedMints: Set<string>; onEnter: (p: HotPool) => void; notes?: Map<string, CheckNote> }) {
   const [all, setAll] = useState(false);
   const c = hot?.chains.find((x) => x.id === chain) ?? hot?.chains[0] ?? null;
   const pools = useMemo(() => (c ? hot?.pools[c.id] ?? [] : []), [hot, c]);
@@ -82,34 +117,7 @@ export function HotTab({ hot, chain, entered, failedMints, onEnter }: { hot: Hot
           {pools.length === 0 ? `Nothing is trending on ${c.label} right now.` : `Nothing new and small is trending on ${c.label} right now: only older or larger coins. "All trending" shows them.`}
         </div>
       ) : (
-        shown.map((p) => {
-          const isEntered = entered.has(p.address);
-          const failed = failedMints.has(p.address);
-          return (
-            <div key={p.pair} style={{ background: "#141418", border: "1px solid #2a2a2f", borderRadius: 8, padding: 12, marginBottom: 8 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-                <div style={{ minWidth: 0 }}>
-                  <b style={{ color: "#fff", fontSize: 15 }}>{p.symbol}</b> <span style={{ color: "#8a8a8e", fontSize: 12 }}>{p.name}</span>
-                  <div style={{ fontSize: 12, color: "#b4b4c6", marginTop: 3 }}>
-                    {age(p.ageH) ? `${age(p.ageH)} old · ` : ""}1 h <span style={{ color: col(p.ch1) }}>{pct(p.ch1)}</span> · 6 h <span style={{ color: col(p.ch6) }}>{pct(p.ch6)}</span> · 24 h <span style={{ color: col(p.ch24) }}>{pct(p.ch24)}</span>
-                  </div>
-                </div>
-                <div style={{ textAlign: "right", flexShrink: 0 }}>
-                  <div style={{ color: "#fff", fontWeight: 700 }}>{usd(p.mcap)}</div>
-                  <div style={{ fontSize: 11, color: "#8a8a8e" }}>liquidity {usd(p.liq)}</div>
-                </div>
-              </div>
-              <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-                <button onClick={() => onEnter(p)} disabled={isEntered} style={{ ...btn, background: isEntered ? "#34c759" : "#1a1a1f", color: isEntered ? "#000" : failed ? "#ff9f0a" : "#34c759", borderColor: failed ? "#ff9f0a" : "#34c759" }}>
-                  {isEntered ? "✅ Entered" : failed ? "⚠ Not saved" : "✔ Enter"}
-                </button>
-                <a href={dexUrl(p.chain, p.pair)} target="_blank" rel="noreferrer" style={btn}>
-                  DexScreener
-                </a>
-              </div>
-            </div>
-          );
-        })
+        shown.map((p) => <HotCard key={p.pair} p={p} entered={entered.has(p.address)} failed={failedMints.has(p.address)} onEnter={onEnter} note={notes?.get(`hot|${p.address}`)} />)
       )}
     </div>
   );

@@ -1,5 +1,6 @@
 "use client";
 import { useMemo, useState } from "react";
+import { CheckBadge, CheckButton, CheckPanel, useCoinCheck, type CheckNote } from "./CoinCheck";
 
 export interface Runner {
   mint: string;
@@ -51,10 +52,12 @@ type Kind = "all" | "lists" | "young";
 const btn: React.CSSProperties = { padding: "6px 12px", background: "#1a1a1f", color: "#34c759", border: "1px solid #34c759", borderRadius: 4, fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap", textDecoration: "none" };
 
 /** Only what a decision to enter needs: the coin, its size, where it stands, one warning when there is one, and the two buttons. */
-function Row({ c, onEnter, entered, failed }: { c: Runner; onEnter: (c: Runner) => void; entered: boolean; failed: boolean }) {
+function Row({ c, onEnter, entered, failed, note }: { c: Runner; onEnter: (c: Runner) => void; entered: boolean; failed: boolean; note?: CheckNote }) {
+  const check = useCoinCheck(c.mint, "solana", "runners", c.symbol);
   const age = c.ageDays == null ? null : c.ageDays < 2 ? `${Math.max(1, Math.round(c.ageDays * 24))} h` : `${c.ageDays.toFixed(0)} d`;
   const warn = c.flags.filter((f) => /fading|sellers/.test(f));
   return (
+    <>
     <div style={{ background: "#141418", border: "1px solid #2a2a2f", borderRadius: 8, padding: 12, marginBottom: 8 }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
         <div style={{ minWidth: 0 }}>
@@ -63,6 +66,7 @@ function Row({ c, onEnter, entered, failed }: { c: Runner; onEnter: (c: Runner) 
             {age ? `${age} old · ` : ""}24 h <span style={{ color: col(c.change24h) }}>{pct(c.change24h)}</span> · last hour <span style={{ color: col(c.change1h) }}>{pct(c.change1h)}</span>
           </div>
           {warn.length > 0 && <div style={{ fontSize: 11, color: "#ff9f0a", marginTop: 3 }}>⚠ {warn.join(" · ")}</div>}
+          <CheckBadge note={note} />
         </div>
         <div style={{ textAlign: "right", flexShrink: 0 }}>
           <div style={{ color: "#fff", fontWeight: 700 }}>{usd(c.mcap)}</div>
@@ -76,14 +80,17 @@ function Row({ c, onEnter, entered, failed }: { c: Runner; onEnter: (c: Runner) 
         <a href={`https://dexscreener.com/solana/${c.mint}`} target="_blank" rel="noreferrer" style={btn}>
           DexScreener
         </a>
+        <CheckButton state={check} fontSize={12} />
       </div>
     </div>
+    <CheckPanel state={check} />
+    </>
   );
 }
 
 const chip = (on: boolean): React.CSSProperties => ({ padding: "5px 10px", fontSize: 12, borderRadius: 6, cursor: "pointer", background: on ? "#2a2a3e" : "#1a1a1f", color: on ? "#fff" : "#8a8a8e", border: `1px solid ${on ? "#4a4a66" : "#2a2a2f"}` });
 
-export function RunnersTab({ runners, lab, prior, entered, failedMints, onEnter }: { runners: Runner[]; lab: RunnersLab | null; prior: RunnersPrior | null; entered: Set<string>; failedMints: Set<string>; onEnter: (c: Runner) => void }) {
+export function RunnersTab({ runners, lab, prior, entered, failedMints, onEnter, notes }: { runners: Runner[]; lab: RunnersLab | null; prior: RunnersPrior | null; entered: Set<string>; failedMints: Set<string>; onEnter: (c: Runner) => void; notes?: Map<string, CheckNote> }) {
   const [sort, setSort] = useState<SortKey>("new");
   const [kind, setKind] = useState<Kind>("all");
   const nLists = runners.filter((r) => r.via !== "too_big").length;
@@ -124,7 +131,7 @@ export function RunnersTab({ runners, lab, prior, entered, failedMints, onEnter 
       {list.length === 0 ? (
         <div style={{ textAlign: "center", color: "#8a8a8e", padding: 32 }}>No runners on the watch list yet. They appear after the next lab round (every 10 to 15 minutes while a screen is open).</div>
       ) : (
-        list.map((c) => <Row key={c.mint} c={c} onEnter={onEnter} entered={entered.has(c.mint)} failed={failedMints.has(c.mint)} />)
+        list.map((c) => <Row key={c.mint} c={c} onEnter={onEnter} entered={entered.has(c.mint)} failed={failedMints.has(c.mint)} note={notes?.get(`runners|${c.mint}`)} />)
       )}
     </div>
   );
