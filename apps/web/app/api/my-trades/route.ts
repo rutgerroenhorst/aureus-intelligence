@@ -15,7 +15,7 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => ({}));
 
     if (body.action === "add-entry") {
-      const r = await addTrade({ mint: body.mint, symbol: body.symbol, tab: body.tab, entryMcap: body.entryMcap, sizeUsd: body.sizeUsd });
+      const r = await addTrade({ mint: body.mint, chain: body.chain, symbol: body.symbol, tab: body.tab, entryMcap: body.entryMcap, sizeUsd: body.sizeUsd });
       if (!r.trade) return NextResponse.json({ error: r.error }, { status: r.status });
       return NextResponse.json({ success: true, trade: r.trade }, { status: r.status });
     }

@@ -20,6 +20,7 @@ interface MyTrade {
   symbol: string;
   mint: string;
   tab?: string | null;
+  chain?: string;
   source?: string;
   enteredAt: string;
   entryMcap: number;
@@ -343,6 +344,7 @@ export default function ResultsPage() {
                       >
                         <td style={{ padding: '12px', color: '#fff', fontWeight: 600 }}>
                           {trade.symbol}
+                          {trade.chain && trade.chain !== 'solana' && <span style={{ marginLeft: 6, fontSize: 9, color: '#30b0c0', border: '1px solid #30b0c0', borderRadius: 3, padding: '0 3px' }}>{trade.chain}</span>}
                         </td>
                         <td style={{ padding: '12px', color: '#8a8a8e' }}>
                           {hours}h ago

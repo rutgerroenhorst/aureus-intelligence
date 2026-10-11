@@ -29,6 +29,7 @@ import { noteTurnedAway, type TurnedAway } from "./labWatch.js";
 import { PumpFeed } from "./pumpFeed.js";
 import { startPhoneSync } from "./phoneSync.js";
 import { startWalletLoop } from "./walletLoop.js";
+import { startHotLoop } from "./hotLoop.js";
 
 const WORKER_ID = process.env.WORKER_ID ?? `worker-${process.pid}`;
 const log = (msg: string, extra: Record<string, unknown> = {}) =>
@@ -681,6 +682,9 @@ async function loop(): Promise<void> {
   if (!process.env.VERCEL) {
     const stopWallet = startWalletLoop(pool as never, log);
     process.once("exit", stopWallet);
+    // the ranking of the networks for the Radar's Hot tab (free public sources; HOT_LOOP=0 switches it off)
+    const stopHot = startHotLoop(pool as never, log);
+    process.once("exit", stopHot);
   }
   log("started", { intervals: { discovery: workerConfig.discoveryIntervalMs, tick: workerConfig.cycleTickMs }, telegram: channel.mode, helius: heliusMode });
   while (!shuttingDown) {

@@ -4,6 +4,7 @@ import ElitePageWrapper from "@/components/ElitePageWrapper";
 import { usePolling, useOnScanDone } from "@/lib/usePolling";
 import { RunnersTab, type Runner, type RunnersLab, type RunnersPrior } from "./RunnersTab";
 import { GraduatesTab, type Graduate, type GradMeta } from "./GraduatesTab";
+import { HotChainsBar, HotTab, isNewSmall, type HotClient } from "./HotChains";
 
 interface Candidate {
   id: string;
@@ -14,7 +15,7 @@ interface Candidate {
   discovered_at: string;
 }
 
-type Tab = "cate" | "signals" | "positions" | "trends" | "momentum" | "performance" | "elite-s" | "early" | "entry" | "qualified" | "stats" | "runners" | "graduates";
+type Tab = "hot" | "cate" | "signals" | "positions" | "trends" | "momentum" | "performance" | "elite-s" | "early" | "entry" | "qualified" | "stats" | "runners" | "graduates";
 
 // The name the learning system and the trade journal use for each Radar tab.
 const JOURNAL_TAB: Partial<Record<Tab, string>> = {
@@ -25,6 +26,7 @@ const JOURNAL_TAB: Partial<Record<Tab, string>> = {
   qualified: "incubation",
   runners: "runners",
   graduates: "graduates",
+  hot: "hot",
 };
 
 export default function RadarPageElite() {
@@ -50,12 +52,14 @@ export default function RadarPageElite() {
   const [networks, setNetworks] = useState<any[]>([]);
   const [safety, setSafety] = useState<{ total: number; safe: number; rejected: number; unverified: number; noData: number } | null>(null);
   const [selectedChain, setSelectedChain] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<Tab>("early");
+  const [activeTab, setActiveTab] = useState<Tab>("hot");
+  const [hot, setHot] = useState<HotClient | null>(null);
+  const [hotChain, setHotChain] = useState<string | null>(null);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const [failedSources, setFailedSources] = useState<string[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [scrollPositions, setScrollPositions] = useState<{[key in Tab]: number}>({
-    cate: 0, signals: 0, positions: 0, trends: 0, momentum: 0, performance: 0,
+    hot: 0, cate: 0, signals: 0, positions: 0, trends: 0, momentum: 0, performance: 0,
     "elite-s": 0, early: 0, entry: 0, qualified: 0, stats: 0, runners: 0, graduates: 0
   });
   const [enteredCoins, setEnteredCoins] = useState<Set<string>>(new Set());
@@ -106,6 +110,16 @@ export default function RadarPageElite() {
   };
 
   usePolling(fetchAll, 20_000);
+  usePolling(async () => {
+    try {
+      const res = await fetch("/api/hot-chains", { cache: "no-store" });
+      if (!res.ok) return;
+      const d = (await res.json()) as HotClient;
+      if (d?.chains?.length) setHot(d);
+    } catch {
+      /* keep what is on screen */
+    }
+  }, 60_000);
   // A scan has just finished: show its coins now instead of at the next 20 s tick.
   useOnScanDone(() => void fetchAll());
 
@@ -139,13 +153,13 @@ export default function RadarPageElite() {
     </button>
   );
 
-  /** "I entered this" for the lanes beyond the Radar's door (Runners, Graduations): one record in the trade journal, with the tab it came from. */
-  const enterCoin = async (c: { symbol: string | null; mint: string; mcap: number | null }, tabKey: "runners" | "graduates") => {
+  /** "I entered this" for the lanes beyond the Radar's door (Runners, Graduations, Hot): one record in the trade journal, with the tab and the network. */
+  const enterCoin = async (c: { symbol: string | null; mint: string; mcap: number | null; chain?: string }, tabKey: "runners" | "graduates" | "hot") => {
     try {
       const res = await fetch("/api/my-trades", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ symbol: c.symbol, mint: c.mint, entryMcap: c.mcap, tab: JOURNAL_TAB[tabKey] ?? null, action: "add-entry" }),
+        body: JSON.stringify({ symbol: c.symbol, mint: c.mint, chain: c.chain ?? "solana", entryMcap: c.mcap, tab: JOURNAL_TAB[tabKey] ?? null, action: "add-entry" }),
       });
       if (!res.ok) throw new Error(`my-trades ${res.status}`);
       setEnteredCoins((prev) => new Set([...prev, c.mint]));
@@ -372,6 +386,8 @@ export default function RadarPageElite() {
 
   const renderContent = () => {
     switch (activeTab) {
+      case "hot":
+        return <HotTab hot={hot} chain={hotChain} entered={enteredCoins} failedMints={failedEntries} onEnter={(p) => enterCoin({ symbol: p.symbol, mint: p.address, mcap: p.mcap, chain: p.chain }, "hot")} />;
       case "cate":
         return renderCATECoins();
       case "signals":
@@ -558,7 +574,10 @@ export default function RadarPageElite() {
             📊 Aureus Radar
           </h1>
           
+          <HotChainsBar hot={hot} selected={hotChain} onSelect={(id) => { setHotChain(id); setActiveTab("hot"); }} />
+
           <div className="radar-tabs" style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "16px" }}>
+            <TabButton tab="hot" label="🔥 Hot" count={hot ? (hot.pools[(hot.chains.find((c) => c.id === hotChain) ?? hot.chains[0])?.id ?? ""] ?? []).filter(isNewSmall).length : undefined} />
             <TabButton tab="cate" label="🎯 CATE" count={cateCoins.length} />
             <TabButton tab="signals" label="💰 Buy Signals" count={buySignals.length} />
             <TabButton tab="early" label="🚀 Ultra Momentum" count={ultraEarlyMomentum.length} />

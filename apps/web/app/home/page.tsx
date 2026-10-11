@@ -3,8 +3,9 @@ import { useMemo, useState } from "react";
 import { usePolling } from "@/lib/usePolling";
 import { MarketStrip } from "@/components/MarketStrip";
 import { planCheck } from "@/lib/exitPlan";
+import { dexUrl } from "@/lib/chains";
 
-interface Trade { id?: string; symbol: string; mint?: string; status: "active" | "exited"; multiplier: number; peakMultiple: number; lowMultiple: number; sizeUsd?: number | null; soldUsd?: number | null; soldFraction?: number | null; peakKnown?: boolean }
+interface Trade { id?: string; symbol: string; mint?: string; chain?: string; status: "active" | "exited"; multiplier: number; peakMultiple: number; lowMultiple: number; sizeUsd?: number | null; soldUsd?: number | null; soldFraction?: number | null; peakKnown?: boolean }
 interface Runner { mint: string; symbol: string | null; mcap: number | null; change24h: number | null; via: string; organic: number | null; holders: number | null; seenHoursAgo: number; flags: string[] }
 interface Grad { mint: string; symbol: string | null; ageMin: number; mcap: number | null; liq?: number | null; sinceFirst: number | null; flags: string[]; kind?: string; healthy?: boolean; hiddenWhy?: string | null; empty?: boolean; drained?: boolean }
 interface Loop { scoreboard: Array<{ id: string; label: string; value: number | null; n: number; format: "pct" | "hours" }>; decisions: Array<{ id: string; level: string; title: string; suggestion: string }>; }
@@ -103,7 +104,7 @@ export default function HomePage() {
                   <div style={{ ...dim, marginBottom: 4 }}>Still worth something:</div>
                   {money.worth.map(({ t, value }) => (
                     <div key={t.id ?? t.symbol} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 13, padding: "2px 0" }}>
-                      {t.mint ? <a href={`https://dexscreener.com/solana/${t.mint}`} target="_blank" rel="noreferrer" style={{ color: "#fff", textDecoration: "none", fontWeight: 600 }}>{t.symbol}</a> : <b>{t.symbol}</b>}
+                      {t.mint ? <a href={dexUrl(t.chain ?? "solana", t.mint)} target="_blank" rel="noreferrer" style={{ color: "#fff", textDecoration: "none", fontWeight: 600 }}>{t.symbol}</a> : <b>{t.symbol}</b>}
                       <span style={{ color: "#8a8a9e" }}>now {x(t.multiplier)} · ≈ ${value.toFixed(0)}{t.soldFraction ? ` · sold ${Math.round(t.soldFraction * 100)}%` : ""}</span>
                     </div>
                   ))}

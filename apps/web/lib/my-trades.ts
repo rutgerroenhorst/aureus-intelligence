@@ -1,5 +1,6 @@
 import { getPool } from "@aureus/db";
 import { fetchPairs, type Pair } from "./learning-engine";
+import { CHAIN_BY_ID, isTokenAddress } from "./chains";
 
 /**
  * The trade journal: the coins the user pressed "Enter" on (or logged by hand), the Radar tab they came from, a live
@@ -7,7 +8,7 @@ import { fetchPairs, type Pair } from "./learning-engine";
  */
 
 /** The learning tabs an entry can come from; anything else is stored as "unknown". */
-export const TRADE_TABS = ["cate", "buy_signals", "ultra_momentum", "elite", "incubation", "runners", "graduates"] as const;
+export const TRADE_TABS = ["cate", "buy_signals", "ultra_momentum", "elite", "incubation", "runners", "graduates", "hot"] as const;
 const MINT_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 /** The site's address is public, so the journal is bounded: no more open trades than this, and a repeat click is idempotent. */
 const MAX_ACTIVE = 300;
@@ -18,6 +19,8 @@ const REFRESH_EVERY_MS = 15_000;
 export type TradeRow = {
   id: string;
   mint: string;
+  /** the network (lib/chains.ts); rows from before networks were added are Solana */
+  chain?: string | null;
   symbol: string | null;
   tab_name: string | null;
   source: string;
@@ -44,6 +47,8 @@ export interface ApiTrade {
   id: string;
   symbol: string;
   mint: string;
+  /** the network the coin trades on */
+  chain: string;
   tab: string | null;
   source: string;
   enteredAt: string;
@@ -76,6 +81,7 @@ const num = (v: unknown): number | null => {
 const iso = (v: unknown): string | null => (v ? new Date(v as string).toISOString() : null);
 
 export const isValidMint = (s: unknown): s is string => typeof s === "string" && MINT_RE.test(s);
+const dexChainOf = (chain: string | null | undefined) => CHAIN_BY_ID.get(chain ?? "solana")?.dex ?? "solana";
 
 export function toApi(r: TradeRow): ApiTrade {
   const entry = num(r.entry_mcap_usd) ?? 1;
@@ -88,6 +94,7 @@ export function toApi(r: TradeRow): ApiTrade {
     id: r.id,
     symbol: r.symbol ?? "?",
     mint: r.mint,
+    chain: r.chain ?? "solana",
     tab: r.tab_name,
     source: r.source,
     enteredAt: new Date(r.entered_at).toISOString(),
@@ -144,6 +151,8 @@ const mcapOf = (p: Pair | undefined | null): number | null => {
 
 export interface AddTradeInput {
   mint: unknown;
+  /** the network's id (lib/chains.ts); Solana when left out */
+  chain?: unknown;
   symbol?: unknown;
   tab?: unknown;
   /** what the page showed; only used when DexScreener cannot be reached */
@@ -153,7 +162,9 @@ export interface AddTradeInput {
 
 /** Record an entry. Idempotent for the same coin within a few minutes; bounded because the address is public. */
 export async function addTrade(input: AddTradeInput): Promise<{ trade?: ApiTrade; error?: string; status: number }> {
-  if (!isValidMint(input.mint)) return { error: "invalid mint", status: 400 };
+  const chain = typeof input.chain === "string" && CHAIN_BY_ID.has(input.chain) ? input.chain : "solana";
+  if (input.chain != null && typeof input.chain === "string" && !CHAIN_BY_ID.has(input.chain)) return { error: "unknown network", status: 400 };
+  if (!isTokenAddress(chain, input.mint)) return { error: "invalid mint", status: 400 };
   const mint = input.mint;
   const tab = typeof input.tab === "string" && (TRADE_TABS as readonly string[]).includes(input.tab) ? input.tab : null;
   const symbol = typeof input.symbol === "string" ? input.symbol.replace(/[^\p{L}\p{N}_.\-$@ ]/gu, "").slice(0, 40) || null : null;
@@ -164,26 +175,27 @@ export async function addTrade(input: AddTradeInput): Promise<{ trade?: ApiTrade
   if ((open.rows[0]?.n ?? 0) >= MAX_ACTIVE) return { error: "too many open trades", status: 429 };
 
   const dup = await pool.query<TradeRow>(
-    `SELECT * FROM my_trades WHERE mint = $1 AND status = 'active' AND entered_at > now() - make_interval(mins => $2) ORDER BY entered_at DESC LIMIT 1`,
-    [mint, DEDUPE_MINUTES],
+    `SELECT * FROM my_trades WHERE lower(mint) = lower($1) AND chain = $3 AND status = 'active' AND entered_at > now() - make_interval(mins => $2) ORDER BY entered_at DESC LIMIT 1`,
+    [mint, DEDUPE_MINUTES, chain],
   );
   if (dup.rows[0]) return { trade: toApi(dup.rows[0]), status: 200 };
 
   // The live market cap at the moment of the click is the best stand-in for the fill: the card on screen can be minutes old.
-  const live = (await fetchPairs("solana", [mint]))?.get(mint) ?? null;
+  const live = (await fetchPairs(dexChainOf(chain), [mint]))?.get(mint) ?? null;
   const entryMcap = mcapOf(live) ?? num(input.entryMcap);
   if (entryMcap == null || entryMcap <= 0) return { error: "no market data for this coin", status: 400 };
   const created = live?.pairCreatedAt ?? null;
 
   const ins = await pool.query<TradeRow>(
     `INSERT INTO my_trades (mint, symbol, tab_name, source, entry_mcap_usd, entry_liquidity_usd, entry_price_usd,
-                            pair_age_minutes_at_entry, size_usd, last_mcap_usd, peak_mcap_usd, low_mcap_usd, last_checked_at)
-     VALUES ($1, $2, $3, 'radar', $4, $5, $6, $7, $8, $4, $4, $4, now())
+                            pair_age_minutes_at_entry, size_usd, last_mcap_usd, peak_mcap_usd, low_mcap_usd, last_checked_at, chain)
+     VALUES ($1, $2, $3, 'radar', $4, $5, $6, $7, $8, $4, $4, $4, now(), $9)
      RETURNING *`,
     [
       mint, symbol, tab, entryMcap, num(live?.liquidity?.usd), num(live?.priceUsd),
       created ? Math.max(0, Math.round((Date.now() - created) / 60_000)) : null,
       size != null && size >= 0 && size < 1_000_000 ? size : null,
+      chain,
     ],
   );
   return { trade: toApi(ins.rows[0]!), status: 201 };
@@ -197,7 +209,7 @@ export async function exitTrade(id: unknown, exitMcap?: unknown): Promise<ApiTra
   const row = cur.rows[0];
   if (!row) return null;
   if (row.status === "exited") return toApi(row);
-  const live = (await fetchPairs("solana", [row.mint]))?.get(row.mint) ?? null;
+  const live = (await fetchPairs(dexChainOf(row.chain), [row.mint]))?.get(row.mint) ?? null;
   const mcap = num(exitMcap) ?? mcapOf(live) ?? num(row.last_mcap_usd) ?? num(row.entry_mcap_usd);
   const upd = await pool.query<TradeRow>(
     `UPDATE my_trades SET status = 'exited', exit_mcap_usd = $2, exited_at = now(), last_mcap_usd = $2 WHERE id = $1 RETURNING *`,
@@ -217,19 +229,26 @@ export async function refreshActiveTrades(): Promise<{ checked: number; updated:
     [MAX_ACTIVE],
   );
   if (rows.length === 0) return { checked: 0, updated: 0 };
-  const mints = [...new Set(rows.map((r) => r.mint))];
+  // one DexScreener question per network (up to 30 coins each); a network that did not answer proves nothing about its coins
   const market = new Map<string, Pair>();
-  let answered = true;
-  for (let i = 0; i < mints.length; i += 30) {
-    const found = await fetchPairs("solana", mints.slice(i, i + 30));
-    if (!found) { answered = false; continue; }
-    for (const [m, p] of found) market.set(m, p);
+  const answeredChain = new Map<string, boolean>();
+  const byChain = new Map<string, string[]>();
+  for (const r of rows) byChain.set(r.chain ?? "solana", [...new Set([...(byChain.get(r.chain ?? "solana") ?? []), r.mint])]);
+  for (const [chain, mints] of byChain) {
+    let ok = true;
+    for (let i = 0; i < mints.length; i += 30) {
+      const found = await fetchPairs(dexChainOf(chain), mints.slice(i, i + 30));
+      if (!found) { ok = false; continue; }
+      for (const [m, p] of found) market.set(`${chain}:${m}`, p);
+    }
+    answeredChain.set(chain, ok);
   }
   const ids: string[] = [], mcaps: Array<number | null> = [];
   for (const r of rows) {
-    const mc = mcapOf(market.get(r.mint));
+    const key = `${r.chain ?? "solana"}:${r.mint}`;
+    const mc = mcapOf(market.get(key));
     // A coin DexScreener no longer lists, an hour after entry, is worth nothing; a failed call proves nothing.
-    const gone = answered && !market.has(r.mint) && Date.now() - new Date(r.entered_at).getTime() > 3_600_000;
+    const gone = answeredChain.get(r.chain ?? "solana") === true && !market.has(key) && Date.now() - new Date(r.entered_at).getTime() > 3_600_000;
     if (mc == null && !gone) continue;
     ids.push(r.id);
     mcaps.push(mc ?? 0);
