@@ -3,6 +3,8 @@
 Secrets live **only** in `.env.local` (gitignored). Never paste your bot token
 into chat, code, or the database — the app never logs or stores it.
 
+> **Exit alerts are separate.** The messages when a coin you hold reaches 2x or 5x (docs/EXIT_ALERTS.md) use their own bot token in `.env.exit-alerts.local` and their own variables (`EXIT_ALERT_*`). They do not use the `TELEGRAM_*` variables below, so enabling or disabling one never affects the other.
+
 ## Steps
 
 1. **Open BotFather.** In Telegram, search for `@BotFather` and start a chat.

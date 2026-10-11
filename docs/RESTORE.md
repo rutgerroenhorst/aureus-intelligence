@@ -36,6 +36,8 @@ Migrations added since the restore point: `0029_lab_watch.sql`, `0030_pump_feed.
 
 `0033_trade_chain.sql` (2026-10-11, networks beyond Solana: docs/HOT_NETWORKS.md) adds one column, `my_trades.chain` (text, default `'solana'`), applied to both databases. Code from before it never reads it, and every older row is `solana`. The same work adds a `lab_reports` row of kind `hotchains` (the ranking of the networks; delete it with `DELETE FROM lab_reports WHERE kind = 'hotchains'` if you want it gone) that the laptop worker/daemon refreshes every 4 minutes (`HOT_LOOP=0` switches that off).
 
+`0034_exit_alerts.sql` (2026-10-11, docs/EXIT_ALERTS.md) adds two small tables, `exit_alerts` and `exit_alert_kv` (which exit alerts went out; no token, no chat id), applied to the laptop database only so far. The alerts need a git-ignored `.env.exit-alerts.local` with the Telegram bot token; without it the loop does nothing, and `EXIT_ALERTS=0` switches it off. Code from before never reads either table.
+
 Environment variables on Vercel: none were added or changed overnight (this line is updated if that ever changes).
 
 Background processes started on the laptop during the overnight work: `scripts/lab-daemon.ts` (holds pump.fun's event stream and runs a lab round every 10 minutes). Stop it with `pkill -f lab-daemon`. The restore point's worker does not start it or the stream. If it was started with `LAB_SYNC_URL`, it also writes one row (`lab_reports`, kind `gradlist`) to the hosted database every 3 minutes; that row is additive and the restore point's code never reads it (delete it with `DELETE FROM lab_reports WHERE kind = 'gradlist'` if you want it gone).

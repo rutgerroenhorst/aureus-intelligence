@@ -30,6 +30,7 @@ import { PumpFeed } from "./pumpFeed.js";
 import { startPhoneSync } from "./phoneSync.js";
 import { startWalletLoop } from "./walletLoop.js";
 import { startHotLoop } from "./hotLoop.js";
+import { startExitLoop } from "./exitLoop.js";
 
 const WORKER_ID = process.env.WORKER_ID ?? `worker-${process.pid}`;
 const log = (msg: string, extra: Record<string, unknown> = {}) =>
@@ -685,6 +686,9 @@ async function loop(): Promise<void> {
     // the ranking of the networks for the Radar's Hot tab (free public sources; HOT_LOOP=0 switches it off)
     const stopHot = startHotLoop(pool as never, log);
     process.once("exit", stopHot);
+    // exit alerts to the user's own Telegram bot (only when .env.exit-alerts.local holds a token; EXIT_ALERTS=0 switches it off)
+    const stopExit = startExitLoop(pool as never, log);
+    process.once("exit", stopExit);
   }
   log("started", { intervals: { discovery: workerConfig.discoveryIntervalMs, tick: workerConfig.cycleTickMs }, telegram: channel.mode, helius: heliusMode });
   while (!shuttingDown) {

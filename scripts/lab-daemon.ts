@@ -8,6 +8,7 @@
  * LAB_EVERY_MINUTES (default 10) sets the pace of the rounds; PUMP_FEED=0 leaves the stream off.
  * LAB_SYNC_URL (a connection string for the hosted database) copies the graduations to it every 3 minutes, so the phone shows them,
  * and the ranking of the networks (Radar, Hot tab) every 4 minutes (HOT_LOOP=0 leaves that off).
+ * With a Telegram bot configured (.env.exit-alerts.local, docs/EXIT_ALERTS.md) it also sends the exit alerts (EXIT_ALERTS=0 leaves that off).
  */
 import { closePool, getPool } from "@aureus/db";
 import { runLab } from "../apps/web/lib/lab/tick";
@@ -16,6 +17,7 @@ import { PumpFeed } from "../apps/worker/src/pumpFeed";
 import { startPhoneSync } from "../apps/worker/src/phoneSync";
 import { startWalletLoop } from "../apps/worker/src/walletLoop";
 import { startHotLoop } from "../apps/worker/src/hotLoop";
+import { startExitLoop } from "../apps/worker/src/exitLoop";
 
 const log = (msg: string, extra: Record<string, unknown> = {}) => console.log(JSON.stringify({ t: new Date().toISOString(), worker: "lab-daemon", msg, ...extra }));
 const everyMs = Number(process.env.LAB_EVERY_MINUTES ?? 10) * 60_000;
@@ -28,6 +30,7 @@ async function main() {
   const stopSync = startPhoneSync(pool as never, log);
   const stopWallet = startWalletLoop(pool as never, log);
   const stopHot = startHotLoop(pool as never, log);
+  const stopExit = startExitLoop(pool as never, log);
   const shutdown = async () => {
     if (stopping) return;
     stopping = true;
@@ -35,6 +38,7 @@ async function main() {
     stopSync();
     stopWallet();
     stopHot();
+    stopExit();
     feed?.stop();
     await closePool().catch(() => undefined);
     process.exit(0);
