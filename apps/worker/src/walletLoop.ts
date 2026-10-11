@@ -5,7 +5,7 @@
  */
 
 import pg from "pg";
-import { pushWalletRows, syncAllWallets } from "../../web/lib/walletSync";
+import { pushWalletFlows, pushWalletRows, syncAllWallets } from "../../web/lib/walletSync";
 
 type Log = (msg: string, extra?: Record<string, unknown>) => void;
 interface Client {
@@ -31,6 +31,8 @@ export function startWalletLoop(db: Client, log: Log): () => void {
         for (const a of (await db.query(`SELECT address FROM wallet_watch`)).rows) {
           const p = await pushWalletRows(db, hosted as unknown as Client, a.address as string);
           if (p) log("wallet pushed to the hosted journal", { txs: p.txs, fills: p.fills, journal: p.journal });
+          const f = await pushWalletFlows(db, hosted as unknown as Client, a.address as string);
+          if (f) log("wallet deposits pushed to the hosted database", { flows: f });
         }
       }
     } catch (e) {

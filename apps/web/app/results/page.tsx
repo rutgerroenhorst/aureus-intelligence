@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { usePolling } from '@/lib/usePolling';
 import { ExitCheck } from './ExitCheck';
+import type { WalletMoney } from '@/lib/walletMoney';
 
 interface ResultsCoin {
   symbol: string;
@@ -44,6 +45,7 @@ export default function ResultsPage() {
   const [detectorBreakdown, setDetectorBreakdown] = useState<any>(null);
   const [myTrades, setMyTrades] = useState<MyTrade[]>([]);
   const [tradeStats, setTradeStats] = useState<any>(null);
+  const [money, setMoney] = useState<WalletMoney | null>(null);
   const [activeTab, setActiveTab] = useState<'system' | 'trades'>('system');
   const [loading, setLoading] = useState(true);
 
@@ -65,6 +67,7 @@ export default function ResultsPage() {
         const data = await tradesRes.json();
         setMyTrades(data.myTrades || []);
         setTradeStats(data.stats);
+        setMoney(data.money ?? null);
       }
     } catch (err) {
       console.error('Fetch error:', err);
@@ -238,6 +241,14 @@ export default function ResultsPage() {
                 marginBottom: '24px',
               }}
             >
+              {money && money.deposited.n > 0 && (
+                <StatBox
+                  label="Deposited in total"
+                  value={`$${Math.round(money.deposited.usd).toLocaleString('en-US')}`}
+                  color="#30b0c0"
+                  sub={`${money.deposited.n} deposits · ${money.deposited.sol.toFixed(2)} SOL${money.deposited.first ? ` · since ${new Date(money.deposited.first).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : ''}${money.withdrawn.n > 0 ? ` · taken out $${Math.round(money.withdrawn.usd).toLocaleString('en-US')}` : ''}`}
+                />
+              )}
               <StatBox
                 label="Active Positions"
                 value={tradeStats.active}
@@ -253,6 +264,29 @@ export default function ResultsPage() {
                 color="#FFB52F"
               />
             </div>
+          )}
+
+          {money && money.deposited.n > 0 && (
+            <details style={{ margin: '-8px 0 20px', fontSize: '12px', color: '#8a8a8e', lineHeight: 1.55 }}>
+              <summary style={{ cursor: 'pointer', color: '#30b0c0' }}>What counts as deposited, and the deposits one by one</summary>
+              <div style={{ marginTop: 8 }}>
+                SOL that another address sent to your wallet, each valued in dollars at that hour's SOL price{money.deposited.unpriced > 0 ? ` (${money.deposited.unpriced} without a price are not in the total)` : ''}. Not counted: trades, swapping SOL for USDC inside the wallet,
+                and USDC sent in directly (it cannot be told apart from the proceeds of a sale). Read from the chain with only the public address, so a deposit shows up a few minutes after it arrived.
+                <table style={{ marginTop: 8, borderCollapse: 'collapse', fontSize: '12px' }}>
+                  <tbody>
+                    {money.deposits.map((d, i) => (
+                      <tr key={i} style={{ borderTop: '1px solid #1a1a1f' }}>
+                        <td style={{ padding: '4px 14px 4px 0', color: '#b4b4c6' }}>{new Date(d.t).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</td>
+                        <td style={{ padding: '4px 14px 4px 0', color: '#fff' }}>{d.amount.toFixed(4)} SOL</td>
+                        <td style={{ padding: '4px 14px 4px 0', color: '#fff' }}>{d.usd != null ? `$${d.usd.toFixed(2)}` : 'no price'}</td>
+                        <td style={{ padding: '4px 0', color: '#6a6a72' }}>from {d.from ?? '?'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {money.deposited.n > money.deposits.length && <div style={{ marginTop: 4 }}>The newest {money.deposits.length} of {money.deposited.n} are listed.</div>}
+              </div>
+            </details>
           )}
 
           <ExitCheck trades={myTrades} />
@@ -392,7 +426,7 @@ export default function ResultsPage() {
   );
 }
 
-function StatBox({ label, value, color }: { label: string; value: any; color: string }) {
+function StatBox({ label, value, color, sub }: { label: string; value: any; color: string; sub?: string }) {
   return (
     <div
       style={{
@@ -406,6 +440,7 @@ function StatBox({ label, value, color }: { label: string; value: any; color: st
       <div style={{ fontSize: '24px', fontWeight: 700, color }}>
         {value}
       </div>
+      {sub && <div style={{ fontSize: '11px', color: '#8a8a8e', marginTop: '6px', lineHeight: 1.4 }}>{sub}</div>}
     </div>
   );
 }

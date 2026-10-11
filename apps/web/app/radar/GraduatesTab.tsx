@@ -1,5 +1,6 @@
 "use client";
 import { useMemo, useState } from "react";
+import { gradSnapshot, gradAgeText } from "@/lib/gradStale";
 
 export interface Graduate {
   mint: string;
@@ -92,14 +93,19 @@ export function GraduatesTab({ coins, lab, meta, entered, failedMints, onEnter }
     else l.sort((a, b) => a.ageMin - b.ageMin);
     return l.slice(0, 60);
   }, [coins, sort, showAll, judged]);
-  const snapAge = meta?.source === "laptop" && meta.asOf ? Math.max(0, Math.round((Date.now() - new Date(meta.asOf).getTime()) / 60_000)) : null;
+  const { ageMin: snapAge, stale } = gradSnapshot(meta, Date.now());
   const hiddenText = [hidden.born && `${hidden.born} born graduated`, hidden.mayhem && `${hidden.mayhem} Mayhem Mode`, hidden.empty && `${hidden.empty} empty pools`, hidden.drained && `${hidden.drained} drained`, hidden.small && `${hidden.small} pools under $5K`, hidden.gone && `${hidden.gone} no longer listed`, hidden.waiting && `${hidden.waiting} without a reading yet`].filter(Boolean).join(", ");
   return (
     <div style={{ padding: 16 }}>
       <h3 style={{ color: "#ff9f0a", marginBottom: 6 }}>🎓 Graduations ({coins.length - hidden.total} worth a look)</h3>
+      {stale && snapAge != null && (
+        <div style={{ border: "1px solid #6a4a1a", background: "#1c1710", borderRadius: 8, padding: "9px 11px", marginBottom: 10, fontSize: 12, lineHeight: 1.55, color: "#e5c07b" }}>
+          ⏸ <b>This list is {gradAgeText(snapAge)} old: nothing new has been added since.</b> Graduations come from pump.fun's live event stream, which only your laptop can follow, and it is not running (a sleeping laptop stops it). These are the last coins it saw; new ones appear a few minutes after the laptop is awake again.
+        </div>
+      )}
       <div style={{ fontSize: 12, color: "#b4b4c6", marginBottom: 8, lineHeight: 1.5 }}>
-        Coins that just graduated from pump.fun, from their first minute. Most give everything back in the first hour: only the ones with a real, standing pool are shown.
-        {snapAge != null && <span style={{ color: snapAge > 30 ? "#ff9f0a" : "#8a8a8e" }}> Laptop snapshot, {snapAge < 90 ? `${snapAge} min` : `${(snapAge / 60).toFixed(1)} h`} old{snapAge > 30 ? " (its stream may be off)" : ""}.</span>}
+        Coins that just graduated from pump.fun (Solana only; the network bar belongs to the Hot tab), from their first minute. Most give everything back in the first hour: only the ones with a real, standing pool are shown.
+        {snapAge != null && !stale && <span style={{ color: "#8a8a8e" }}> Updated {gradAgeText(snapAge)} ago.</span>}
       </div>
       <details style={{ marginBottom: 10, fontSize: 12, color: "#8a8a8e", lineHeight: 1.5 }}>
         <summary style={{ cursor: "pointer", color: "#30b0c0" }}>Why are some coins hidden, and how graduations end</summary>

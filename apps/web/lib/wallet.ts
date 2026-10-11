@@ -51,6 +51,18 @@ export interface Transfer {
   tokens: number;
 }
 
+/** Money that moved into or out of the wallet without being a trade: SOL sent by somebody else (a deposit) or sent away (a withdrawal). */
+export interface Flow {
+  sig: string;
+  t: number;
+  asset: "SOL";
+  direction: "in" | "out";
+  /** whole coins, positive */
+  amount: number;
+  /** the other side of the transfer (kept in the database, masked wherever it is shown) */
+  counterparty: string | null;
+}
+
 export interface Decoded {
   fills: Fill[];
   transfers: Transfer[];
@@ -136,6 +148,42 @@ export function decodeFills(tx: any, wallet: string): Decoded {
   const lost = coins.filter(([, d]) => d < 0);
   if (gained.length === 1 && lost.length === 1 && !quoteSol && !quoteUsd) out.swaps.push({ sig, t, out: lost[0]![0], into: gained[0]![0] });
   else for (const [mint, d] of coins) out.transfers.push({ sig, t, mint, tokens: d });
+  return out;
+}
+
+/**
+ * The deposits and withdrawals of this wallet in one transaction: native SOL moved by a system-program transfer from or to ANOTHER address, in a
+ * transaction that is not a trade. Not counted, on purpose:
+ *   - anything in a transaction where a coin moved (a trade: the SOL leg is the price, not a deposit);
+ *   - anything in a transaction where USDC, USDT or wrapped SOL moved (swapping SOL for USDC is not a withdrawal: this wallet does that right after
+ *     every deposit, and pays USDC to a trading app for $2 buys);
+ *   - rent coming back from closed token accounts (not a system transfer) and the fee;
+ *   - failed transactions.
+ * USDC received without any SOL moving is NOT counted as a deposit either: it can as well be the proceeds of a sale made through an app. If money is
+ * ever sent in as USDC the figure misses it, and docs/WALLET.md says so.
+ */
+export function decodeFlows(tx: any, wallet: string): Flow[] {
+  const meta = tx?.meta;
+  if (!meta || meta.err != null) return [];
+  const sig: string = tx.transaction?.signatures?.[0] ?? "";
+  const t: number = num(tx.blockTime);
+  const delta = new Map<string, number>();
+  for (const b of meta.preTokenBalances ?? []) if (b.owner === wallet) delta.set(b.mint, (delta.get(b.mint) ?? 0) - uiAmount(b));
+  for (const b of meta.postTokenBalances ?? []) if (b.owner === wallet) delta.set(b.mint, (delta.get(b.mint) ?? 0) + uiAmount(b));
+  // any coin, stablecoin or wrapped-SOL movement of this wallet means a trade or a swap, not a deposit
+  if ([...delta.values()].some((d) => Math.abs(d) > 1e-9)) return [];
+  const instructions: any[] = [...(tx.transaction?.message?.instructions ?? []), ...(meta.innerInstructions ?? []).flatMap((i: any) => i?.instructions ?? [])];
+  const out: Flow[] = [];
+  for (const ins of instructions) {
+    if (ins?.program !== "system") continue;
+    const parsed = ins.parsed;
+    if (!parsed || (parsed.type !== "transfer" && parsed.type !== "transferWithSeed")) continue;
+    const { source, destination, lamports } = parsed.info ?? {};
+    const amount = num(lamports) / 1e9;
+    if (!(amount > 0)) continue;
+    if (destination === wallet && source !== wallet) out.push({ sig, t, asset: "SOL", direction: "in", amount, counterparty: typeof source === "string" ? source : null });
+    else if (source === wallet && destination !== wallet) out.push({ sig, t, asset: "SOL", direction: "out", amount, counterparty: typeof destination === "string" ? destination : null });
+  }
   return out;
 }
 
@@ -286,18 +334,28 @@ export async function fetchHoldings(address: string): Promise<Map<string, number
   }
 }
 
-/** SOL price in dollars, hourly, from DefiLlama; returns a lookup that picks the nearest hour (and the latest price outside the range). */
+/** DefiLlama answers with NOTHING (not an error) when more than about 500 hourly points are asked for in one call, so a long stretch is read in pieces. */
+const LLAMA_HOURS_PER_CALL = 480;
+
+/**
+ * SOL price in dollars, hourly, from DefiLlama; returns a lookup that picks the nearest hour (and the latest price outside the range).
+ * Without any history the lookup answers 0 ("no price"), except for a stretch of the last two days, where today's Jupiter price is a fair stand-in:
+ * a price from today would silently be wrong for anything older.
+ */
 export async function solUsdLookup(fromT: number): Promise<(t: number) => number> {
   const pts: Array<[number, number]> = [];
-  try {
-    const span = Math.min(1000, Math.ceil((Date.now() / 1000 - fromT) / 3600) + 6);
-    const res = await fetch(`https://coins.llama.fi/chart/coingecko:solana?start=${Math.floor(fromT - 3600)}&span=${span}&period=1h`, { signal: AbortSignal.timeout(20_000) });
-    const j: any = await res.json();
-    for (const p of j?.coins?.["coingecko:solana"]?.prices ?? []) if (Number.isFinite(p.timestamp) && Number.isFinite(p.price)) pts.push([p.timestamp, p.price]);
-  } catch {
-    /* fall through to the fallback below */
+  const nowS = Date.now() / 1000;
+  for (let start = Math.floor(fromT - 3600); start < nowS; start += LLAMA_HOURS_PER_CALL * 3600) {
+    try {
+      const span = Math.min(LLAMA_HOURS_PER_CALL, Math.ceil((nowS - start) / 3600) + 1);
+      const res = await fetch(`https://coins.llama.fi/chart/coingecko:solana?start=${start}&span=${span}&period=1h`, { signal: AbortSignal.timeout(20_000) });
+      const j: any = await res.json();
+      for (const p of j?.coins?.["coingecko:solana"]?.prices ?? []) if (Number.isFinite(p.timestamp) && Number.isFinite(p.price)) pts.push([p.timestamp, p.price]);
+    } catch {
+      /* this piece is missing: the nearest hour that is there is used */
+    }
   }
-  if (!pts.length) {
+  if (!pts.length && nowS - fromT < 2 * 86400) {
     try {
       const j: any = await (await fetch("https://lite-api.jup.ag/price/v3?ids=" + WSOL, { signal: AbortSignal.timeout(15_000) })).json();
       const p = num(j?.[WSOL]?.usdPrice);

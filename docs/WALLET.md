@@ -18,6 +18,20 @@ and keeps the trade journal (Results > My Trades, Home) in step with it, so you 
   leaves them out instead of judging them on a made-up peak. Entries from now on are followed from the moment they are made.
 - The laptop worker and `scripts/lab-daemon.ts` sync every 5 minutes; opening the journal does a quick check (at most once a minute).
 
+## Deposits ("Deposited in total" on Results > My Trades)
+
+Added 2026-10-11. A deposit is **SOL that another address sent to the wallet** (a system-program transfer, `decodeFlows` in `apps/web/lib/wallet.ts`), in a transaction that is not a
+trade, valued in dollars at the SOL price of that hour (DefiLlama). A withdrawal is the same the other way round. Stored in `wallet_flows` (migration 0037; the sender is kept in the database
+and masked on screen), shown as one card plus a list on the Results page's My Trades tab, copied to the hosted database by the laptop loop (and by `scripts/wallet-push.ts`).
+
+What is deliberately **not** counted: anything in a transaction where a coin, USDC, USDT or wrapped SOL moved (a trade, or swapping SOL for USDC, which this wallet does right after every
+deposit, and paying USDC to a trading app for a $2 buy), rent that comes back from closed token accounts, fees and failed transactions. USDC that arrives with no SOL moving is not counted as
+a deposit either, because it can just as well be the proceeds of a sale made through an app: if money is ever sent in as USDC, the figure misses it.
+
+First reading, 2026-10-11: 24 deposits, 4.3774 SOL, $473.33 at the prices of those hours, from three sending addresses, the first on 2026-08-24 (the wallet's first transaction) and the last
+that evening; no withdrawals. Checked against the chain: the SOL that came in was swapped for USDC within minutes each time. Transactions read before this feature existed were looked at once more by
+`corepack pnpm exec tsx scripts/wallet-flows.ts` (3 of 145 could not be read at that moment and are tried again the next time it runs; `--reprice` recomputes the dollars, `--dry-run` only prints).
+
 ## Privacy
 
 The address is only in the database tables `wallet_watch` (laptop and hosted). It is not in the repository, no API returns it and logs show it masked
@@ -38,5 +52,6 @@ Rows the sync corrected (your own Enter or manual rows) are restored from `backu
 ## Limits
 
 Prices come from the swap itself, not from a chart. A coin bought through a coin-for-coin swap or received by transfer has no cost and no journal row. Dollars for
-SOL trades use DefiLlama's hourly SOL price. The Jupiter holdings call and the chain disagree for a moment after a trade. History before the first transaction
+SOL trades and deposits use DefiLlama's hourly SOL price (which answers with nothing when more than about 500 hours are asked in one call; until 2026-10-11 the lookup asked for up to 1,000
+and silently fell back to today's price for old times; every trade of this wallet is quoted in USDC, so no stored trade was affected, but the first deposit totals were: fixed, with a test). The Jupiter holdings call and the chain disagree for a moment after a trade. History before the first transaction
 the RPC still serves cannot be read. Migrations 0031 and 0032 only add tables and nullable columns.

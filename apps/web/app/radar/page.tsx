@@ -575,7 +575,8 @@ export default function RadarPageElite() {
             📊 Aureus Radar
           </h1>
           
-          <HotChainsBar hot={hot} selected={hotChain} onSelect={(id) => { setHotChain(id); setActiveTab("hot"); }} />
+          {/* the networks only change the Hot tab: every other tab is Solana, so the bar would suggest a choice that does nothing there */}
+          {activeTab === "hot" && <HotChainsBar hot={hot} selected={hotChain} onSelect={(id) => { setHotChain(id); setActiveTab("hot"); }} />}
 
           <div className="radar-tabs" style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "16px" }}>
             <TabButton tab="hot" label="🔥 Hot" count={hot ? (hot.pools[(hot.chains.find((c) => c.id === hotChain) ?? hot.chains[0])?.id ?? ""] ?? []).filter(isNewSmall).length : undefined} />

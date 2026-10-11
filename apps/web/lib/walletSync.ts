@@ -8,7 +8,7 @@
  * The address is only ever read from wallet_watch (local and hosted database), never from code, and is masked wherever it is shown.
  */
 
-import { decodeFills, fetchSignatures, fetchTransaction, rpc, solUsdLookup, type Fill } from "./wallet";
+import { decodeFills, decodeFlows, fetchSignatures, fetchTransaction, rpc, solUsdLookup, type Fill, type Flow } from "./wallet";
 
 interface Queryable {
   query(text: string, params?: unknown[]): Promise<{ rows: any[]; rowCount?: number | null }>;
@@ -96,6 +96,7 @@ export async function syncWallet(db: Queryable, address: string, opts: { maxRead
   const todo = (await db.query(`SELECT signature FROM wallet_txs WHERE address = $1 AND state = 'pending' ORDER BY block_time DESC NULLS LAST LIMIT $2`, [address, opts.maxRead ?? 40])).rows;
   let solUsd: ((t: number) => number) | null = null;
   const fills: Array<Fill & { usd: number }> = [];
+  const flows: Flow[] = [];
   const transfers: Array<{ sig: string; t: number; mint: string; tokens: number }> = [];
   for (const r of todo) {
     if (Date.now() - t0 > budget) break;
@@ -106,10 +107,12 @@ export async function syncWallet(db: Queryable, address: string, opts: { maxRead
       continue;
     }
     const d = decodeFills(tx, address);
-    if (d.fills.some((f) => f.quote === "SOL") && !solUsd) solUsd = await solUsdLookup(Number(tx.blockTime ?? Date.now() / 1000) - 7 * 86400);
+    const fl = decodeFlows(tx, address);
+    if ((d.fills.some((f) => f.quote === "SOL") || fl.length) && !solUsd) solUsd = await solUsdLookup(Number(tx.blockTime ?? Date.now() / 1000) - 7 * 86400);
     for (const f of d.fills) fills.push({ ...f, usd: f.quote === "USD" ? f.quoteAmount : f.quoteAmount * (solUsd ? solUsd(f.t) : 0) });
     for (const t of d.transfers) transfers.push(t);
-    await db.query(`UPDATE wallet_txs SET state = 'done', tries = tries + 1, last_try = now() WHERE signature = $1`, [r.signature]);
+    for (const f of fl) flows.push(f);
+    await db.query(`UPDATE wallet_txs SET state = 'done', flows_read = true, tries = tries + 1, last_try = now() WHERE signature = $1`, [r.signature]);
     result.read++;
   }
   if (fills.length || transfers.length) {
@@ -126,6 +129,7 @@ export async function syncWallet(db: Queryable, address: string, opts: { maxRead
     );
     result.fills = fills.length;
   }
+  if (flows.length) await storeFlows(db, address, flows, solUsd);
   result.pending = Number((await db.query(`SELECT count(*)::int AS n FROM wallet_txs WHERE address = $1 AND state = 'pending'`, [address])).rows[0]?.n ?? 0);
   await db.query(`UPDATE wallet_watch SET synced_at = now() WHERE address = $1`, [address]);
 
@@ -133,6 +137,27 @@ export async function syncWallet(db: Queryable, address: string, opts: { maxRead
   const touched = [...new Set(fills.map((f) => f.mint))];
   if (touched.length) result.journal = await applyToJournal(db, address, { mints: touched });
   return result;
+}
+
+/** Deposits and withdrawals found in what was just read: stored with their dollar value at the time (SOL at that hour's price). Idempotent. */
+export async function storeFlows(db: Queryable, address: string, flows: Flow[], solUsd: ((t: number) => number) | null): Promise<void> {
+  // the position of each transfer inside its transaction, so that two transfers in one transaction are two rows
+  const seen = new Map<string, number>();
+  const rows = flows.map((f) => {
+    const k = `${f.sig}|${f.direction}`;
+    const n = seen.get(k) ?? 0;
+    seen.set(k, n + 1);
+    const price = solUsd ? solUsd(f.t) : 0;
+    // no price for that time: the dollars are unknown (null), never 0 and never today's price
+    return { ...f, n, usd: price > 0 ? f.amount * price : null };
+  });
+  await db.query(
+    `INSERT INTO wallet_flows (signature, address, t, asset, direction, amount, usd, counterparty, n)
+     SELECT v.sig, $1, to_timestamp(v.t), v.asset, v.dir, v.amount, v.usd, v.cp, v.n
+       FROM unnest($2::text[], $3::float8[], $4::text[], $5::text[], $6::float8[], $7::float8[], $8::text[], $9::int[]) AS v(sig, t, asset, dir, amount, usd, cp, n)
+     ON CONFLICT (signature, direction, n) DO NOTHING`,
+    [address, rows.map((r) => r.sig), rows.map((r) => r.t), rows.map((r) => r.asset), rows.map((r) => r.direction), rows.map((r) => r.amount), rows.map((r) => r.usd), rows.map((r) => r.counterparty), rows.map((r) => r.n)],
+  );
 }
 
 /** Follow every address in wallet_watch; a no-op when there is none. */
@@ -283,6 +308,20 @@ export async function pushWalletRows(local: Queryable, hosted: Queryable, addres
   const mints = [...new Set(fills.filter((f) => f.side === "buy" || f.side === "sell").map((f) => f.mint as string))];
   const journal = mints.length ? await applyToJournal(hosted, address, { mints }) : null;
   return { txs: txs.length, fills: fills.length, journal };
+}
+
+/** The deposits and withdrawals the laptop has found that the hosted database does not have yet. Idempotent. */
+export async function pushWalletFlows(local: Queryable, hosted: Queryable, address: string): Promise<number> {
+  // two counts first: nearly always the hosted database is already level, and then nothing else is read
+  const nLocal = Number((await local.query(`SELECT count(*)::int AS n FROM wallet_flows WHERE address = $1`, [address]).catch(() => ({ rows: [{ n: 0 }] }))).rows[0]?.n ?? 0);
+  const nHosted = Number((await hosted.query(`SELECT count(*)::int AS n FROM wallet_flows WHERE address = $1`, [address]).catch(() => ({ rows: [{ n: 0 }] }))).rows[0]?.n ?? 0);
+  if (nLocal === 0 || nHosted >= nLocal) return 0;
+  const have = new Set(((await hosted.query(`SELECT signature || '|' || direction || '|' || n AS k FROM wallet_flows WHERE address = $1`, [address]).catch(() => ({ rows: [] as any[] }))).rows).map((r) => r.k as string));
+  const rows = (await local.query(`SELECT * FROM wallet_flows WHERE address = $1`, [address]).catch(() => ({ rows: [] as any[] }))).rows.filter((r) => !have.has(`${r.signature}|${r.direction}|${r.n}`));
+  for (let i = 0; i < rows.length; i += 400) {
+    await hosted.query(`INSERT INTO wallet_flows SELECT * FROM jsonb_populate_recordset(NULL::wallet_flows, $1::jsonb) ON CONFLICT DO NOTHING`, [JSON.stringify(rows.slice(i, i + 400))]);
+  }
+  return rows.length;
 }
 
 let lastLight = 0;

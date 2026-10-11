@@ -9,7 +9,7 @@
  * when LAB_SYNC_URL is set; this script is the full, one-off version.
  */
 import pg from "pg";
-import { maskAddress, pushWalletRows } from "../apps/web/lib/walletSync";
+import { maskAddress, pushWalletFlows, pushWalletRows } from "../apps/web/lib/walletSync";
 
 const fromUrl = process.env.FROM_URL ?? "postgres://aureus:aureus@localhost:5432/aureus";
 const toUrl = process.env.TO_URL;
@@ -29,6 +29,8 @@ async function main() {
   for (const w of watch) {
     const r = await pushWalletRows(from, to, w.address, { full: true });
     console.log(`${maskAddress(w.address)}: ${r ? `${r.txs} transactions and ${r.fills} fills copied; journal ${r.journal ? `+${r.journal.inserted} added, ~${r.journal.updated} updated, ${r.journal.skipped} skipped` : "unchanged"}` : "nothing to copy"}`);
+    const f = await pushWalletFlows(from, to, w.address);
+    if (f) console.log(`${maskAddress(w.address)}: ${f} deposits/withdrawals copied`);
   }
   if (!watch.length) console.log("no wallet registered on the source");
 }

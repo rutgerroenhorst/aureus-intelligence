@@ -3,6 +3,7 @@ import { waitUntil } from "@vercel/functions";
 import { getPool } from "@aureus/db";
 import { syncWalletsLight } from "@/lib/walletSync";
 import { addTrade, exitTrade, listTrades } from "@/lib/my-trades";
+import { walletMoney } from "@/lib/walletMoney";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -39,12 +40,15 @@ export async function GET() {
     // so the page never waits for the chain; the next refresh shows the result
     waitUntil(syncWalletsLight(getPool()).catch(() => undefined));
     const { trades, stats } = await listTrades();
-    return NextResponse.json({ myTrades: trades, stats }, { headers: { "Cache-Control": "no-store" } });
+    // what has been deposited into the wallet (null when nothing is recorded)
+    const money = await walletMoney(getPool());
+    return NextResponse.json({ myTrades: trades, stats, money }, { headers: { "Cache-Control": "no-store" } });
   } catch (err) {
     console.error("Get trades error:", err);
     return NextResponse.json({
       myTrades: [],
       stats: { active: 0, exited: 0, winners: 0, avgProfit: 0, touched2x: 0, gaveBack: 0 },
+      money: null,
       error: "journal unavailable",
     });
   }
