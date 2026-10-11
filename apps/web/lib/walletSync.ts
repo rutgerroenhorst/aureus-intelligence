@@ -287,7 +287,8 @@ async function fillSymbols(db: Queryable): Promise<void> {
 export async function pushWalletRows(local: Queryable, hosted: Queryable, address: string, opts: { full?: boolean } = {}): Promise<{ txs: number; fills: number; journal: { inserted: number; updated: number; skipped: number } | null } | null> {
   const h = (await hosted.query(`SELECT max(block_time) AS m FROM wallet_txs WHERE address = $1`, [address])).rows[0];
   const since = h?.m && !opts.full ? new Date(new Date(h.m).getTime() - 3_600_000) : new Date(0);
-  const txs = (await local.query(`SELECT signature, address, block_time, state, tries, last_try FROM wallet_txs WHERE address = $1 AND block_time > $2`, [address, since])).rows;
+  // every column the table has: jsonb_populate_recordset turns a missing key into NULL, not into the column's default (flows_read is NOT NULL)
+  const txs = (await local.query(`SELECT signature, address, block_time, state, tries, last_try, flows_read FROM wallet_txs WHERE address = $1 AND block_time > $2`, [address, since])).rows;
   const fills = (await local.query(`SELECT * FROM wallet_fills WHERE address = $1 AND t > $2`, [address, since])).rows;
   if (!txs.length && !fills.length) return null;
   const w = (await local.query(`SELECT label, added_at, synced_at, newest_sig FROM wallet_watch WHERE address = $1`, [address])).rows[0];
@@ -298,7 +299,7 @@ export async function pushWalletRows(local: Queryable, hosted: Queryable, addres
   );
   for (let i = 0; i < txs.length; i += 400) {
     await hosted.query(
-      `INSERT INTO wallet_txs SELECT * FROM jsonb_populate_recordset(NULL::wallet_txs, $1::jsonb) ON CONFLICT (signature) DO UPDATE SET state = EXCLUDED.state, tries = EXCLUDED.tries, last_try = EXCLUDED.last_try`,
+      `INSERT INTO wallet_txs SELECT * FROM jsonb_populate_recordset(NULL::wallet_txs, $1::jsonb) ON CONFLICT (signature) DO UPDATE SET state = EXCLUDED.state, tries = EXCLUDED.tries, last_try = EXCLUDED.last_try, flows_read = wallet_txs.flows_read OR EXCLUDED.flows_read`,
       [JSON.stringify(txs.slice(i, i + 400))],
     );
   }
