@@ -39,8 +39,10 @@ Pool       $41K
 [ 📊 Open in DexScreener ]
 ```
 
-The icon follows the level (🟢 2×, 🚀 5×, 🔥 10× and up). "Op papier" is what is still held at today's price plus what was already taken out, against what was put in. When the money is already
-back the idea reads "Je inleg is er (bijna) al uit. Haal er nog een deel uit en laat de rest lopen." (a third at 5×). The table is a `<pre>` block (monospace, so the values start in the same
+The icon follows the level (🟢 2×, 🚀 5×, 🔥 10× and up). "Op papier" is what is still held at today's price plus what was already taken out, against what was put in. The idea line follows the lab's
+exit research (docs/EXIT_STRATEGY.md, 1,123 coins): half out while the money is not back, and "een stop 40% onder de hoogste koers op de rest" (taking half out beat selling everything at 2× by 6 points of
+the stake, the stop under the rest is what makes it work, and a further sale at 5× added nothing measurable). When the money is already back it reads "Je inleg is er (bijna) al uit. Houd een stop 40% onder de
+hoogste koers op de rest."; at 5× "Het is een winnaar: houd een stop …". The table is a `<pre>` block (monospace, so the values start in the same
 place on every phone); on the Telegram page it is drawn in a monospace font too and the button shows as a plain link. If Telegram ever refuses the button the message is sent again without it,
 so an alert is never lost to a link.
 

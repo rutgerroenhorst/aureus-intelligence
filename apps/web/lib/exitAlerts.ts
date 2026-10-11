@@ -149,11 +149,15 @@ function table(groups: Array<Array<[string, string]>>): string {
 export function alertText(a: AlertFacts): string {
   // the money is (almost) back when what was sold is at least nine tenths of what was put in
   const recovered = a.sold >= a.bought * 0.9;
+  // What the lab's coins say (docs/EXIT_STRATEGY.md, 1,123 coins): taking half out beats selling everything at 2x (+6 points of the stake), a stop 40% under the
+  // highest price on what is left is what makes it work (+5 points against none), and a further sale at 5x adds nothing measurable. So the idea is the same at both
+  // levels: half out while the money is not back, and the stop under the rest.
+  const STOP = "een stop 40% onder de hoogste koers op de rest";
   const idea = recovered
     ? a.level >= 5
-      ? "Je inleg is er (bijna) al uit. Haal er nog eens een derde uit en laat de rest lopen."
-      : "Je inleg is er (bijna) al uit. Haal er nog een deel uit en laat de rest lopen."
-    : "Haal de helft eruit: dan heb je je inleg terug.";
+      ? `Je inleg is er (bijna) al uit. Het is een winnaar: houd ${STOP}.`
+      : `Je inleg is er (bijna) al uit. Houd ${STOP}.`
+    : `Haal de helft eruit (dan heb je je inleg terug) en zet ${STOP}.`;
   // what the position has made on paper: what is still held at today's price plus what was already taken out, against what was put in
   const onPaper = a.value + a.sold - a.bought;
   const block = table([

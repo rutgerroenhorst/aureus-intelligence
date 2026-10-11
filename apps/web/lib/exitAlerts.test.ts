@@ -130,8 +130,13 @@ describe("the messages (Dutch, short)", () => {
     // $1.85 of $2 is back: nothing left to recover (the real Pepper alert read "half out, then your money is back")
     expect(alertText({ ...facts, bought: 2, sold: 1.85 })).toContain("Je inleg is er (bijna) al uit");
     expect(alertText({ ...facts, bought: 2, sold: 1.5 })).toContain("Haal de helft eruit");
-    expect(alertText({ ...facts, level: 5, multiple: 5.2, sold: 4 })).toContain("nog eens een derde");
+    expect(alertText({ ...facts, level: 5, multiple: 5.2, sold: 4 })).toContain("Het is een winnaar");
     expect(alertText({ ...facts, level: 5, multiple: 5.2, sold: 0 })).toContain("Haal de helft eruit");
+    // every idea ends in the stop under the rest (what makes taking half out work in the lab's data), and none asks for another sale at 5x
+    for (const f of [facts, { ...facts, sold: 4 }, { ...facts, level: 5, multiple: 5.2, sold: 4 }, { ...facts, level: 5, multiple: 5.2, sold: 0 }]) {
+      expect(alertText(f)).toContain("een stop 40% onder de hoogste koers op de rest");
+      expect(alertText(f)).not.toContain("derde");
+    }
   });
 
   it("escapes anything in a coin's name that Telegram would read as markup", () => {
