@@ -4,21 +4,22 @@ import type { Telegram } from "../../worker/src/exitLoop";
 
 const ENV = { EXIT_ALERT_TOKEN: "111:not-a-real-token-unit-test", EXIT_ALERT_CHAT_ID: "42" } as unknown as NodeJS.ProcessEnv;
 
-/** A database that answers the gate and remembers the other statements. gateOpen=false means the last tick was too recent. */
-function fakeDb(gateOpen: boolean) {
+/** A database that answers the gate and the age of the last wallet read, and remembers the other statements. gateOpen=false means the last tick was too recent. */
+function fakeDb(gateOpen: boolean, walletAge: number | null) {
   const calls: Array<{ text: string; params: unknown[] }> = [];
   return {
     calls,
     query: async (text: string, params: unknown[] = []) => {
       calls.push({ text, params });
       if (/hosted_tick'/.test(text) && /RETURNING key/.test(text)) return { rows: gateOpen ? [{ key: "hosted_tick" }] : [] };
+      if (/FROM wallet_watch/.test(text)) return { rows: [{ age: walletAge }] };
       return { rows: [] };
     },
   };
 }
 
-function setup(over: Partial<TickDeps> & { gateOpen?: boolean } = {}) {
-  const db = fakeDb(over.gateOpen ?? true);
+function setup(over: Partial<TickDeps> & { gateOpen?: boolean; walletAge?: number | null } = {}) {
+  const db = fakeDb(over.gateOpen ?? true, over.walletAge === undefined ? null : over.walletAge);
   const order: string[] = [];
   const sent: string[] = [];
   const cpu: number[] = [];
@@ -68,6 +69,18 @@ describe("the site's own exit check", () => {
     expect(t.cpu).toHaveLength(1);
     const beat = t.db.calls.find((c) => /hosted_tick_ok/.test(c.text))!;
     expect(JSON.parse(String(beat.params[0]))).toMatchObject({ positions: 150, priced: 40, sent: 0 });
+  });
+
+  it("reads the wallet only when its last read is older than 3.5 minutes, whoever made that read", async () => {
+    const recent = setup({ walletAge: 110 });
+    expect(await exitTick({}, recent.deps)).toMatchObject({ ok: true, walletMs: expect.any(Number) });
+    expect(recent.order).toEqual(["pass"]);
+    const old = setup({ walletAge: 240 });
+    await exitTick({}, old.deps);
+    expect(old.order).toEqual(["wallet", "pass"]);
+    const never = setup({ walletAge: null });
+    await exitTick({}, never.deps);
+    expect(never.order).toEqual(["wallet", "pass"]);
   });
 
   it("a tick that arrives right after another one is skipped without touching the wallet, the prices or Telegram", async () => {

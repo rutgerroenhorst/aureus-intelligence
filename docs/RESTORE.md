@@ -38,7 +38,20 @@ Migrations added since the restore point: `0029_lab_watch.sql`, `0030_pump_feed.
 
 `0034_exit_alerts.sql` (2026-10-11, docs/EXIT_ALERTS.md) adds two small tables, `exit_alerts` and `exit_alert_kv` (which exit alerts went out; no token, no chat id), applied to the laptop database only so far. The alerts need a git-ignored `.env.exit-alerts.local` with the Telegram bot token; without it the loop does nothing, and `EXIT_ALERTS=0` switches it off. Code from before never reads either table. `0035_telegram_messages.sql` adds the log of what was sent to Telegram (text, kind, result; no token, no chat id), applied to both databases; both migrations are additive.
 
-Environment variables on Vercel: none were added or changed overnight (this line is updated if that ever changes).
+`0036_prune_rule_evaluations.sql` (2026-10-11, docs/LIMITS.md) replaces one function, `prune_history()`, so that it also deletes superseded rows of the rule-evaluation log (the newest row of
+every rule of every candidate is kept). Applied to both databases; only the hosted site ever calls it (when `RETENTION_DAYS` is set; on the Vercel project it was lowered from 7 to 4 that evening).
+The laptop database is never pruned. Going back to the 0026 version of the function is `CREATE OR REPLACE FUNCTION` with the body in `0026_cloud_retention.sql`; rows deleted from the hosted
+database are gone (the hosted copy is a rolling window by design; the laptop database keeps its own, separate record of the laptop's own scans).
+
+Environment variables on Vercel: none were added or changed overnight. On 2026-10-11 three production variables of type *sensitive* were added for the 24/7 exit
+check: `CRON_SECRET`, `EXIT_ALERT_TOKEN`, `EXIT_ALERT_CHAT_ID` (docs/EXIT_ALERTS.md). Without them the route answers 401 or "no bot token configured" and nothing else changes.
+
+**The database clock (2026-10-11).** The hosted database has the extensions `pg_cron` and `pg_net`, one entry in Supabase Vault (`aureus_cron_secret`) and four jobs:
+`aureus-exit-alerts` (every 2 minutes, calls `/api/cron/exit-alerts`), `aureus-maintenance` (hourly, calls `/api/scan`: a market scan if one is due, the learning round and the
+housekeeping, the same round a screen asks for), `aureus-learning` (at :30 every hour, `/api/scan?only=learning`) and `aureus-cron-cleanup` (daily, deletes the clock's own run history
+older than 2 days). To stop them: `LAB_SYNC_URL=<hosted connection string> corepack pnpm exec tsx scripts/cron-setup.ts remove` (add `--secret` to delete the vault entry as well); the extensions are
+harmless and stay. The site then behaves as before: scans only while a screen is open, exit alerts only from the laptop daemon. The extra rows in `exit_alert_kv` (`hosted_tick`,
+`hosted_tick_ok`, `streaks`) and the 111 rows copied into the hosted `exit_alerts` are only read by the new code.
 
 Background processes started on the laptop during the overnight work: `scripts/lab-daemon.ts` (holds pump.fun's event stream and runs a lab round every 10 minutes). Stop it with `pkill -f lab-daemon`. The restore point's worker does not start it or the stream. If it was started with `LAB_SYNC_URL`, it also writes one row (`lab_reports`, kind `gradlist`) to the hosted database every 3 minutes; that row is additive and the restore point's code never reads it (delete it with `DELETE FROM lab_reports WHERE kind = 'gradlist'` if you want it gone).
 

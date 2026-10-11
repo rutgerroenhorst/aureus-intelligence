@@ -1,9 +1,14 @@
 /**
  * The clock that makes the site run by itself, day and night, without the laptop and without a screen open.
  *
- * Two jobs live inside the hosted database (Supabase's pg_cron). Each one calls the site over HTTPS with the site's secret (pg_net does the call):
- *   aureus-exit-alerts   every 2 minutes   GET /api/cron/exit-alerts   the Telegram exit check (apps/web/lib/exitTick.ts)
- *   aureus-maintenance   every 30 minutes  GET /api/scan                the site's own scan / learning round, the same one a screen asks for
+ * Four jobs live inside the hosted database (Supabase's pg_cron). The first three call the site over HTTPS with the site's secret (pg_net does the call):
+ *   aureus-exit-alerts   every 2 minutes   GET /api/cron/exit-alerts        the Telegram exit check (apps/web/lib/exitTick.ts)
+ *   aureus-maintenance   hourly, at :00    GET /api/scan                     the site's own round when nobody has a screen open: a market scan if one is due, then the
+ *                                                                           learning round and the housekeeping (RETENTION_DAYS), exactly what a screen asks for
+ *   aureus-learning      hourly, at :30    GET /api/scan?only=learning       follows and grades the coins already tracked (cheap: no market scan, little written)
+ *   aureus-cron-cleanup  daily 03:15 UTC   (SQL only)                        deletes the clock's own run history older than 2 days (pg_cron never does; 720 rows a day)
+ * Why the market scan is hourly while nobody looks: every coin it checks writes about 13 KB to the 500 MB free database (about 4,000 checks a day made it grow
+ * 40-60 MB a day), a screen that is open still gets one every 10 minutes, and a screen that opens after a quiet spell asks for a catch-up scan itself.
  * Vercel's own cron cannot do this on the free plan (once a day at most), which is why the clock is in the database.
  *
  *   LAB_SYNC_URL=<hosted connection string> CRON_SECRET=<secret> corepack pnpm exec tsx scripts/cron-setup.ts install
@@ -21,10 +26,12 @@ const HOSTED = process.env.LAB_SYNC_URL ?? process.env.CLOUD_URL;
 const SITE = (process.env.SITE_URL ?? "https://aureus-intelligence-nu.vercel.app").replace(/\/+$/, "");
 const SECRET_NAME = "aureus_cron_secret";
 
-const JOBS = [
+const JOBS: ReadonlyArray<{ name: string; every: string; path?: string; sql?: string }> = [
   { name: "aureus-exit-alerts", every: "*/2 * * * *", path: "/api/cron/exit-alerts" },
-  { name: "aureus-maintenance", every: "*/30 * * * *", path: "/api/scan" },
-] as const;
+  { name: "aureus-maintenance", every: "0 * * * *", path: "/api/scan" },
+  { name: "aureus-learning", every: "30 * * * *", path: "/api/scan?only=learning" },
+  { name: "aureus-cron-cleanup", every: "15 3 * * *", sql: "delete from cron.job_run_details where end_time < now() - interval '2 days';" },
+];
 
 /** What a job runs: one HTTPS call with the secret read from the vault at that moment (never copied into the job's text). */
 const jobCommand = (site: string, path: string) =>
@@ -55,8 +62,8 @@ async function install(db: pg.Pool) {
   else await db.query(`select vault.create_secret($1::text, $2::text, 'sent by the database clock to the site as Authorization: Bearer')`, [secret, SECRET_NAME]);
   console.log(`vault: secret ${SECRET_NAME} ${have ? "updated" : "created"} (not shown)`);
   for (const j of JOBS) {
-    const r = await db.query(`select cron.schedule($1::text, $2::text, $3::text) as id`, [j.name, j.every, jobCommand(SITE, j.path)]);
-    console.log(`job ${j.name}: ${j.every} -> ${SITE}${j.path} (id ${r.rows[0].id})`);
+    const r = await db.query(`select cron.schedule($1::text, $2::text, $3::text) as id`, [j.name, j.every, j.path ? jobCommand(SITE, j.path) : j.sql!]);
+    console.log(`job ${j.name}: ${j.every} -> ${j.path ? `${SITE}${j.path}` : "SQL"} (id ${r.rows[0].id})`);
   }
 }
 

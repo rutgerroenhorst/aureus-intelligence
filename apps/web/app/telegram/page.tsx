@@ -87,9 +87,12 @@ export default function TelegramPage() {
         const min = at ? Math.max(0, Math.round((Date.now() - new Date(at).getTime()) / 60_000)) : null;
         // the clock ticks every 2 minutes: more than 8 without a heartbeat means something is wrong
         const late = data != null && (min == null || min > 8);
+        // the check ran but no coin came back with a price (DexScreener not answering): it would see nothing
+        const blind = data?.check != null && (data.check.positions ?? 0) > 0 && data.check.priced === 0;
+        const warn = late || blind;
         return (
-          <div style={{ ...card, marginBottom: 12, borderColor: late ? "#6a4a1a" : "#2a2a2f", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            <span style={{ width: 9, height: 9, borderRadius: 9, background: !data ? "#5a5a6e" : late ? "#ff9f0a" : "#34c759", flex: "none" }} />
+          <div style={{ ...card, marginBottom: 12, borderColor: warn ? "#6a4a1a" : "#2a2a2f", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <span style={{ width: 9, height: 9, borderRadius: 9, background: !data ? "#5a5a6e" : warn ? "#ff9f0a" : "#34c759", flex: "none" }} />
             <span style={{ color: "#e5e5e7", fontSize: 13 }}>
               {!data
                 ? "Reading the site's check…"
@@ -98,6 +101,7 @@ export default function TelegramPage() {
                   : `The site's check ran ${ago(at)}${data.check?.positions != null ? ` · watching ${data.check.positions} position${data.check.positions === 1 ? "" : "s"}` : ""}${data.check?.priced != null ? ` · ${data.check.priced} priced` : ""}`}
             </span>
             {late && at && <span style={{ color: "#ff9f0a", fontSize: 12 }}>Later than expected: a message can be late until it runs again.</span>}
+            {blind && !late && <span style={{ color: "#ff9f0a", fontSize: 12 }}>No prices came back at the last check: a message can be late until they do.</span>}
           </div>
         );
       })()}

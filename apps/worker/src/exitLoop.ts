@@ -169,7 +169,7 @@ export async function dexQuotes(mints: string[], fetchImpl: typeof fetch = fetch
     } catch {
       /* these coins are simply not priced this time */
     }
-    if (i + 30 < mints.length) await new Promise((r) => setTimeout(r, 400));
+    if (i + 30 < mints.length) await new Promise((r) => setTimeout(r, 150));
   }
   return out;
 }

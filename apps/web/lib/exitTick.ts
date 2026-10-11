@@ -4,7 +4,8 @@
  * A clock in the database (pg_cron, see scripts/cron-setup.ts) calls GET /api/cron/exit-alerts every two minutes with the site's secret. Nothing
  * depends on the laptop being on, or on anybody having the site open. One tick does, in order:
  *   1. a gate in the database, so two ticks that arrive together (or the clock and a person testing) never run side by side;
- *   2. a look at the wallet for new buys and sells (the same light sync the trade journal uses: a few seconds, new transactions only);
+ *   2. a look at the wallet for new buys and sells (the same light sync the trade journal uses, new transactions only), at most every 3.5 minutes: the
+ *      public Solana RPC answers slowly (5 to 10 seconds from Vercel) and that wait, not CPU, was most of a tick's running time;
  *   3. one pass of the exit check (apps/worker/src/exitLoop.ts runPass): prices from DexScreener, 2x and 5x of what was paid for what is still
  *      held, two checks in a row, a claim in the database before anything is sent, then Telegram;
  *   4. a heartbeat row, so the Telegram page can say when the site last checked.
@@ -29,6 +30,8 @@ interface Db {
 
 /** Ticks closer together than this are one tick (the clock runs every two minutes). */
 const MIN_GAP_S = 45;
+/** The wallet is read again when its last read (by this site or by the laptop, which copies the time) is older than this: every second tick. */
+const WALLET_EVERY_S = 210;
 
 export interface TickResult {
   ok: boolean;
@@ -40,6 +43,9 @@ export interface TickResult {
   sent?: number;
   ms?: number;
   cpuMs?: number;
+  /** where the running time went: reading the wallet (0 when it was skipped) and the pass itself */
+  walletMs?: number;
+  passMs?: number;
 }
 
 export interface TickDeps {
@@ -96,10 +102,16 @@ export async function exitTick(opts: { test?: boolean } = {}, over: Partial<Tick
   if (!gate.rows.length) return { ok: true, skipped: "ran less than a minute ago" };
 
   try {
-    await d.syncWallets(d.db);
+    // the wallet is read every other tick: its last read is in the database (wallet_watch.synced_at), whoever made it
+    const last = (await d.db.query(`SELECT EXTRACT(EPOCH FROM (now() - max(synced_at)))::float AS age FROM wallet_watch`).catch(() => ({ rows: [] as any[] }))).rows[0]?.age;
+    const w0 = Date.now();
+    if (last == null || Number(last) >= WALLET_EVERY_S) await d.syncWallets(d.db);
+    const walletMs = Date.now() - w0;
+    const p0 = Date.now();
     const st = (warm ??= newPassState());
     const run = d.run ?? ((c, s, st2, t) => runPass(c, { store: st2, tg: t, prices: (m) => dexQuotes(m), log: d.log, now: d.now, minGapS: 60 }, s, { persistStreaks: true }));
     const r = await run({ chatId: cfg.chatId, levels: cfg.levels }, st, store, tg);
+    const passMs = Date.now() - p0;
     const ms = Date.now() - t0;
     const cpu = process.cpuUsage(cpu0);
     const cpuMs = Math.round((cpu.user + cpu.system) / 1000);
@@ -108,7 +120,7 @@ export async function exitTick(opts: { test?: boolean } = {}, over: Partial<Tick
     await d.db
       .query(`INSERT INTO exit_alert_kv (key, value) VALUES ('hosted_tick_ok', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`, [JSON.stringify({ ...r, ms, cpuMs })])
       .catch(() => undefined);
-    return { ok: true, ...r, ms, cpuMs };
+    return { ok: true, ...r, ms, cpuMs, walletMs, passMs };
   } catch (e) {
     const error = scrub(String((e as Error)?.message ?? e), cfg.token).slice(0, 200);
     d.log("exit tick failed", { error });

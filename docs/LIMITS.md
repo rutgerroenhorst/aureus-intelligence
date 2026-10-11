@@ -2,7 +2,8 @@
 
 Written 2026-10-11 after the user asked that no message about a limit ever arrives and that nothing starts costing money. Everything here runs on free plans.
 The numbers were measured on that day (Vercel's usage API, the hosted database, a production build run against it); the limits are the plans' published ones at
-the time of writing and should be checked on the dashboards when a plan changes.
+the time of writing and should be checked on the dashboards when a plan changes. Updated the same evening after the site began to run by itself around the clock
+(the exit check every 2 minutes, a market scan once an hour): see "The clock" below for what that costs and what it changed.
 
 ## The short version
 
@@ -12,16 +13,22 @@ the time of writing and should be checked on the dashboards when a plan changes.
 - **The two limits that can actually be reached** are Vercel's CPU time (4 hours a month; beyond it the project is blocked for 30 days) and Supabase's data sent out
   (5 GB a month). Both now have a meter and an automatic brake (below). Today's real use is a small fraction of both.
 - Nothing is silently relied on: `scripts/limits-check.ts` and the Ops page show the numbers whenever you want to look.
+- **The site now runs by itself, day and night** (a clock in the database, docs/EXIT_ALERTS.md): the Telegram exit check every 2 minutes and, while nobody has a screen
+  open, a market scan once an hour plus the tracking of followed coins every half hour. It is the biggest regular user of the Vercel limits (first 12 hours: 363 exit
+  checks, all answered, about 86 ms of CPU each) and it is what made the database's growth visible (below).
 
 ## Service by service
 
 | service (plan) | limit | use on 2026-10-11 | what keeps it under |
 | --- | --- | --- | --- |
-| **Supabase** database size (Free) | 500 MB; over it the project turns read-only | 113 MB (23%) | scans pause at 440 MB (`SCAN_STORAGE_LIMIT_MB`), history older than `RETENTION_DAYS` is deleted, hosted lab rows are pruned |
+| **Supabase** database size (Free) | 500 MB; over it the project turns read-only | 113 MB in the morning, **158 MB (32%)** that evening; with the site scanning around the clock it grew 40-60 MB a day | scans pause at 440 MB (`SCAN_STORAGE_LIMIT_MB`); history older than `RETENTION_DAYS` (now **4**, was 7) is deleted, and since migration 0036 that includes the rule-evaluation log, which had been growing without limit (14 MB a day); the unattended market scan is hourly; hosted lab rows are pruned |
 | **Supabase** data sent out ("egress", Free) | 5 GB a month | the hosted site read about 1.9 million rows in 3 days (an estimated 3-4 GB a month at that pace, much of it the lab re-reading every lesson); one Radar bundle reads ~0.2 MB there | **meter** (exact bytes per day, `usage:egress:` rows) and a **daily brake of 100 MB** (about 3 GB a month): over it the scan and the learning tick stretch x4, the lab and catch-up rounds stop, the Radar bundle is kept 5 minutes; plus the reductions below |
-| **Supabase** pause | a free project with no activity for a week is paused (restorable in the dashboard, nothing is lost) | the laptop pushes every few minutes and the site is used daily | only if the laptop is off *and* nobody opens the site for a week |
-| **Vercel** function invocations (Hobby) | 1,000,000 a month | 4,750 so far this month (0.5%) | polling helper: nothing is asked while a tab is hidden, slower when idle, **nothing after two hours untouched** |
-| **Vercel** Active CPU (Hobby) | 4 hours a month; **blocked 30 days beyond it** | scans used 28 s, 120 s and 52 s on the three days the site has been live (budget 300 s a day); a page request costs 3 to 25 ms of CPU, a Radar bundle 143 ms | daily CPU budget for scans (300 s, interval stretches x4 beyond it); idle back-off and stop on the pages; the bundle is built at most once a minute |
+| **Supabase** pause | a free project with no activity for a week is paused (restorable in the dashboard, nothing is lost) | the clock calls the site every 2 minutes and every call reads the database, so the project is never idle | Supabase's own definition of "activity" is theirs; if a pause mail ever arrives, restore the project in its dashboard (nothing is lost) |
+| **Vercel** function invocations (Hobby) | 1,000,000 a month | 5,553 so far this month (0.6%); the clock adds about 770 a day (720 exit checks, 24 maintenance, 24 learning), roughly 23,000 a month (2.3%) | polling helper: nothing is asked while a tab is hidden, slower when idle, **nothing after two hours untouched** |
+| **Vercel** Active CPU (Hobby) | 4 hours a month; **blocked 30 days beyond it** | counted per day: 28 s, 120 s, 169 s (the last one includes 12 hours of the exit check); the exit check averaged 86 ms a call over 180 calls = about 62 s a day (0.5 h a month, 13% of the allowance); a page request costs 3 to 25 ms, a Radar bundle 143 ms | daily CPU budget (**240 s**, interval stretches x4 beyond it; the exit check is counted in it but never held back by it); idle back-off and stop on the pages; the bundle is built at most once a minute |
+| **Vercel** function time ("provisioned memory", Hobby) | 360 GB-hours a month | 1.1 GB-hours in the month's first ten days, **2.7 GB-hours after 12 hours of the clock** (about 3 GB-hours a day, roughly 95 a month = a quarter of the allowance) | a call's running time is mostly waiting for the Solana RPC: the wallet is now read only every other call and the pause between price batches is shorter (both in the commit after the first 12 hours); `limits-check.ts` prints the month's number |
+| **Vercel** cron (Hobby) | once a day at most (documented), with up to an hour of imprecision | not used | the clock is Supabase's `pg_cron` instead (free, in the database), calling the site; every call is an ordinary invocation counted above |
+| **Supabase** `pg_cron`, `pg_net`, Vault (Free) | part of the plan | four jobs; the run history (720 rows a day) is deleted after 2 days by its own job; pg_net keeps answers 6 hours | nothing to do |
 | **Vercel** bandwidth (Hobby) | 100 GB a month | 0.03 GB | pages are small (the Radar answer is ~100 KB) |
 | **Vercel** builds and deployments (Hobby) | 100 deployments a day | about 10 a day on busy days | one push per change; wait a few minutes between pushes (GitHub also rate-limits fast repeated pushes, which once made a build fail) |
 | **GitHub** (public repository) | no Actions in use; push rate limits | no workflows | none needed |
@@ -30,7 +37,7 @@ the time of writing and should be checked on the dashboards when a plan changes.
 | **Jupiter** lite, **RugCheck**, **DefiLlama**, alternative.me (free) | modest published rates | a handful of calls every 10 to 60 minutes | spaced by the lab collectors (RugCheck 8 calls a round) |
 | **Solana RPC** (public endpoints) | rate limited per address | the wallet reader asks for new transactions every 5 minutes | paced per endpoint, falls back across endpoints |
 | **PumpPortal** (free stream) | one connection at a time (more can get the address banned for an hour) | one, held by a database lock | the lock; only `subscribeNewToken` and `subscribeMigration` are used |
-| **Telegram Bot API** (free) | about 30 messages a second overall, one a second to one chat | 3 messages so far (a test and two alerts) | spacing of 1.1 s, a **ceiling of 40 alerts in 24 hours**, and Telegram's own "slow down" answer is obeyed (up to an hour) |
+| **Telegram Bot API** (free) | about 30 messages a second overall, one a second to one chat | 3 alerts and 2 tests in the first day | spacing of 1.1 s, a **ceiling of 40 alerts in 24 hours**, and Telegram's own "slow down" answer is obeyed (up to an hour) |
 | **Helius** (optional key) | free credits if a key is ever added | not configured | none needed |
 
 ## What changed on 2026-10-11 to stay inside the limits
@@ -44,6 +51,15 @@ the time of writing and should be checked on the dashboards when a plan changes.
 5. **The hosted site refreshes the network ranking itself only when it is 20 minutes old** (the laptop does it every 4 minutes), because a refresh takes ~20 seconds of function time.
 6. **Telegram**: daily ceiling, "slow down" obeyed, one message a second at most.
 7. The Ops page shows the usage; `scripts/limits-check.ts` prints it with Vercel's own counters.
+8. **The clock** (evening): `scripts/cron-setup.ts` installs four jobs in the hosted database (docs/EXIT_ALERTS.md, docs/RESTORE.md to stop them). The first 12 hours: 363 exit checks
+   and 24 maintenance calls, every one answered, none timed out, one real alert sent by the site while the laptop was off (Normie at 2.9x).
+9. **What the clock showed about storage**: the hosted site scans whenever the laptop does not (the laptop was off from morning to evening), and with a screen open as well
+   it wrote about 4,000 coin checks a day, 13 KB each (feature values 33 MB, rule evaluations 27 MB, scores 18 MB, raw events 18 MB after three days). Everything except the
+   rule-evaluation log was already cut off at `RETENTION_DAYS`; that log was not, so the database would have reached its 440 MB brake in about a week and then stopped
+   scanning for good (deleted rows are reused, the file does not shrink). Fixed with migration `0036_prune_rule_evaluations.sql` (the newest verdict of every rule of every
+   candidate is always kept, exactly like the other tables), `RETENTION_DAYS` 7 to 4, and an hourly unattended scan. The laptop database is never pruned.
+10. **The exit check's running time**: the wallet (public Solana RPC, 5 to 10 seconds a call from Vercel) is read at most every 3.5 minutes instead of every call, the pause between
+    DexScreener batches went from 0.4 to 0.15 s; the page shows a warning when the check ran but got no prices.
 
 ## Measured costs (production build, one request each; the laptop's database has 30 days of data, the hosted one about 7)
 
@@ -55,12 +71,14 @@ the time of writing and should be checked on the dashboards when a plan changes.
 | `/api/telemetry` (every open screen, once a minute) | 22 ms (5 s on the first call after idle: starting up) | 1 KB | a few small queries |
 | other polled routes | 3 to 8 ms | 1 to 90 KB | small |
 | hosted lab recompute | 1 to 2 s | none | **6 MB**, now at most every 6 hours |
+| **exit check** (`/api/cron/exit-alerts`, every 2 minutes) | 52 to 112 ms warm (86 ms average, 181 ms on a cold start) | 80 bytes | **about 1 KB warm** (a few tiny queries), **about 45 KB when the instance was cold** (it re-reads the fills and the recorded levels once); 6 DexScreener calls of 30 coins, a Solana RPC call every other call |
 
 ## If a warning mail arrives anyway
 
-- **Vercel "usage" mail (75% or 100%)**: open Vercel > Usage to see which number. For CPU: lower `SCAN_CPU_BUDGET_S_PER_DAY` in the Vercel project (default 300) and redeploy. For invocations: close screens
+- **Vercel "usage" mail (75% or 100%)**: open Vercel > Usage to see which number. For CPU: lower `SCAN_CPU_BUDGET_S_PER_DAY` in the Vercel project (default 240) and redeploy; if the exit check itself is the
+  big part, slow the clock (`scripts/cron-setup.ts` uses 2 minutes; every 3 minutes is `*/3 * * * *`, run `install` again) or stop it (`remove`). For invocations: close screens
   you are not using. Nothing is billed on Hobby; at 100% of CPU the project is blocked for 30 days, which is why the daily budget exists.
-- **Supabase "egress" or "database size" mail**: lower `EGRESS_BUDGET_MB_PER_DAY` (default 100) or `RETENTION_DAYS`, or set `SCAN_STORAGE_LIMIT_MB` lower; run `scripts/limits-check.ts` to see the daily numbers.
+- **Supabase "egress" or "database size" mail**: lower `EGRESS_BUDGET_MB_PER_DAY` (default 100) or `RETENTION_DAYS` (now 4; the minimum is 2), or set `SCAN_STORAGE_LIMIT_MB` lower; run `scripts/limits-check.ts` to see the daily numbers.
   Pushing the lab's analyses from the laptop instead of recomputing on the hosted site is the next step if needed.
 - **Supabase "paused" mail**: restore the project in its dashboard; nothing was lost. Keep the laptop daemon (or the site) active.
 - **DexScreener, GeckoTerminal or the RPC refusing requests**: nothing to do; the system pauses and retries. Persistent refusals show as an older "Updated N min ago" on the pages.
@@ -71,5 +89,9 @@ the time of writing and should be checked on the dashboards when a plan changes.
 - The Vercel and Supabase counters are the vendors'; the meter and the budgets are our own estimate of the same things and can differ by some percent. The Ops page and
   `limits-check.ts` show ours; the dashboards show theirs.
 - Active CPU on Vercel is not readable through its API on the Hobby plan; the scans' share is measured, the pages' share is estimated from the table above.
-- If the laptop is off, the hosted site scans for itself while a screen is open (that is what the CPU and egress budgets limit); the exit alerts and the network ranking
-  need the laptop.
+- If the laptop is off, the hosted site scans for itself: every 10 minutes while a screen is open (that is what the CPU and egress budgets limit) and once an hour otherwise. The
+  exit alerts no longer need the laptop. The network ranking (Hot networks) still does: the hosted site refreshes it only when a screen asks and it is 20 minutes old.
+- The database's growth is measured over three days of data and one day of the clock; the first retention run that deletes rule evaluations will happen when data is 4 days old
+  (2026-10-13). Until then `limits-check.ts` is the place to watch the size.
+- Vercel's logs on Hobby are kept one hour, so nothing here relies on them: the clock's own run list and the site's answers (6 hours) are in the database
+  (`scripts/cron-setup.ts status`), and the exit check's last run is the heartbeat the Telegram page shows.
