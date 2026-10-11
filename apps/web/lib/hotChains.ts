@@ -49,6 +49,8 @@ export interface ChainStats {
   llama: { vol24: number; change1d: number | null; change7d: number | null } | null;
   /** the network's list could not be read this time */
   error?: string;
+  /** when this network's list was read (older than the report when the last reading failed and an earlier one is shown instead) */
+  readAt?: string;
 }
 
 export interface HotChain {
@@ -165,11 +167,12 @@ const sign = (x: number) => `${x >= 0 ? "+" : "−"}${Math.abs(x).toFixed(0)}%`;
 
 function whyOf(s: ChainStats): string {
   if (s.error) return `could not be read this time (${s.error})`;
+  const ago = s.readAt ? (Date.now() - Date.parse(s.readAt)) / 60_000 : 0;
   const parts: string[] = [];
   if (s.n >= 5) parts.push(`${s.up50h24} of ${s.n} trending coins are up 50%+ today`);
   if (s.young > 0) parts.push(`${s.young} launched in the last 2 days`);
   if (s.llama?.change7d != null) parts.push(`exchange volume ${sign(s.llama.change7d)} in a week`);
-  return parts.length ? parts.join("; ") : "little to see";
+  return (parts.length ? parts.join("; ") : "little to see") + (ago >= 3 ? ` (this network was last read ${Math.round(ago)} min ago)` : "");
 }
 
 /** Rank the networks. The input order does not matter. */
@@ -207,8 +210,12 @@ export interface HotTiming {
   backoffMs: number;
   /** before a network that was refused is tried once more, after all the others */
   retryAfterMs: number;
+  /** the second try is only made when the first pass took less than this (the hosted route has 60 seconds in all) */
+  retryWithinMs: number;
 }
-const TIMING: HotTiming = { gapMs: 2_300, backoffMs: 3_000, retryAfterMs: 8_000 };
+const TIMING: HotTiming = { gapMs: 2_300, backoffMs: 3_000, retryAfterMs: 8_000, retryWithinMs: 30_000 };
+/** A network that cannot be read keeps showing its last reading for this long (minutes), and says how old it is. */
+const CARRY_MIN = 30;
 
 async function getJson(url: string, headers: Record<string, string>, tries = 2, backoffMs = TIMING.backoffMs): Promise<any | null> {
   for (let i = 0; i < tries; i++) {
@@ -233,7 +240,7 @@ const gtUrl = (c: ChainInfo) => `https://api.geckoterminal.com/api/v2/networks/$
  * Read every network and rank it. Takes about 15 seconds (GeckoTerminal allows about 30 calls a minute, so the networks are read one
  * after the other). A network whose list cannot be read is ranked last and says so. Throws only when no network could be read at all.
  */
-export async function computeHotChains(chains: ChainInfo[] = CHAINS, timing: Partial<HotTiming> = {}): Promise<HotReport> {
+export async function computeHotChains(chains: ChainInfo[] = CHAINS, timing: Partial<HotTiming> = {}, previous: HotReport | null = null): Promise<HotReport> {
   const t: HotTiming = { ...TIMING, ...timing };
   const t0 = Date.now();
   const llamaP = Promise.all(
@@ -254,7 +261,7 @@ export async function computeHotChains(chains: ChainInfo[] = CHAINS, timing: Par
   // a network that was refused is tried once more after the others (the limit is per minute, so a pause usually clears it), unless
   // most of the time is gone already: the hosted route has 60 seconds
   const missed = raw.filter((r) => !r.list);
-  if (missed.length && missed.length < raw.length && Date.now() - t0 < 30_000) {
+  if (missed.length && missed.length < raw.length && Date.now() - t0 < t.retryWithinMs) {
     await sleep(t.retryAfterMs);
     for (const r of missed) {
       const body = await getJson(gtUrl(r.chain), GT_HEADERS, 2, t.backoffMs);
@@ -265,11 +272,22 @@ export async function computeHotChains(chains: ChainInfo[] = CHAINS, timing: Par
   const llama = await llamaP;
   if (raw.every((r) => !r.list)) throw new Error("no network could be read");
   const items = raw.map((r, i) => {
+    // a network that could not be read now keeps its last reading when that is recent: the shared GeckoTerminal limit makes a
+    // refusal now and then normal, and a network that vanishes from the ranking for four minutes helps nobody
+    const before = previous?.chains.find((c) => c.id === r.chain.id);
+    if (!r.list && before && !before.stats.error) {
+      const readAt = before.stats.readAt ?? previous!.at;
+      if ((Date.now() - Date.parse(readAt)) / 60_000 <= CARRY_MIN) {
+        pools[r.chain.id] = previous!.pools[r.chain.id] ?? [];
+        return { chain: r.chain, stats: { ...before.stats, llama: llama[i] ?? before.stats.llama, readAt } };
+      }
+    }
     const list = r.list ?? [];
     // everything that is not a blue chip or dust, in GeckoTerminal's order: the screen filters further (new and small, or all)
     pools[r.chain.id] = list.filter((p) => memecoinLike(p, 5_000)).slice(0, 20);
     const st = statsOf(list, llama[i] ?? null);
-    if (!r.list) st.error = "rate limited or down";
+    if (r.list) st.readAt = new Date().toISOString();
+    else st.error = "rate limited or down";
     return { chain: r.chain, stats: st };
   });
   return {

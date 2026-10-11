@@ -19,7 +19,8 @@ async function refresh(): Promise<HotReport | null> {
   lastTry = Date.now();
   inflight = (async () => {
     try {
-      const r = await computeHotChains();
+      const before = (await getPool().query(`SELECT payload FROM lab_reports WHERE kind = 'hotchains'`).catch(() => ({ rows: [] as any[] }))).rows[0]?.payload as HotReport | undefined;
+      const r = await computeHotChains(undefined, {}, before ?? null);
       await saveHotReport(getPool(), r);
       return r;
     } catch (e) {

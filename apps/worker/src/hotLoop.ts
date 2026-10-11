@@ -6,7 +6,7 @@
  */
 
 import pg from "pg";
-import { computeHotChains, saveHotReport } from "../../web/lib/hotChains";
+import { computeHotChains, saveHotReport, type HotReport } from "../../web/lib/hotChains";
 
 type Log = (msg: string, extra?: Record<string, unknown>) => void;
 interface Client {
@@ -14,6 +14,9 @@ interface Client {
 }
 
 const EVERY_MS = Number(process.env.HOT_EVERY_MINUTES ?? 4) * 60_000;
+// GeckoTerminal's limit (about 30 calls a minute) is shared with the worker's own ingestion on this address, so a refusal now and then is
+// normal here: wait longer than the hosted route can, and let a network that stays refused keep its last reading for a while
+const PATIENT = { gapMs: 3_000, backoffMs: 10_000, retryAfterMs: 20_000, retryWithinMs: 120_000 };
 
 /** Start the loop; returns a function that stops it. A failed round only logs: the next one tries again. */
 export function startHotLoop(local: Client, log: Log): () => void {
@@ -27,7 +30,8 @@ export function startHotLoop(local: Client, log: Log): () => void {
     if (running) return;
     running = true;
     try {
-      const r = await computeHotChains();
+      const before = (await local.query(`SELECT payload FROM lab_reports WHERE kind = 'hotchains'`).catch(() => ({ rows: [] as any[] }))).rows[0]?.payload as HotReport | undefined;
+      const r = await computeHotChains(undefined, PATIENT, before ?? null);
       const storedLocal = await saveHotReport(local, r);
       let storedHosted: boolean | null = null;
       if (process.env.LAB_SYNC_URL) {

@@ -65,7 +65,9 @@ refused and the other way round.
 ## How it runs
 
 - `apps/web/lib/hotChains.ts` reads and ranks (about 15-20 seconds: GeckoTerminal allows about 30 calls a minute, so the six networks are read
-  one after the other). `saveHotReport` stores the result as one row in `lab_reports` (kind `hotchains`); a round in which more networks could
+  one after the other). That limit is shared with everything else on the same address (the worker's own ingestion uses it too), so a refusal now
+  and then is normal: a refused network is tried once more after the others, and one that stays refused **keeps its last reading for up to 30
+  minutes** (the line under the strip then says "last read N min ago"); after that it is shown as "could not be read" and ranked last. `saveHotReport` stores the result as one row in `lab_reports` (kind `hotchains`); a round in which more networks could
   not be read than in the stored ranking does **not** replace it while that one is under 30 minutes old.
 - `apps/worker/src/hotLoop.ts` (started by the worker and by `scripts/lab-daemon.ts`) refreshes the row every 4 minutes
   (`HOT_EVERY_MINUTES`), locally and, when `LAB_SYNC_URL` is set, on the hosted database too. `HOT_LOOP=0` switches it off.

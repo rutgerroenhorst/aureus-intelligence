@@ -182,6 +182,45 @@ describe("reading the networks", () => {
     expect(r.pools.bsc).toEqual([]);
     expect(r.pools.solana).toHaveLength(3);
   });
+  /** the report as it would have been stored `min` minutes ago */
+  const aged = (r: HotReport, min: number): HotReport => {
+    const at = new Date(Date.now() - min * 60_000).toISOString();
+    return { ...r, at, chains: r.chains.map((c) => ({ ...c, stats: { ...c.stats, readAt: at } })) };
+  };
+  it("stamps every network with the time it was read", async () => {
+    vi.stubGlobal("fetch", fakeFetch({}));
+    const r = await computeHotChains(three, fast);
+    expect(r.chains.every((c) => c.stats.readAt && Date.now() - Date.parse(c.stats.readAt) < 5_000)).toBe(true);
+  });
+  it("keeps the last reading of a network that is refused now, and says how old it is", async () => {
+    vi.stubGlobal("fetch", fakeFetch({}));
+    const first = await computeHotChains(three, fast);
+    const stored = aged(first, 10);
+    vi.stubGlobal("fetch", fakeFetch({ base: 99 }));
+    const r = await computeHotChains(three, fast, stored);
+    const base = r.chains.find((c) => c.id === "base")!;
+    expect(base.stats.error).toBeUndefined();
+    expect(base.stats.readAt).toBe(stored.at);
+    expect(base.why).toContain("last read 10 min ago");
+    expect(r.pools.base).toEqual(first.pools.base);
+    expect(r.chains.find((c) => c.id === "solana")!.why).not.toContain("last read");
+  });
+  it("does not keep a reading older than half an hour", async () => {
+    vi.stubGlobal("fetch", fakeFetch({}));
+    const stored = aged(await computeHotChains(three, fast), 45);
+    vi.stubGlobal("fetch", fakeFetch({ base: 99 }));
+    const r = await computeHotChains(three, fast, stored);
+    expect(r.chains.find((c) => c.id === "base")!.stats.error).toContain("rate limited");
+    expect(r.pools.base).toEqual([]);
+  });
+  it("does not keep a reading that was itself a failure", async () => {
+    vi.stubGlobal("fetch", fakeFetch({ base: 99 }));
+    const failed = await computeHotChains(three, fast);
+    expect(failed.chains.find((c) => c.id === "base")!.stats.error).toBeDefined();
+    vi.stubGlobal("fetch", fakeFetch({ base: 99 }));
+    const r = await computeHotChains(three, fast, failed);
+    expect(r.chains.find((c) => c.id === "base")!.stats.error).toBeDefined();
+  });
   it("gives up with an error when no network can be read at all", async () => {
     vi.stubGlobal("fetch", fakeFetch({ solana: 99, base: 99, bsc: 99 }));
     await expect(computeHotChains(three, fast)).rejects.toThrow("no network could be read");
