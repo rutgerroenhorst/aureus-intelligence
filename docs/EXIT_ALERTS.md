@@ -19,15 +19,30 @@ with what was paid **for what is still held**:
 - A coin that jumps over both levels at once gets one message, for the highest.
 - Nothing about this changes a filter, a score, a tab or a card.
 
-A message looks like this (Dutch):
+A message looks like this (Dutch; redesigned 2026-10-11 to read like an app notification: the headline says how far the coin has run, the money sits in one aligned
+block, one idea underneath, and the link is a button under the message instead of a line of text):
 
 ```
-🔔 HYDRA staat nu op 2× je instap (2,0×)
-Je hebt er nog $4,20 van · inleg $4,00 · al eruit $0,00
-Idee: haal de helft eruit, dan heb je je inleg terug.
-Koers $0,0000484 (instap $0,0000237) · pool $38K
-https://dexscreener.com/solana/<pool>
+🟢 Normie · 2,9× je instap
+2×-drempel gehaald
+
+Waarde nu  $5,76
+Inleg      $2,00
+Al eruit   $0,00
+Op papier  +$3,76 (+188%)
+
+Koers      $0,000729
+Instap     $0,000253
+Pool       $41K
+
+💡 Haal de helft eruit: dan heb je je inleg terug.
+[ 📊 Open in DexScreener ]
 ```
+
+The icon follows the level (🟢 2×, 🚀 5×, 🔥 10× and up). "Op papier" is what is still held at today's price plus what was already taken out, against what was put in. When the money is already
+back the idea reads "Je inleg is er (bijna) al uit. Haal er nog een deel uit en laat de rest lopen." (a third at 5×). The table is a `<pre>` block (monospace, so the values start in the same
+place on every phone); on the Telegram page it is drawn in a monospace font too and the button shows as a plain link. If Telegram ever refuses the button the message is sent again without it,
+so an alert is never lost to a link.
 
 ## Around the clock: the site checks by itself (2026-10-11)
 

@@ -19,15 +19,18 @@ import path from "node:path";
 import pg from "pg";
 import { logMessage, type LoggedMessage } from "./telegramLog";
 import {
+  alertButtons,
   alertText,
   CONFIRM_CHECKS,
   dexLink,
   LEVELS_DEFAULT,
+  loggedText,
   openPosition,
   readPosition,
   welcomeText,
   type Fill,
   type HeldNow,
+  type MessageButton,
   type Position,
 } from "../../web/lib/exitAlerts";
 
@@ -100,7 +103,8 @@ export interface Update {
 }
 
 export interface Telegram {
-  send(chatId: string, text: string): Promise<{ ok: true; messageId: number } | { ok: false; error: string; retryAfter?: number }>;
+  /** `buttons` become one row of link buttons under the message (Telegram's inline keyboard) */
+  send(chatId: string, text: string, opts?: { buttons?: MessageButton[] }): Promise<{ ok: true; messageId: number } | { ok: false; error: string; retryAfter?: number }>;
   updates(offset: number): Promise<Update[] | null>;
 }
 
@@ -120,8 +124,12 @@ export function telegram(token: string, fetchImpl: typeof fetch = fetch): Telegr
     }
   };
   return {
-    async send(chatId, text) {
-      const r = await call("sendMessage", { chat_id: chatId, text, parse_mode: "HTML", disable_web_page_preview: true });
+    async send(chatId, text, opts) {
+      const buttons = (opts?.buttons ?? []).filter((b) => /^https?:\/\//.test(b.url));
+      const base = { chat_id: chatId, text, parse_mode: "HTML", disable_web_page_preview: true };
+      let r = await call("sendMessage", buttons.length ? { ...base, reply_markup: { inline_keyboard: [buttons.map((b) => ({ text: b.text, url: b.url }))] } } : base);
+      // a button Telegram does not accept must never cost the alert itself: send the message again without it
+      if (buttons.length && !r.json?.ok && /button|reply markup|url/i.test(String(r.json?.description ?? ""))) r = await call("sendMessage", base);
       if (r.json?.ok && r.json.result?.message_id != null) return { ok: true, messageId: Number(r.json.result.message_id) };
       const retryAfter = Number(r.json?.parameters?.retry_after);
       return { ok: false, error: clean(String(r.json?.description ?? r.error ?? `http ${r.status}`)).slice(0, 160), ...(Number.isFinite(retryAfter) && retryAfter > 0 ? { retryAfter } : {}) };
@@ -450,13 +458,15 @@ export async function runPass(cfg: { chatId: string; levels: number[] }, deps: D
     // a coin that jumped over two levels at once gets one message, for the highest
     const top = Math.max(...due);
     const symbol = symbols.get(pos.mint) ?? q.symbol ?? pos.mint.slice(0, 6);
-    const text = alertText({ symbol, level: top, multiple: r.multiple, value: r.value, bought: pos.bought, sold: pos.sold, price: q.price, basis: pos.basis, liq: q.liq, link: dexLink(q.pair, pos.mint) });
+    const link = dexLink(q.pair, pos.mint);
+    const text = alertText({ symbol, level: top, multiple: r.multiple, value: r.value, bought: pos.bought, sold: pos.sold, price: q.price, basis: pos.basis, liq: q.liq, link });
+    const buttons = alertButtons({ link });
     if (sent > 0) await (deps.sleep ?? realSleep)(1100);
-    const res = await tg.send(cfg.chatId, text);
+    const res = await tg.send(cfg.chatId, text, { buttons });
     // the page shows what went out; a failed send is recorded once per half hour per alert
     const failKey = `${pos.mint}|${top}`;
     if (res.ok || deps.now() - (st.failLogged.get(failKey) ?? 0) > 1800) {
-      await store.logMessage({ kind: "alert", ok: res.ok, messageId: res.ok ? res.messageId : null, symbol, level: top, multiple: r.multiple, html: text, error: res.ok ? null : res.error });
+      await store.logMessage({ kind: "alert", ok: res.ok, messageId: res.ok ? res.messageId : null, symbol, level: top, multiple: r.multiple, html: loggedText(text, buttons), error: res.ok ? null : res.error });
       st.logged++;
       if (!res.ok) st.failLogged.set(failKey, deps.now());
     }

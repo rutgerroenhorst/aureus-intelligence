@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { alertText, fmtMultiple, fmtPrice, fmtUsd, MIN_POOL_USD, openPosition, readPosition, testText, welcomeText, type Fill, type Position } from "./exitAlerts";
+import { alertButtons, alertText, fmtMultiple, fmtPrice, fmtUsd, loggedText, MIN_POOL_USD, openPosition, readPosition, testButtons, testText, welcomeText, type Fill, type Position } from "./exitAlerts";
 
 const buy = (t: number, tokens: number, usd: number | null): Fill => ({ t, side: "buy", tokens, usd });
 const sell = (t: number, tokens: number, usd: number | null): Fill => ({ t, side: "sell", tokens, usd });
@@ -90,23 +90,48 @@ describe("the messages (Dutch, short)", () => {
     expect(fmtMultiple(14.2)).toBe("14×");
   });
 
-  it("an alert names the coin, the level, what is held and one idea, and links to the pool", () => {
+  it("an alert names the coin and how far it has run, shows the money in one aligned block, gives one idea, and links to the pool with a button", () => {
     const t = alertText(facts);
-    expect(t).toContain("<b>HYDRA</b>");
-    expect(t).toContain("<b>2×</b>");
-    expect(t).toContain("$4,20");
-    expect(t).toContain("haal de helft eruit");
-    expect(t).toContain("https://dexscreener.com/solana/PAIR");
+    expect(t).toContain("🟢 <b>HYDRA</b> · <b>2,0×</b> je instap");
+    expect(t).toContain("<i>2×-drempel gehaald</i>");
+    expect(t).toContain("Haal de helft eruit");
     expect(t).not.toMatch(/undefined|NaN/);
+    // the numbers line up: every row of the block is as wide as the others, and what the position has made on paper is value + sold - bought
+    const block = /<pre>([\s\S]*?)<\/pre>/.exec(t)![1]!;
+    const rows = block.split("\n").filter(Boolean);
+    expect(rows.filter((r) => /^(Waarde nu|Inleg|Al eruit|Op papier)/.test(r))).toHaveLength(4);
+    // every value starts in the same column
+    expect(rows.every((r) => /^.{9}  \S/.test(r))).toBe(true);
+    expect(block).toMatch(/Waarde nu {2}\$4,20/);
+    expect(block).toMatch(/Op papier {2}\+\$0,20 \(\+5%\)/);
+    expect(block).toMatch(/Koers {6}\$0,0000484/);
+    expect(block).toMatch(/Pool {7}\$38K/);
+    // the link is a button, not a line of text
+    expect(t).not.toContain("https://");
+    expect(alertButtons(facts)).toEqual([{ text: "📊 Open in DexScreener", url: "https://dexscreener.com/solana/PAIR" }]);
+  });
+
+  it("the icon follows the level and a loss on paper is shown with a minus", () => {
+    expect(alertText({ ...facts, level: 2 })).toMatch(/^🟢/);
+    expect(alertText({ ...facts, level: 5, multiple: 5.1 })).toMatch(/^🚀/);
+    expect(alertText({ ...facts, level: 10, multiple: 10.4 })).toMatch(/^🔥/);
+    // bought $10, $3 already out, $4.20 left: $2.80 below what was put in
+    expect(alertText({ ...facts, bought: 10, sold: 3 })).toMatch(/Op papier {2}−\$2,80 \(−28%\)/);
+  });
+
+  it("the Telegram page gets the text plus the button's link as plain text", () => {
+    const t = loggedText("tekst", alertButtons(facts));
+    expect(t).toBe("tekst\n\n📊 Open in DexScreener: https://dexscreener.com/solana/PAIR");
+    expect(loggedText("tekst")).toBe("tekst");
   });
 
   it("the idea changes when the money is already back, and at 5x", () => {
     expect(alertText({ ...facts, sold: 4 })).toContain("Je inleg is er (bijna) al uit");
     // $1.85 of $2 is back: nothing left to recover (the real Pepper alert read "half out, then your money is back")
     expect(alertText({ ...facts, bought: 2, sold: 1.85 })).toContain("Je inleg is er (bijna) al uit");
-    expect(alertText({ ...facts, bought: 2, sold: 1.5 })).toContain("haal de helft eruit");
+    expect(alertText({ ...facts, bought: 2, sold: 1.5 })).toContain("Haal de helft eruit");
     expect(alertText({ ...facts, level: 5, multiple: 5.2, sold: 4 })).toContain("nog eens een derde");
-    expect(alertText({ ...facts, level: 5, multiple: 5.2, sold: 0 })).toContain("haal de helft eruit");
+    expect(alertText({ ...facts, level: 5, multiple: 5.2, sold: 0 })).toContain("Haal de helft eruit");
   });
 
   it("escapes anything in a coin's name that Telegram would read as markup", () => {
@@ -118,8 +143,10 @@ describe("the messages (Dutch, short)", () => {
   it("the welcome message lists what is already above the first level, biggest first, or says there is none", () => {
     const w = welcomeText([2, 5], [{ symbol: "QT", multiple: 5.2, value: 4.05 }, { symbol: "HOTBOT", multiple: 9.3, value: 9.52 }]);
     expect(w.indexOf("HOTBOT")).toBeLessThan(w.indexOf("QT"));
-    expect(w).toContain("2× of 5×");
+    expect(w).toContain("<b>2×</b> of <b>5×</b>");
     expect(w).toContain("niet nog eens gemeld");
+    expect(w).toContain("<pre>");
+    expect(w).not.toContain("laptop");
     expect(welcomeText([2, 5], [])).toContain("geen coin");
   });
 });
@@ -131,6 +158,8 @@ describe("the test message", () => {
     expect(t).toContain("VOORBEELD");
     expect(t).toContain("verzonnen");
     expect(t).toContain("2× of 5×");
+    expect(t).toContain("🟢 <b>VOORBEELD</b>");
     expect(t).not.toMatch(/undefined|NaN/);
+    expect(testButtons()).toHaveLength(1);
   });
 });

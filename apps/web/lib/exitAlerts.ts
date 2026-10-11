@@ -126,22 +126,56 @@ export interface AlertFacts {
   link: string;
 }
 
+/** A button under a message (Telegram's inline keyboard): opens a link. */
+export interface MessageButton {
+  text: string;
+  url: string;
+}
+
+const LEVEL_ICON = (level: number): string => (level >= 10 ? "🔥" : level >= 5 ? "🚀" : "🟢");
+const fmtSigned = (v: number): string => `${v < 0 ? "−" : "+"}${fmtUsd(Math.abs(v))}`;
+const fmtPct = (p: number): string => `${p < 0 ? "−" : "+"}${Math.round(Math.abs(p) * 100)}%`;
+
+/** Rows of label and value as two columns (a <pre> block in Telegram: monospace, so the values start in the same place); groups are separated by a blank line. */
+function table(groups: Array<Array<[string, string]>>): string {
+  const w1 = Math.max(...groups.flat().map(([l]) => l.length));
+  return groups.map((g) => g.map(([l, v]) => `${l.padEnd(w1)}  ${v}`).join("\n")).join("\n\n");
+}
+
+/**
+ * The alert: the coin and how far it has run in the headline, one aligned block with what it means in money, one idea. The link is a button
+ * (alertButtons), not a line of text.
+ */
 export function alertText(a: AlertFacts): string {
   // the money is (almost) back when what was sold is at least nine tenths of what was put in
   const recovered = a.sold >= a.bought * 0.9;
   const idea = recovered
     ? a.level >= 5
-      ? "Je inleg is er (bijna) al uit. Idee: haal er nog eens een derde uit en laat de rest lopen."
-      : "Je inleg is er (bijna) al uit. Idee: haal er nog een deel uit en laat de rest lopen."
-    : "Idee: haal de helft eruit, dan heb je je inleg terug.";
-  return [
-    `🔔 <b>${esc(a.symbol)}</b> staat nu op <b>${a.level}×</b> je instap (${fmtMultiple(a.multiple)})`,
-    `Je hebt er nog ${fmtUsd(a.value)} van · inleg ${fmtUsd(a.bought)} · al eruit ${fmtUsd(a.sold)}`,
-    idea,
-    `Koers ${fmtPrice(a.price)} (instap ${fmtPrice(a.basis)}) · pool ${fmtPool(a.liq)}`,
-    a.link,
-  ].join("\n");
+      ? "Je inleg is er (bijna) al uit. Haal er nog eens een derde uit en laat de rest lopen."
+      : "Je inleg is er (bijna) al uit. Haal er nog een deel uit en laat de rest lopen."
+    : "Haal de helft eruit: dan heb je je inleg terug.";
+  // what the position has made on paper: what is still held at today's price plus what was already taken out, against what was put in
+  const onPaper = a.value + a.sold - a.bought;
+  const block = table([
+    [
+      ["Waarde nu", fmtUsd(a.value)],
+      ["Inleg", fmtUsd(a.bought)],
+      ["Al eruit", fmtUsd(a.sold)],
+      ["Op papier", `${fmtSigned(onPaper)} (${fmtPct(a.bought > 0 ? onPaper / a.bought : 0)})`],
+    ],
+    [
+      ["Koers", fmtPrice(a.price)],
+      ["Instap", fmtPrice(a.basis)],
+      ["Pool", fmtPool(a.liq)],
+    ],
+  ]);
+  return [`${LEVEL_ICON(a.level)} <b>${esc(a.symbol)}</b> · <b>${fmtMultiple(a.multiple)}</b> je instap`, `<i>${a.level}×-drempel gehaald</i>`, ``, `<pre>${block}</pre>`, ``, `💡 <i>${idea}</i>`].join("\n");
 }
+
+export const alertButtons = (a: Pick<AlertFacts, "link">): MessageButton[] => [{ text: "📊 Open in DexScreener", url: a.link }];
+
+/** What the Telegram page shows for a message: the text as sent plus its buttons as plain links (the page cannot draw buttons). */
+export const loggedText = (text: string, buttons: MessageButton[] = []): string => (buttons.length ? `${text}\n\n${buttons.map((b) => `${b.text}: ${b.url}`).join("\n")}` : text);
 
 export interface HeldNow {
   symbol: string;
@@ -150,24 +184,45 @@ export interface HeldNow {
 }
 
 export function welcomeText(levels: number[], above: HeldNow[]): string {
-  const lv = levels.map((l) => `${l}×`).join(" of ");
+  const lv = levels.map((l) => `<b>${l}×</b>`).join(" of ");
   const list = [...above]
     .sort((a, b) => b.multiple - a.multiple)
     .slice(0, 8)
     .map((h) => `${esc(h.symbol)} ${fmtMultiple(h.multiple)} (${fmtUsd(h.value)})`)
     .join(" · ");
+  const rules = table([
+    [
+      ["Controle", "dag en nacht"],
+      ["Bevestiging", "2 controles achter elkaar"],
+      ["Pool", `minimaal ${fmtPool(MIN_POOL_USD)}`],
+      ["Per coin", "één melding per niveau"],
+    ],
+  ]);
   return [
-    `✅ <b>Exit-meldingen staan aan.</b>`,
-    `Ik meld het zodra een coin die je bezit ${lv} je instap raakt (twee controles achter elkaar, pool van minstens ${fmtPool(MIN_POOL_USD)}). Het is een idee om iets eruit te halen, geen opdracht.`,
+    `✅ <b>Exit-meldingen staan aan</b>`,
+    ``,
+    `Ik stuur een bericht zodra een coin die je bezit ${lv} je instap raakt.`,
+    ``,
+    `<pre>${rules}</pre>`,
+    ``,
     above.length ? `Nu al boven ${levels[0]}×: ${list}. Die krijg je niet nog eens gemeld.` : `Nu staat geen coin die je bezit boven ${levels[0]}×.`,
-    `Staat de laptop uit, dan komen er geen meldingen.`,
+    ``,
+    `<i>Een idee om iets eruit te halen, geen opdracht.</i>`,
   ].join("\n");
 }
 
 export const dexLink = (pair: string | null, mint: string): string => `https://dexscreener.com/solana/${pair ?? mint}`;
 
 /** A test message: says it is a test and shows what a real alert looks like, with invented numbers. */
+const EXAMPLE = { symbol: "VOORBEELD", level: 2, multiple: 2.1, value: 4.2, bought: 2, sold: 0, price: 0.0000484, basis: 0.0000231, liq: 38_000, link: "https://dexscreener.com" };
 export function testText(): string {
-  const example = alertText({ symbol: "VOORBEELD", level: 2, multiple: 2.1, value: 4.2, bought: 2, sold: 0, price: 0.0000484, basis: 0.0000231, liq: 38_000, link: "https://dexscreener.com" });
-  return [`🧪 <b>Testbericht</b>`, `De exit-meldingen werken. Zo ziet een echte melding eruit (de getallen hieronder zijn verzonnen):`, ``, example, ``, `Echte meldingen komen alleen als een coin die je bezit 2× of 5× je instap raakt.`].join("\n");
+  return [
+    `🧪 <b>Testbericht</b>`,
+    `De exit-meldingen werken, ook als je laptop uit staat. Zo ziet een echte melding eruit (de getallen zijn verzonnen):`,
+    ``,
+    alertText(EXAMPLE),
+    ``,
+    `<i>Echte meldingen komen alleen als een coin die je bezit 2× of 5× je instap raakt.</i>`,
+  ].join("\n");
 }
+export const testButtons = (): MessageButton[] => alertButtons(EXAMPLE);

@@ -22,7 +22,7 @@ import { getPool } from "@aureus/db";
 import { dexQuotes, newPassState, pgStore, readConfig, runPass, telegram, type PassState, type Store, type Telegram } from "../../worker/src/exitLoop";
 import { syncWalletsLight } from "./walletSync";
 import { addUsage } from "./cloudScan";
-import { testText } from "./exitAlerts";
+import { loggedText, testButtons, testText } from "./exitAlerts";
 
 interface Db {
   query(text: string, params?: unknown[]): Promise<{ rows: any[]; rowCount?: number | null }>;
@@ -87,8 +87,9 @@ export async function exitTick(opts: { test?: boolean } = {}, over: Partial<Tick
 
   if (opts.test) {
     const html = testText();
-    const res = await tg.send(cfg.chatId, html);
-    await store.logMessage({ kind: "test", ok: res.ok, messageId: res.ok ? res.messageId : null, html, error: res.ok ? null : res.error });
+    const buttons = testButtons();
+    const res = await tg.send(cfg.chatId, html, { buttons });
+    await store.logMessage({ kind: "test", ok: res.ok, messageId: res.ok ? res.messageId : null, html: loggedText(html, buttons), error: res.ok ? null : res.error });
     return res.ok ? { ok: true, test: true } : { ok: false, test: true, error: res.error };
   }
 

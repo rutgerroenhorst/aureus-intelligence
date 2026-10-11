@@ -37,20 +37,30 @@ const ago = (iso: string | null) => {
   return min < 1 ? "just now" : min < 90 ? `${min} min ago` : min < 2880 ? `${Math.round(min / 60)} h ago` : `${Math.round(min / 1440)} d ago`;
 };
 
-/** The text of a message with its links made clickable. */
+const MONO = "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
+
+/** The text of a message with its links made clickable. Lines indented by two spaces are the aligned table of an alert: drawn in a monospace font, as Telegram does. */
 function Body({ text }: { text: string }) {
-  const parts = text.split(/(https?:\/\/\S+)/g);
+  const lines = text.split("\n");
   return (
-    <div style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", color: "#e5e5e7", fontSize: 13, lineHeight: 1.55 }}>
-      {parts.map((p, i) =>
-        /^https?:\/\//.test(p) ? (
-          <a key={i} href={p} target="_blank" rel="noreferrer" style={{ color: "#35DCFF" }}>
-            {p.replace(/^https?:\/\//, "")}
-          </a>
-        ) : (
-          <span key={i}>{p}</span>
-        ),
-      )}
+    <div style={{ wordBreak: "break-word", color: "#e5e5e7", fontSize: 13, lineHeight: 1.55 }}>
+      {lines.map((line, li) => {
+        const mono = line.startsWith("  ");
+        const parts = line.split(/(https?:\/\/\S+)/g);
+        return (
+          <div key={li} style={{ whiteSpace: "pre-wrap", ...(mono ? { fontFamily: MONO, fontSize: 12.5, color: "#c9c9d6", background: "#101014", padding: "0 8px" } : {}) }}>
+            {line === "" ? "\u00a0" : parts.map((p, i) =>
+              /^https?:\/\//.test(p) ? (
+                <a key={i} href={p} target="_blank" rel="noreferrer" style={{ color: "#35DCFF" }}>
+                  {p.replace(/^https?:\/\//, "")}
+                </a>
+              ) : (
+                <span key={i}>{p}</span>
+              ),
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

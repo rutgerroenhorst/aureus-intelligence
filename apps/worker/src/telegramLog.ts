@@ -22,9 +22,13 @@ export interface LoggedMessage {
   error?: string | null;
 }
 
-/** The message as the user reads it: tags removed, the three entities Telegram needs turned back. */
+/**
+ * The message as the user reads it: tags removed, the three entities Telegram needs turned back. The lines of a <pre> block (the aligned table in
+ * an alert) are indented by two spaces, which is how the Telegram page knows to draw them in a monospace font.
+ */
 export function plainText(html: string): string {
   return html
+    .replace(/<pre>([\s\S]*?)<\/pre>/g, (_m, inner: string) => inner.split("\n").map((l) => (l ? `  ${l}` : l)).join("\n"))
     .replace(/<[^>]*>/g, "")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")

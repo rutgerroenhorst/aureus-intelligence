@@ -35,6 +35,8 @@ describe("the record of what was sent", () => {
   it("turns a Telegram message into the text the user read", () => {
     expect(plainText("\ud83d\udd14 <b>HYDRA</b> staat nu op <b>2\u00d7</b> je instap\nhttps://dexscreener.com/solana/PAIR")).toBe("\ud83d\udd14 HYDRA staat nu op 2\u00d7 je instap\nhttps://dexscreener.com/solana/PAIR");
     expect(plainText("&lt;b&gt;&amp;evil")).toBe("<b>&evil");
+    // the lines of a <pre> table are indented by two spaces (the Telegram page draws those in monospace); blank lines inside stay blank
+    expect(plainText("kop\n<pre>Inleg   $2,00\n\nKoers  $1</pre>\nstaart")).toBe("kop\n  Inleg   $2,00\n\n  Koers  $1\nstaart");
   });
 
   it("writes the kind, the result, the coin and the text without tags, and returns the row id", async () => {

@@ -59,6 +59,31 @@ describe("the Telegram client", () => {
     expect(JSON.stringify(seenBody)).not.toContain(TOKEN);
   });
 
+  it("sends link buttons as one inline keyboard row, and only links that are http(s)", async () => {
+    let seenBody: any = null;
+    const f = (async (_url: string, init: any) => {
+      seenBody = JSON.parse(init.body);
+      return new Response(JSON.stringify({ ok: true, result: { message_id: 5 } }), { status: 200 });
+    }) as unknown as typeof fetch;
+    await telegram(TOKEN, f).send("42", "hi", { buttons: [{ text: "📊 Open", url: "https://dexscreener.com/solana/PAIR" }, { text: "bad", url: "javascript:alert(1)" }] });
+    expect(seenBody.reply_markup).toEqual({ inline_keyboard: [[{ text: "📊 Open", url: "https://dexscreener.com/solana/PAIR" }]] });
+    await telegram(TOKEN, f).send("42", "plain");
+    expect(seenBody.reply_markup).toBeUndefined();
+  });
+
+  it("sends the message again without its buttons when Telegram refuses a button, so an alert is never lost to a bad link", async () => {
+    const bodies: any[] = [];
+    const f = (async (_url: string, init: any) => {
+      const b = JSON.parse(init.body);
+      bodies.push(b);
+      return b.reply_markup ? new Response(JSON.stringify({ ok: false, description: "Bad Request: BUTTON_URL_INVALID" }), { status: 400 }) : new Response(JSON.stringify({ ok: true, result: { message_id: 9 } }), { status: 200 });
+    }) as unknown as typeof fetch;
+    const r = await telegram(TOKEN, f).send("42", "hi", { buttons: [{ text: "x", url: "https://example.com/a" }] });
+    expect(r).toEqual({ ok: true, messageId: 9 });
+    expect(bodies).toHaveLength(2);
+    expect(bodies[1].reply_markup).toBeUndefined();
+  });
+
   it("never lets the token into an error, whatever the failure", async () => {
     const boom = (async (url: string) => {
       throw new Error(`fetch failed for ${url}`);
@@ -175,13 +200,15 @@ function memStore(fills: Map<string, Fill[]>, armed: number | null) {
 function harness(opts: { fills: Map<string, Fill[]>; armed: number | null; quotes: Record<string, Priced | undefined> }) {
   const { store, rows, records, extraAlerts, reads, streaks } = memStore(opts.fills, opts.armed);
   const sent: string[] = [];
+  const buttons: Array<Array<{ text: string; url: string }> | undefined> = [];
   const logs: string[] = [];
   let fail = false;
   let retryAfter: number | undefined;
   const tg: Telegram = {
-    send: async (_chat, text) => {
+    send: async (_chat, text, opts) => {
       if (fail) return { ok: false, error: "Too Many Requests", ...(retryAfter ? { retryAfter } : {}) };
       sent.push(text);
+      buttons.push(opts?.buttons);
       return { ok: true, messageId: 1000 + sent.length };
     },
     updates: async () => [],
@@ -196,7 +223,7 @@ function harness(opts: { fills: Map<string, Fill[]>; armed: number | null; quote
     // each pass of the tests is a separate check, whatever the clock says
     minGapS: 0,
   };
-  return { deps, rows, records, reads, streaks, sent, logs, st: newPassState(), extraAlerts, setFail: (v: boolean) => (fail = v), setRetryAfter: (v: number | undefined) => (retryAfter = v) };
+  return { deps, rows, records, reads, streaks, sent, buttons, logs, st: newPassState(), extraAlerts, setFail: (v: boolean) => (fail = v), setRetryAfter: (v: number | undefined) => (retryAfter = v) };
 }
 
 const cfg = { chatId: "42", levels: [2, 5] };
@@ -225,8 +252,10 @@ describe("a pass", () => {
     await runPass(cfg, h.deps, h.st);
     expect(h.sent).toHaveLength(1);
     expect(h.sent[0]).toContain("<b>M1</b>");
-    expect(h.sent[0]).toContain("<b>2×</b>");
-    expect(h.sent[0]).toContain("https://dexscreener.com/solana/PAIRX");
+    expect(h.sent[0]).toContain("2×-drempel gehaald");
+    // the link is a button under the message, not text in it
+    expect(h.sent[0]).not.toContain("https://");
+    expect(h.buttons[0]).toEqual([{ text: "📊 Open in DexScreener", url: "https://dexscreener.com/solana/PAIRX" }]);
     expect(h.rows.get("m1|900000|2")).toEqual({ state: "sent", messageId: 1001 });
     await runPass(cfg, h.deps, h.st);
     await runPass(cfg, h.deps, h.st);
@@ -252,7 +281,7 @@ describe("a pass", () => {
     await runPass(cfg, h.deps, h.st);
     await runPass(cfg, h.deps, h.st);
     expect(h.sent).toHaveLength(1);
-    expect(h.sent[0]).toContain("<b>5×</b>");
+    expect(h.sent[0]).toContain("5×-drempel gehaald");
     expect(h.rows.get("m1|900000|2")?.state).toBe("sent");
     expect(h.rows.get("m1|900000|5")?.state).toBe("sent");
   });
@@ -353,7 +382,8 @@ describe("the record of what was sent (the Telegram page)", () => {
     await runPass(cfg, h.deps, h.st);
     expect(h.records).toHaveLength(1);
     expect(h.records[0]).toMatchObject({ kind: "alert", ok: true, messageId: 1001, symbol: "M1", level: 2 });
-    expect(h.records[0]!.html).toBe(h.sent[0]);
+    // what the page shows is the text as sent plus the button's link
+    expect(h.records[0]!.html).toBe(`${h.sent[0]}\n\n📊 Open in DexScreener: https://dexscreener.com/solana/PAIRX`);
     expect(h.st.logged).toBe(1);
   });
 

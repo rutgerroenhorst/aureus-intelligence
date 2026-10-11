@@ -9,7 +9,7 @@
 import pg from "pg";
 import { readConfig, telegram } from "../apps/worker/src/exitLoop";
 import { logMessage, pushMessages } from "../apps/worker/src/telegramLog";
-import { testText } from "../apps/web/lib/exitAlerts";
+import { loggedText, testButtons, testText } from "../apps/web/lib/exitAlerts";
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL ?? "postgres://aureus:aureus@localhost:5432/aureus", max: 2 });
 
@@ -18,8 +18,9 @@ async function main() {
   if (!cfg) throw new Error("no token: see docs/EXIT_ALERTS.md");
   if (!cfg.chatId) throw new Error("not paired yet: open the pairing link first (docs/EXIT_ALERTS.md)");
   const html = testText();
-  const res = await telegram(cfg.token).send(cfg.chatId, html);
-  await logMessage(pool, { kind: "test", ok: res.ok, messageId: res.ok ? res.messageId : null, html, error: res.ok ? null : res.error });
+  const buttons = testButtons();
+  const res = await telegram(cfg.token).send(cfg.chatId, html, { buttons });
+  await logMessage(pool, { kind: "test", ok: res.ok, messageId: res.ok ? res.messageId : null, html: loggedText(html, buttons), error: res.ok ? null : res.error });
   console.log(res.ok ? `test message sent (Telegram message ${res.messageId})` : `NOT sent: ${res.error}`);
   const url = process.env.LAB_SYNC_URL;
   if (url) {
