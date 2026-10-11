@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { flushUsage, meterAdd, meterDue, meterPending, meterReset, USAGE_FLUSH_AT_BYTES, USAGE_FLUSH_EVERY_MS } from "./index";
+import { flushUsage, meterAdd, meterDue, meterPending, meterReset, USAGE_FLUSH_AT_BYTES, USAGE_FLUSH_EVERY_MS } from "./index.js";
 
 /** A database that only remembers what it was asked. */
 const fakeDb = (fail = false) => {
