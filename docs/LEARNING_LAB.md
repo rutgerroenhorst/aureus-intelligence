@@ -240,7 +240,8 @@ Overview (the system loop, what the lab knows, how coins end, lanes beyond the d
 (per moment, each feature with its bins, AUC, q and halves; "show all tested") · Filters (four kinds of coin, the filter simulator,
 plain no-hoper rules checked on later coins, the scoreboard of the system's own rules) · Live coins (flags, kind, odds; cards on a
 phone) · Life of a coin (hazard and survival, narrative/venue/hour splits) · Models (what each model learned and whether it
-beat chance) · Hypotheses (registered ideas and their forward evidence) · Case: HOTBOT (the coin the door could not let in, with its market cap against the door) · Tabs (how each Radar tab's listings did, plus the
+beat chance) · Hypotheses (registered ideas and their forward evidence) · Case: HOTBOT (the coin the door could not let in, with its market cap against the door) · Tabs (how each Radar tab's listings did, then "Your own entries": the coins the followed wallet bought, graded the same way against the lab's other coins
+of the same age, with what the lab knew of each coin at the buy and how hot the coins were; `reports/own.ts`, counts and rates only, see docs/WALLET_REVIEW.md; plus the
 legacy Self-Optimizer).
 
 ## 9. What it says today (2026-10-10, 1,439 coins over 28 days; read the page for the current numbers)

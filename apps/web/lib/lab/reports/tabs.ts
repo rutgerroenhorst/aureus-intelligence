@@ -25,49 +25,79 @@ export interface TabsReport {
   note: string;
 }
 
+/** What the lab's other coins did at each decision moment (age): the baseline every listing is compared with. */
+export function universeOf(coins: LabCoin[]): Map<number, Row[]> {
+  const universe = new Map<number, Row[]>();
+  for (const tau of [0, 1, 3, 6, 12, 24]) universe.set(tau, rowsFor(coins, tau));
+  return universe;
+}
+
+export interface Graded {
+  listed: number;
+  matched: number;
+  tab_: Group;
+  /** the lab's other coins at the same ages (so a list of old coins is not compared with new ones) */
+  baseline: { go2: number | null; collapse24: number | null; ev: number | null };
+  pGo2: number | null;
+  verdict: TabRow["verdict"];
+  /** the decision moments the listings were matched to (not stored in reports) */
+  rows: Row[];
+}
+
+/**
+ * Grade a list of "this coin was picked at this time" events: each is matched to the lab's snapshot of the coin closest in time (within
+ * 3 hours, with a decided 72 h window), and what the following days held is compared with every other coin of the same ages.
+ * Used for the Radar's tabs and for the user's own entries.
+ */
+export function gradeListings(coins: LabCoin[], listings: Array<{ mint: string; t: number }>, universe: Map<number, Row[]> = universeOf(coins)): Graded {
+  const byMint = new Map(coins.map((c) => [c.mint, c]));
+  const rows: Row[] = [];
+  for (const q of listings) {
+    const coin = byMint.get(q.mint);
+    if (!coin) continue;
+    let best: { s: (typeof coin.snaps)[number]; d: number } | null = null;
+    for (const s of coin.snaps) {
+      const d = Math.abs(s.ts - q.t);
+      if (s.y && d <= 3 * 3600 && (!best || d < best.d)) best = { s, d };
+    }
+    if (best) rows.push({ coin, tau: best.s.tau, t0: coin.firstSeenAt, f: best.s.f, y: best.s.y! });
+  }
+  const g = group(rows);
+  // baseline: every other lab coin's snapshot at the same moments, weighted by how often the list sampled each moment
+  const taus = rows.map((r) => r.tau);
+  const pick = (f: (r: Row) => number | null) => {
+    const vals: number[] = [];
+    for (const tau of taus) {
+      const u = (universe.get(tau) ?? []).map(f).filter((x): x is number => x != null);
+      if (u.length) vals.push(mean(u));
+    }
+    return vals.length ? mean(vals) : null;
+  };
+  const baseGo2 = pick((r) => (r.y.go2 == null ? null : r.y.go2 ? 1 : 0));
+  const baseCol = pick((r) => (r.y.collapse24 == null ? null : r.y.collapse24 ? 1 : 0));
+  const baseEv = pick((r) => r.y.ev);
+  const pGo2: number | null =
+    g.go2.n >= 15 && baseGo2 != null ? fisherExact(g.go2.k, g.go2.n - g.go2.k, Math.round(baseGo2 * 1000), Math.round((1 - baseGo2) * 1000)) : null;
+  let verdict: TabRow["verdict"] = "thin";
+  if (g.go2.n >= 25) verdict = pGo2 != null && pGo2 < 0.05 ? (g.go2.p > (baseGo2 ?? 0) ? "better" : "worse") : "same";
+  return { listed: listings.length, matched: rows.length, tab_: g, baseline: { go2: baseGo2, collapse24: baseCol, ev: baseEv }, pGo2, verdict, rows };
+}
+
 export async function buildTabs(db: Queryable, coins: LabCoin[]): Promise<TabsReport> {
   const { rows } = await db
     .query(`SELECT tab_name, mint, EXTRACT(EPOCH FROM qualified_at)::float8 AS t FROM coin_qualifications`)
     .catch(() => ({ rows: [] as Array<{ tab_name: string; mint: string; t: number }> }));
-  const byMint = new Map(coins.map((c) => [c.mint, c]));
-  const universe = new Map<number, Row[]>();
-  for (const tau of [0, 1, 3, 6, 12, 24]) universe.set(tau, rowsFor(coins, tau));
-  const tabs = new Map<string, { listed: number; rows: Row[] }>();
+  const universe = universeOf(coins);
+  const byTab = new Map<string, Array<{ mint: string; t: number }>>();
   for (const q of rows) {
-    const e = tabs.get(q.tab_name) ?? { listed: 0, rows: [] };
-    e.listed++;
-    const coin = byMint.get(q.mint);
-    if (coin) {
-      let best: { s: (typeof coin.snaps)[number]; d: number } | null = null;
-      for (const s of coin.snaps) {
-        const d = Math.abs(s.ts - q.t);
-        if (s.y && d <= 3 * 3600 && (!best || d < best.d)) best = { s, d };
-      }
-      if (best) e.rows.push({ coin, tau: best.s.tau, t0: coin.firstSeenAt, f: best.s.f, y: best.s.y! });
-    }
-    tabs.set(q.tab_name, e);
+    const a = byTab.get(q.tab_name) ?? [];
+    a.push({ mint: q.mint, t: q.t });
+    byTab.set(q.tab_name, a);
   }
   const out: TabRow[] = [];
-  for (const [tab, e] of tabs) {
-    const g = group(e.rows);
-    // baseline: every other lab coin's snapshot at the same moments, weighted by how often the tab sampled each moment
-    const taus = e.rows.map((r) => r.tau);
-    const pick = (f: (r: Row) => number | null) => {
-      const vals: number[] = [];
-      for (const tau of taus) {
-        const u = (universe.get(tau) ?? []).map(f).filter((x): x is number => x != null);
-        if (u.length) vals.push(mean(u));
-      }
-      return vals.length ? mean(vals) : null;
-    };
-    const baseGo2 = pick((r) => (r.y.go2 == null ? null : r.y.go2 ? 1 : 0));
-    const baseCol = pick((r) => (r.y.collapse24 == null ? null : r.y.collapse24 ? 1 : 0));
-    const baseEv = pick((r) => r.y.ev);
-    const pGo2: number | null =
-      g.go2.n >= 15 && baseGo2 != null ? fisherExact(g.go2.k, g.go2.n - g.go2.k, Math.round(baseGo2 * 1000), Math.round((1 - baseGo2) * 1000)) : null;
-    let verdict: TabRow["verdict"] = "thin";
-    if (g.go2.n >= 25) verdict = pGo2 != null && pGo2 < 0.05 ? (g.go2.p > (baseGo2 ?? 0) ? "better" : "worse") : "same";
-    out.push({ tab, listed: e.listed, matched: e.rows.length, tab_: g, baseline: { go2: baseGo2, collapse24: baseCol, ev: baseEv }, pGo2, verdict });
+  for (const [tab, listings] of byTab) {
+    const { rows: _matched, ...graded } = gradeListings(coins, listings, universe);
+    out.push({ tab, ...graded });
   }
   out.sort((a, b) => b.listed - a.listed);
   return {

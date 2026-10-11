@@ -4,6 +4,7 @@ import { buildHypotheses, HYPOTHESES } from "./hypotheses";
 import { buildInsights, type InsightsReport } from "./insights";
 import { buildStructure } from "./structure";
 import { buildLanes } from "./lanes";
+import { buildOwn } from "./own";
 import { buildLifecycle } from "./lifecycle";
 import { buildLive } from "./live";
 import { buildLoop, scoreValues, type HistoryPoint } from "./loop";
@@ -112,6 +113,7 @@ export async function computeReports(db: Queryable): Promise<ReportMap> {
   const lanes = buildLanes(all, watching);
   const structure = buildStructure(coins);
   const tabs = await buildTabs(db, coins);
+  const own = await buildOwn(db, all, coins).catch(() => null);
   // The loop card: today's scoreboard values are appended to a small daily history so that trends exist without keeping raw reports.
   const cov = await db
     .query(`SELECT count(DISTINCT date_trunc('hour', observed_at))::int AS h FROM prices WHERE observed_at > now() - interval '24 hours'`)
@@ -145,6 +147,7 @@ export async function computeReports(db: Queryable): Promise<ReportMap> {
     loop,
     history: { points: history },
   };
+  if (own) reports.own = own;
   reports.headlines = headlinesOf(reports);
   reports.meta = { asOf: new Date().toISOString(), coins: all.length, radarCoins: coins.length, finals: all.filter((c) => c.status === "final").length };
   return reports;

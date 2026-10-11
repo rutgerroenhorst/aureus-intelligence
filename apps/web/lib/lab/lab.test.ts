@@ -18,6 +18,8 @@ import type { Row } from "./reports/common";
 import { gradFate, gradFlags, gradKind, isHealthy, summarizeFates, type Reading } from "./pump";
 import { rugAt, rugSnapshot } from "./rugcheck";
 import { buildStructure } from "./reports/structure";
+import { buildOwn, percentileOf } from "./reports/own";
+import { gradeListings } from "./reports/tabs";
 
 /** A path with one reading every `gap` seconds from the given prices; liquidity optional. */
 const path = (prices: number[], gap = 300, liq?: number[]): Obs[] => prices.map((p, i) => ({ t: 1_000_000 + i * gap, p, liq: liq ? liq[i]! : 20_000 }));
@@ -631,5 +633,67 @@ describe("where a coin trades", () => {
     const structure = buildStructure(coins);
     const loop = buildLoop({ tabs: { tabs: [], note: "" } as never, rules: { rules: [] }, hypotheses: [], lanes: { groups: [], pumpAnatomy: [], note: "" } as never, structure, coverageH: 24, history: [] });
     expect(loop.decisions.some((d) => d.id === "venue-pumpswap")).toBe(true);
+  });
+});
+
+describe("the user's own entries, graded like a tab", () => {
+  const T0 = 1_790_000_000;
+  const H = 3600;
+  const snap = (tau: number, ts: number, trades: number, y: Record<string, unknown> = {}) =>
+    ({ tau, ts, f: { trades_h1: trades }, y: { go2: false, go3: false, go5: false, go15: false, collapse6: false, collapse24: false, ev: 0.8, fwd24: 1, fwd72: 1, peak72: 1, ...y } }) as any;
+  const coin = (mint: string, lane: string, firstSeenAt: number, snaps: any[]) => fakeCoin({ mint, lane, firstSeenAt, snaps });
+  const walletDb = (rows: Array<{ mint: string; t: number }>) => ({ query: async (text: string) => ({ rows: text.includes("wallet_fills") ? rows : [] }) });
+
+  it("a percentile counts ties as half and says nothing about an empty universe", () => {
+    expect(percentileOf([1, 2, 3, 4], 3)).toBeCloseTo(62.5, 5);
+    expect(percentileOf([1, 2, 3, 4], 0)).toBe(0);
+    expect(percentileOf([], 1)).toBeNull();
+  });
+
+  it("matches a pick to the coin's snapshot closest in time, within three hours, and ignores what it cannot match", () => {
+    const c = coin("A", "fresh", T0, [snap(0, T0, 100), snap(1, T0 + H, 100, { go2: true })]);
+    const g = gradeListings([c], [{ mint: "A", t: T0 + 50 * 60 }, { mint: "A", t: T0 + 20 * H }, { mint: "unknown", t: T0 }]);
+    expect(g.listed).toBe(3);
+    expect(g.matched).toBe(1);
+    expect(g.rows[0]!.tau).toBe(1); // 10 minutes from the +1 h snapshot, 50 from the first look
+    expect(g.verdict).toBe("thin");
+  });
+
+  it("says what the lab had of each coin at the buy, and leaves out buys from before the lab existed", async () => {
+    const all = [
+      coin("seenBefore", "fresh", T0, []),
+      coin("watched", "graduate", T0 + 1 * H, []),
+      coin("seenAfter", "fresh", T0 + 10 * H, []),
+      coin("other", "fresh", T0 + 20 * H, []),
+    ];
+    const db = walletDb([
+      { mint: "seenBefore", t: T0 + 5 * H },
+      { mint: "watched", t: T0 + 5 * H },
+      { mint: "seenAfter", t: T0 + 5 * H },
+      { mint: "neverSeen", t: T0 + 5 * H },
+      { mint: "tooEarly", t: T0 - 400 * H },
+    ]);
+    const r = await buildOwn(db as any, all, all.filter((c) => c.lane === "fresh"));
+    expect(r!.entries).toBe(4);
+    expect(r!.knowledge).toEqual({ radarBefore: 1, otherLaneBefore: 1, after: 1, never: 1 });
+    expect(r!.graded!.matched).toBe(0);
+  });
+
+  it("is silent when the wallet has bought nothing, and finds a habit of buying the busiest coins", async () => {
+    expect(await buildOwn(walletDb([]) as any, [coin("x", "fresh", T0, [])], [])).toBeNull();
+    // 30 quiet coins nobody bought, and 12 busy ones that were bought ten minutes after the first look
+    const quiet = Array.from({ length: 30 }, (_, i) => coin(`q${i}`, "fresh", T0, [snap(0, T0, 10 + i)]));
+    const busy = Array.from({ length: 12 }, (_, i) => coin(`b${i}`, "fresh", T0, [snap(0, T0, 1000 + i, i < 3 ? { go2: true } : {})]));
+    const all = [...quiet, ...busy];
+    const r = await buildOwn(walletDb(busy.map((c) => ({ mint: c.mint, t: T0 + 600 }))) as any, all, all);
+    expect(r!.entries).toBe(12);
+    expect(r!.graded!.matched).toBe(12);
+    expect(r!.graded!.tab_.go2.k).toBe(3);
+    const trades = r!.sits.find((x) => x.key === "trades_h1")!;
+    expect(trades.n).toBe(12);
+    expect(trades.median).toBeGreaterThan(70);
+    expect(trades.above.k).toBe(12);
+    // the report carries rates and counts only
+    expect(JSON.stringify(r)).not.toMatch(/b0|q1|mint/);
   });
 });

@@ -5,6 +5,7 @@ import { Badge, Empty, Note, Section } from "./parts";
 import { evText, pct, pctS } from "./format";
 import { usePolling } from "@/lib/usePolling";
 import type { LabData } from "./types";
+import type { OwnReport } from "@/lib/lab/reports/own";
 
 interface Legacy {
   per_tab: Record<string, { tab_name: string; total_coins: number; winners: number; mega_winners: number; rugpulls: number; dead_coins: number; losers: number; pending: number; win_rate: number; avg_return: number }>;
@@ -15,6 +16,80 @@ interface Legacy {
 
 const fmtAge = (h: number) => (h >= 1000 ? "any age" : h >= 48 ? `${Math.round(h / 24)} d` : `${h} h`);
 const TAB: Record<string, string> = { cate: "CATE", buy_signals: "Buy signals", ultra_momentum: "Ultra momentum", elite: "Elite", incubation: "Incubation" };
+
+
+/** The user's own entries, graded like a tab: what the lab knew of each coin at the buy, how the entries did against the lab's other coins, how hot they were. */
+function OwnEntries({ own }: { own: OwnReport }) {
+  const k = own.knowledge;
+  const g = own.graded;
+  const share = (n: number) => pct(own.entries ? n / own.entries : null);
+  return (
+    <Section
+      title="Your own entries"
+      lede={`The coins your wallet bought in the last ${own.days} days, graded the way the tabs are: what the following days held for each coin, against the lab's other coins of the same age. Counts and rates only.`}
+    >
+      <Note>
+        {own.entries} coins. At the moment of the first buy the lab already had {share(k.radarBefore + k.otherLaneBefore)} of them ({share(k.radarBefore)} on the Radar's list, {share(k.otherLaneBefore)} on its other lanes), saw {share(k.after)} only afterwards, and never saw {share(k.never)}.
+      </Note>
+      {g && g.matched > 0 ? (
+        <div className={s.tableWrap}>
+          <table className={s.table}>
+            <thead>
+              <tr>
+                <th className={s.num}>Matched</th>
+                <th className={s.num}>Doubled</th>
+                <th className={s.num}>Other coins</th>
+                <th className={s.num}>Lost half</th>
+                <th className={s.num}>Other coins</th>
+                <th className={s.num}>Ladder</th>
+                <th>Verdict</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td className={s.num}>{g.matched}</td>
+                <td className={s.num}>{g.tab_.go2.n ? `${pctS(g.tab_.go2.p)} (${g.tab_.go2.k}/${g.tab_.go2.n})` : "–"}</td>
+                <td className={s.num}>{g.baseline.go2 == null ? "–" : pctS(g.baseline.go2)}</td>
+                <td className={s.num}>{g.tab_.collapse24.n ? `${pctS(g.tab_.collapse24.p)} (${g.tab_.collapse24.k}/${g.tab_.collapse24.n})` : "–"}</td>
+                <td className={s.num}>{g.baseline.collapse24 == null ? "–" : pctS(g.baseline.collapse24)}</td>
+                <td className={s.num}>{evText(g.tab_.ev.mean)}</td>
+                <td><Badge kind={g.verdict === "better" ? "protective" : g.verdict === "worse" ? "costly" : g.verdict}>{g.verdict === "thin" ? "too few coins" : g.verdict === "same" ? "no difference" : g.verdict}</Badge></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <Empty>No entry could be matched to a decided 72-hour window yet.</Empty>
+      )}
+      {own.sits.length > 0 && (
+        <>
+          <p className={s.small} style={{ marginTop: 10 }}>How hot the coins were when bought, among the lab's other coins of the same age (50 is a typical coin; the busiest coins crash most often):</p>
+          <div className={s.tableWrap}>
+            <table className={s.table}>
+              <thead>
+                <tr>
+                  <th>At the buy</th>
+                  <th className={s.num}>Typical percentile</th>
+                  <th className={s.num}>Above the middle</th>
+                </tr>
+              </thead>
+              <tbody>
+                {own.sits.map((x) => (
+                  <tr key={x.key}>
+                    <td>{x.label}</td>
+                    <td className={s.num}>{x.median.toFixed(0)}</td>
+                    <td className={s.num}>{pct(x.above.p)} <span className={s.small}>({x.n} coins)</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+      <p className={s.small} style={{ marginTop: 6 }}>{own.note}</p>
+    </Section>
+  );
+}
 
 export function TabsLegacy({ d }: { d: LabData }) {
   const [legacy, setLegacy] = useState<Legacy | null>(null);
@@ -66,6 +141,8 @@ export function TabsLegacy({ d }: { d: LabData }) {
         )}
         <p className={s.small} style={{ marginTop: 6 }}>{d.tabs?.note}</p>
       </Section>
+
+      {d.own && <OwnEntries own={d.own} />}
 
       {legacy && legacy.analysis_summary.total_coins_tracked > 0 && (
         <Section title="The Self-Optimizer (original tab grading)" lede="The earlier grading: coins on a tab are watched for 6 hours and labelled by one check. Kept for reference; the lab above supersedes it, because it only knows coins that were on a tab and calls a winner on a single reading.">

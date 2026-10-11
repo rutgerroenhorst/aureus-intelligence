@@ -7,6 +7,7 @@ import type { LifecycleReport } from "@/lib/lab/reports/lifecycle";
 import type { HypothesisResult } from "@/lib/lab/reports/hypotheses";
 import type { LiveReport } from "@/lib/lab/reports/live";
 import type { TabsReport } from "@/lib/lab/reports/tabs";
+import type { OwnReport } from "@/lib/lab/reports/own";
 import type { LanesReport } from "@/lib/lab/reports/lanes";
 import type { LoopReport } from "@/lib/lab/reports/loop";
 import type { PriorReport } from "@/lib/lab/reports/prior";
@@ -29,6 +30,7 @@ export interface LabData {
   loop?: LoopReport;
   cases?: { items: CaseStudy[] };
   tabs?: TabsReport;
+  own?: OwnReport;
   headlines?: Headline[];
   meta?: { asOf: string; coins: number; radarCoins?: number; finals: number };
   collectors?: Array<{ source: string; rows: number; coins: number; last: string | null }>;
