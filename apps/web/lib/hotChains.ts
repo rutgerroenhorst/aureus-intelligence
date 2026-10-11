@@ -199,12 +199,23 @@ export function rankChains(items: Array<{ chain: ChainInfo; stats: ChainStats }>
 const GT_HEADERS = { accept: "application/json;version=20230302", "user-agent": "Aureus-Hot/1.0" };
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-async function getJson(url: string, headers: Record<string, string>, tries = 2): Promise<any | null> {
+/** Pauses, in milliseconds (the tests set them to 0). */
+export interface HotTiming {
+  /** between two GeckoTerminal calls: it allows about 30 a minute */
+  gapMs: number;
+  /** after a refusal (429 or a server error), times the attempt number */
+  backoffMs: number;
+  /** before a network that was refused is tried once more, after all the others */
+  retryAfterMs: number;
+}
+const TIMING: HotTiming = { gapMs: 2_300, backoffMs: 3_000, retryAfterMs: 8_000 };
+
+async function getJson(url: string, headers: Record<string, string>, tries = 2, backoffMs = TIMING.backoffMs): Promise<any | null> {
   for (let i = 0; i < tries; i++) {
     try {
       const res = await fetch(url, { headers, signal: AbortSignal.timeout(15_000) });
       if (res.status === 429 || res.status >= 500) {
-        await sleep(3_000 * (i + 1));
+        if (i < tries - 1) await sleep(backoffMs * (i + 1));
         continue;
       }
       if (!res.ok) return null;
@@ -216,15 +227,19 @@ async function getJson(url: string, headers: Record<string, string>, tries = 2):
   return null;
 }
 
+const gtUrl = (c: ChainInfo) => `https://api.geckoterminal.com/api/v2/networks/${c.gt}/trending_pools?page=1&include=base_token,dex`;
+
 /**
  * Read every network and rank it. Takes about 15 seconds (GeckoTerminal allows about 30 calls a minute, so the networks are read one
  * after the other). A network whose list cannot be read is ranked last and says so. Throws only when no network could be read at all.
  */
-export async function computeHotChains(chains: ChainInfo[] = CHAINS): Promise<HotReport> {
+export async function computeHotChains(chains: ChainInfo[] = CHAINS, timing: Partial<HotTiming> = {}): Promise<HotReport> {
+  const t: HotTiming = { ...TIMING, ...timing };
+  const t0 = Date.now();
   const llamaP = Promise.all(
     chains.map(async (c) => {
       if (!c.llama) return null;
-      const j = await getJson(`https://api.llama.fi/overview/dexs/${c.llama}?excludeTotalDataChart=true&excludeTotalDataChartBreakdown=true`, { accept: "application/json" });
+      const j = await getJson(`https://api.llama.fi/overview/dexs/${c.llama}?excludeTotalDataChart=true&excludeTotalDataChartBreakdown=true`, { accept: "application/json" }, 2, t.backoffMs);
       if (!j || num(j.total24h) == null) return null;
       return { vol24: j.total24h as number, change1d: num(j.change_1d), change7d: num(j.change_7d) };
     }),
@@ -232,9 +247,20 @@ export async function computeHotChains(chains: ChainInfo[] = CHAINS): Promise<Ho
   const pools: Record<string, HotPool[]> = {};
   const raw: Array<{ chain: ChainInfo; list: HotPool[] | null }> = [];
   for (const c of chains) {
-    const body = await getJson(`https://api.geckoterminal.com/api/v2/networks/${c.gt}/trending_pools?page=1&include=base_token,dex`, GT_HEADERS, 3);
+    const body = await getJson(gtUrl(c), GT_HEADERS, 3, t.backoffMs);
     raw.push({ chain: c, list: body?.data ? parsePools(c.id, body) : null });
-    await sleep(2_300);
+    await sleep(t.gapMs);
+  }
+  // a network that was refused is tried once more after the others (the limit is per minute, so a pause usually clears it), unless
+  // most of the time is gone already: the hosted route has 60 seconds
+  const missed = raw.filter((r) => !r.list);
+  if (missed.length && missed.length < raw.length && Date.now() - t0 < 30_000) {
+    await sleep(t.retryAfterMs);
+    for (const r of missed) {
+      const body = await getJson(gtUrl(r.chain), GT_HEADERS, 2, t.backoffMs);
+      if (body?.data) r.list = parsePools(r.chain.id, body);
+      await sleep(t.gapMs);
+    }
   }
   const llama = await llamaP;
   if (raw.every((r) => !r.list)) throw new Error("no network could be read");

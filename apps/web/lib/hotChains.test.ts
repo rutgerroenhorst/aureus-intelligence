@@ -1,6 +1,6 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import { CHAIN_BY_ID, dexUrl, isTokenAddress } from "./chains";
-import { memecoinLike, parsePools, rankChains, saveHotReport, statsOf, type ChainStats, type HotPool, type HotReport } from "./hotChains";
+import { computeHotChains, memecoinLike, parsePools, rankChains, saveHotReport, statsOf, type ChainStats, type HotPool, type HotReport } from "./hotChains";
 
 const pool = (o: Partial<HotPool>): HotPool => ({ chain: "solana", address: "A", pair: "P", symbol: "XYZ", name: "x", dex: null, ageH: 10, mcap: 100_000, liq: 30_000, vol24: 50_000, vol1: 5_000, ch1: 0, ch6: 0, ch24: 0, buys1: 1, sells1: 1, rank: 1, ...o });
 
@@ -129,5 +129,61 @@ describe("saveHotReport", () => {
     const old = fakeDb(report([]), 45);
     expect(await saveHotReport(old, report(["base"]))).toBe(true);
     expect(old.writes).toHaveLength(1);
+  });
+});
+
+describe("reading the networks", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const NOW = Date.now();
+  const gtBody = (gt: string) => ({
+    data: [0, 1, 2].map((i) => ({
+      id: `${gt}_P${i}`,
+      type: "pool",
+      attributes: { address: `${gt}P${i}`, name: `T${i} / X`, pool_created_at: new Date(NOW - 5 * 3_600_000).toISOString(), fdv_usd: "500000", reserve_in_usd: "50000", volume_usd: { h1: "1000", h24: "90000" }, price_change_percentage: { h1: "1", h6: "25", h24: "80" }, transactions: { h1: { buys: 5, sells: 5 } } },
+      relationships: { base_token: { data: { id: `${gt}_Mint${i}` } }, dex: { data: { id: "d" } } },
+    })),
+    included: [0, 1, 2].map((i) => ({ id: `${gt}_Mint${i}`, type: "token", attributes: { address: `Mint${i}`, name: `Token ${i}`, symbol: `T${i}` } })),
+  });
+  /** a fake network: refuses the first `refuse[gt]` calls to a network, answers the rest */
+  const fakeFetch = (refuse: Record<string, number>) => {
+    const calls: Record<string, number> = {};
+    return vi.fn(async (url: string) => {
+      if (url.includes("api.llama.fi")) return new Response(JSON.stringify({ total24h: 1e9, change_1d: -10, change_7d: -30 }), { status: 200 });
+      const gt = /networks\/([^/]+)\/trending_pools/.exec(url)![1]!;
+      calls[gt] = (calls[gt] ?? 0) + 1;
+      if (calls[gt]! <= (refuse[gt] ?? 0)) return new Response("slow down", { status: 429 });
+      return new Response(JSON.stringify(gtBody(gt)), { status: 200 });
+    });
+  };
+  const fast = { gapMs: 0, backoffMs: 0, retryAfterMs: 0 };
+  const three = ["solana", "base", "bsc"].map((id) => CHAIN_BY_ID.get(id)!);
+
+  it("reads every network and ranks them", async () => {
+    vi.stubGlobal("fetch", fakeFetch({}));
+    const r = await computeHotChains(three, fast);
+    expect(r.chains).toHaveLength(3);
+    expect(r.chains.every((c) => !c.stats.error)).toBe(true);
+    expect(r.pools.base).toHaveLength(3);
+  });
+  it("tries a refused network once more after the others", async () => {
+    const f = fakeFetch({ bsc: 3 }); // the whole first pass (three attempts) is refused, the second pass is answered
+    vi.stubGlobal("fetch", f);
+    const r = await computeHotChains(three, fast);
+    expect(r.chains.find((c) => c.id === "bsc")!.stats.error).toBeUndefined();
+    expect(r.pools.bsc).toHaveLength(3);
+  });
+  it("marks a network that stays refused, ranks it last and still ranks the others", async () => {
+    vi.stubGlobal("fetch", fakeFetch({ bsc: 99 }));
+    const r = await computeHotChains(three, fast);
+    const bsc = r.chains.find((c) => c.id === "bsc")!;
+    expect(bsc.stats.error).toContain("rate limited");
+    expect(bsc.rank).toBe(3);
+    expect(bsc.heat).toBe(0);
+    expect(r.pools.bsc).toEqual([]);
+    expect(r.pools.solana).toHaveLength(3);
+  });
+  it("gives up with an error when no network can be read at all", async () => {
+    vi.stubGlobal("fetch", fakeFetch({ solana: 99, base: 99, bsc: 99 }));
+    await expect(computeHotChains(three, fast)).rejects.toThrow("no network could be read");
   });
 });
