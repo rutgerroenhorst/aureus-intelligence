@@ -36,7 +36,8 @@ the example exit plan averaged -23%.
 Where a coin trades. Coins on PumpSwap (a pump.fun graduate's pool) lost half within a day 75% of the time against 40% on Raydium
 (834 and 386 coins), while the chance of a 5x is the same (5.3% against 5.7%) and the example exit plan averaged -31% against -8%. It holds
 inside every age band (1-6 h: 78% against 43%; 6-24 h: 67% against 24%; 1-7 d: 49% against 37%). It is descriptive (the two groups may differ in more
-than the venue), but nothing else in the lab separates coins this strongly.
+than the venue: when a coin is first seen, which launches end up there), and it is per coin: PumpSwap also supplied 17 of the 28 coins that peaked at 10x or more,
+so hiding PumpSwap would hide most big winners with the losers. Nothing else in the lab separates coins this strongly, and it is not a verdict on the venue.
 
 ## What was built
 

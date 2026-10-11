@@ -18,6 +18,8 @@ export interface VenueGroup {
   n: number;
   held2: Rate;
   held5: Rate;
+  /** coins whose price peaked at 10x or more of the first look within 72 hours (held for about half an hour) */
+  peak10: Rate;
   lostHalf: Rate;
   /** mean result of the example exit plan (1.0 = break even) over the coins where it was decided */
   ev: number | null;
@@ -57,16 +59,16 @@ function venueOf(coin: LabCoin): VenueGroup["id"] | null {
 }
 
 function tally(coins: LabCoin[]) {
-  let k2 = 0, n2 = 0, k5 = 0, n5 = 0, kc = 0, nc = 0, evSum = 0, evN = 0;
+  let k2 = 0, n2 = 0, k5 = 0, n5 = 0, kc = 0, nc = 0, k10 = 0, evSum = 0, evN = 0;
   for (const c of coins) {
     const y = c.snaps.find((s) => s.tau === 0)?.y;
     if (!y) continue;
-    if (y.go2 != null) { n2++; if (y.go2) k2++; }
+    if (y.go2 != null) { n2++; if (y.go2) k2++; if (y.peak72 >= 10) k10++; }
     if (y.go5 != null) { n5++; if (y.go5) k5++; }
     if (y.collapse24 != null) { nc++; if (y.collapse24) kc++; }
     if (y.ev != null) { evN++; evSum += y.ev; }
   }
-  return { held2: rate(k2, n2), held5: rate(k5, n5), lostHalf: rate(kc, nc), ev: evN ? evSum / evN : null };
+  return { held2: rate(k2, n2), held5: rate(k5, n5), peak10: rate(k10, n2), lostHalf: rate(kc, nc), ev: evN ? evSum / evN : null };
 }
 
 export function buildStructure(coins: LabCoin[]): StructureReport {
@@ -101,7 +103,7 @@ export function buildStructure(coins: LabCoin[]): StructureReport {
       finding = {
         diff,
         p,
-        text: `On PumpSwap ${pct(P.lostHalf.p)} of coins lost half within a day, against ${pct(R.lostHalf.p)} on Raydium (${P.lostHalf.n} and ${R.lostHalf.n} coins), while the chance of a 5x is about the same (${pct(P.held5.p, 1)} against ${pct(R.held5.p, 1)}). It holds in every age band with enough coins.`,
+        text: `On PumpSwap ${pct(P.lostHalf.p)} of coins lost half within a day, against ${pct(R.lostHalf.p)} on Raydium (${P.lostHalf.n} and ${R.lostHalf.n} coins). Per coin, the chance of a 5x is about the same (${pct(P.held5.p, 1)} against ${pct(R.held5.p, 1)}), and PumpSwap supplied ${P.peak10.k} of the ${groups.reduce((a, g) => a + g.peak10.k, 0)} coins that peaked at 10x or more. It holds in every age band with enough coins. It is a description of the coins on each venue, not a verdict on the venue.`,
       };
     }
   }

@@ -146,11 +146,12 @@ export function buildLoop(input: LoopInput): LoopReport {
   if (venue) {
     const P = input.structure!.venue.groups[0]!;
     const R = input.structure!.venue.groups[1]!;
+    const all10 = input.structure!.venue.groups.reduce((a, g) => a + g.peak10.k, 0);
     decisions.push({
       id: "venue-pumpswap", level: "consider", title: "Coins on PumpSwap lose half far more often than coins on Raydium",
-      why: "Where a coin trades is the one split of the Radar's coins that needs no threshold and holds in every age band.",
-      evidence: `${pct(P.lostHalf.p)} of ${P.lostHalf.n} PumpSwap coins lost half within a day against ${pct(R.lostHalf.p)} of ${R.lostHalf.n} on Raydium; a 5x was about as likely (${pct(P.held5.p, 1)} against ${pct(R.held5.p, 1)}); the example exit plan averaged ${P.ev == null ? "-" : pct(P.ev - 1)} against ${R.ev == null ? "-" : pct(R.ev - 1)}.`,
-      suggestion: "Show the exchange on the cards, or add a switch that hides PumpSwap coins. It would cut losses without lowering the chance of a big winner, but it also hides coins like HOTBOT. Say if you want either.",
+      why: "Where a coin trades is the one split of the Radar's coins that needs no threshold and holds in every age band. It describes the coins on each venue, not the venue itself.",
+      evidence: `${pct(P.lostHalf.p)} of ${P.lostHalf.n} PumpSwap coins lost half within a day against ${pct(R.lostHalf.p)} of ${R.lostHalf.n} on Raydium; per coin a 5x was about as likely (${pct(P.held5.p, 1)} against ${pct(R.held5.p, 1)}); the example exit plan averaged ${P.ev == null ? "-" : pct(P.ev - 1)} against ${R.ev == null ? "-" : pct(R.ev - 1)}. PumpSwap also supplied ${P.peak10.k} of the ${all10} coins that peaked at 10x or more.`,
+      suggestion: "No action needed. Hiding PumpSwap coins would cut roughly two thirds of the coins and most of the big winners with them (HOTBOT is a PumpSwap coin); an exchange label on the cards is the mild option. Say if you want it.",
     });
   }
   for (const h of input.hypotheses) {
