@@ -127,11 +127,12 @@ export interface AlertFacts {
 }
 
 export function alertText(a: AlertFacts): string {
-  const recovered = a.sold >= a.bought * 0.99;
+  // the money is (almost) back when what was sold is at least nine tenths of what was put in
+  const recovered = a.sold >= a.bought * 0.9;
   const idea = recovered
     ? a.level >= 5
-      ? "Je inleg is er al uit. Idee: haal er nog eens een derde uit en laat de rest lopen."
-      : "Je inleg is er al uit. Idee: haal er nog een deel uit en laat de rest lopen."
+      ? "Je inleg is er (bijna) al uit. Idee: haal er nog eens een derde uit en laat de rest lopen."
+      : "Je inleg is er (bijna) al uit. Idee: haal er nog een deel uit en laat de rest lopen."
     : "Idee: haal de helft eruit, dan heb je je inleg terug.";
   return [
     `🔔 <b>${esc(a.symbol)}</b> staat nu op <b>${a.level}×</b> je instap (${fmtMultiple(a.multiple)})`,

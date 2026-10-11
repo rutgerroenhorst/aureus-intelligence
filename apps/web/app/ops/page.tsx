@@ -5,6 +5,7 @@ export default function OpsPage() {
   const [status, setStatus] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [backendOnline, setBackendOnline] = useState(false);
+  const [usage, setUsage] = useState<any>(null);
 
   useEffect(() => {
     const fetch_data = async () => {
@@ -24,6 +25,8 @@ export default function OpsPage() {
       }
     };
     fetch_data();
+    // how much of the free plans is used (the same numbers the site's own brakes use)
+    fetch("/api/usage", { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).then((u) => u && setUsage(u)).catch(() => undefined);
   }, []);
 
   const getStatusColor = (online: boolean) => online ? "#20E5A3" : "#FF546A";
@@ -59,6 +62,33 @@ export default function OpsPage() {
                 </div>
               </div>
             </div>
+
+            {usage && (
+              <div style={{ marginBottom: "32px" }}>
+                <h3 style={{ fontSize: "13px", fontWeight: 700, marginBottom: "6px", textTransform: "uppercase" }}>Free plan usage</h3>
+                <p style={{ fontSize: "11px", color: "var(--text-muted)", margin: "0 0 12px" }}>
+                  Supabase Free allows {usage.plan.dbMb} MB of database and {usage.plan.egressGbMonth} GB sent out a month; Vercel Hobby allows {usage.plan.cpuHoursMonth} CPU-hours a month. The site slows its own scans down when a day's allowance is used up, so these cannot run over.
+                </p>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "14px" }}>
+                  {[
+                    { label: "Database", used: usage.databaseMb, of: usage.plan.dbMb, unit: "MB", note: `pauses scanning at ${usage.budgets.storageStopMb || "—"} MB` },
+                    { label: "Sent out this month", used: usage.month.egressMb / 1024, of: usage.plan.egressGbMonth, unit: "GB", note: `today's brake at ${usage.budgets.egressMbPerDay} MB a day` },
+                    { label: "Scan CPU this month", used: usage.month.cpuS / 3600, of: usage.plan.cpuHoursMonth, unit: "h", note: `today's brake at ${usage.budgets.cpuSPerDay} s a day (scans only)` },
+                  ].map((m) => {
+                    const pct = Math.min(100, (100 * m.used) / m.of);
+                    const color = pct >= 80 ? "#FF546A" : pct >= 50 ? "#ff9f0a" : "#20E5A3";
+                    return (
+                      <div key={m.label} style={{ padding: "12px", background: "var(--bg-raised)", border: "1px solid var(--border-color)", borderRadius: "8px" }}>
+                        <div style={{ fontSize: "11px", color: "var(--text-muted)", marginBottom: "4px" }}>{m.label}</div>
+                        <div style={{ fontSize: "16px", fontWeight: 700, color }}>{m.used < 10 ? m.used.toFixed(2) : Math.round(m.used)} {m.unit} <span style={{ fontSize: "11px", fontWeight: 400, color: "var(--text-muted)" }}>of {m.of} {m.unit} ({Math.round(pct)}%)</span></div>
+                        <div style={{ height: 4, borderRadius: 2, background: "#2a2a3e", marginTop: 8 }}><div style={{ height: 4, borderRadius: 2, width: `${Math.max(2, pct)}%`, background: color }} /></div>
+                        <div style={{ fontSize: "10px", color: "var(--text-muted)", marginTop: 6 }}>{m.note}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {status && (
               <div style={{ marginBottom: "32px" }}>

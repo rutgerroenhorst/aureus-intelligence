@@ -22,17 +22,29 @@ interface PollOptions {
   /** A screen left on and untouched for this long (an iPad on a stand, a tab on a second monitor) slows right down. */
   deepIdleAfterMs?: number;
   deepIdleIntervalMs?: number;
+  /** After this long without a touch nothing is requested until the next touch. */
+  stopAfterMs?: number;
 }
 
 export const DEFAULT_IDLE_AFTER_MS = 3 * 60_000;
 export const DEFAULT_IDLE_INTERVAL_MS = 60_000;
 export const DEFAULT_DEEP_IDLE_AFTER_MS = 15 * 60_000;
 export const DEFAULT_DEEP_IDLE_INTERVAL_MS = 5 * 60_000;
+/**
+ * A screen nobody has touched for this long stops asking altogether, and asks again the moment it is touched or brought back. A tab left open
+ * for days would otherwise read from the free database all day and night (Supabase's free plan counts 5 GB of egress a month).
+ */
+export const DEFAULT_STOP_AFTER_MS = 2 * 60 * 60_000;
 
 /**
  * How long to wait between refreshes, given how long nobody has touched the screen. Three tiers:
  * in use -> `intervalMs`, idle -> a minute, deeply idle -> five minutes. Never faster than `intervalMs`.
  */
+/** Nobody has used this screen for so long that it should stop asking until it is touched again. */
+export function pollStopped(idleMs: number, opts: PollOptions = {}): boolean {
+  return idleMs > (opts.stopAfterMs ?? DEFAULT_STOP_AFTER_MS);
+}
+
 export function pollDelay(idleMs: number, intervalMs: number, opts: PollOptions = {}): number {
   const {
     idleAfterMs = DEFAULT_IDLE_AFTER_MS,
@@ -71,11 +83,11 @@ export function msSinceTouch(): number {
 export function usePolling(fn: () => void | Promise<void>, intervalMs: number, opts: PollOptions = {}) {
   const fnRef = useRef(fn);
   fnRef.current = fn;
-  const { idleAfterMs, idleIntervalMs, deepIdleAfterMs, deepIdleIntervalMs } = opts;
+  const { idleAfterMs, idleIntervalMs, deepIdleAfterMs, deepIdleIntervalMs, stopAfterMs } = opts;
 
   useEffect(() => {
     trackTouches();
-    const options: PollOptions = { idleAfterMs, idleIntervalMs, deepIdleAfterMs, deepIdleIntervalMs };
+    const options: PollOptions = { idleAfterMs, idleIntervalMs, deepIdleAfterMs, deepIdleIntervalMs, stopAfterMs };
     const idleThreshold = idleAfterMs ?? DEFAULT_IDLE_AFTER_MS;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let lastRun = 0;
@@ -107,6 +119,8 @@ export function usePolling(fn: () => void | Promise<void>, intervalMs: number, o
     const schedule = () => {
       clearTimeout(timer);
       if (stopped || document.hidden) return;
+      // untouched for hours: stay quiet until somebody touches the screen (onInteract below asks again at once)
+      if (pollStopped(Date.now() - lastInteraction, options)) return;
       timer = setTimeout(async () => {
         await run();
         schedule();
@@ -132,9 +146,12 @@ export function usePolling(fn: () => void | Promise<void>, intervalMs: number, o
     };
 
     const onInteract = () => {
-      const wasIdle = Date.now() - lastInteraction > idleThreshold;
+      const idle = Date.now() - lastInteraction;
+      const wasIdle = idle > idleThreshold;
+      const wasStopped = pollStopped(idle, options);
       lastInteraction = Date.now();
       if (wasIdle && !document.hidden && Date.now() - lastRun >= intervalMs) void run().then(schedule);
+      else if (wasStopped && !document.hidden) schedule();
     };
 
     void run().then(schedule);

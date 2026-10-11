@@ -111,6 +111,7 @@ describe("pairing: only whoever has the one-time code", () => {
 // ---------------------------------------------------------------- a pass, with a store and a Telegram in memory
 
 function memStore(fills: Map<string, Fill[]>, armed: number | null) {
+  const extraAlerts = { n: 0 };
   const rows = new Map<string, { state: string; messageId?: number }>();
   const records: LoggedMessage[] = [];
   let armedAt = armed;
@@ -141,18 +142,20 @@ function memStore(fills: Map<string, Fill[]>, armed: number | null) {
     logMessage: async (m) => {
       records.push(m);
     },
+    alertsLast24h: async () => records.filter((r) => r.kind === "alert" && r.ok).length + extraAlerts.n,
   };
-  return { store, rows, records };
+  return { store, rows, records, extraAlerts };
 }
 
 function harness(opts: { fills: Map<string, Fill[]>; armed: number | null; quotes: Record<string, Priced | undefined> }) {
-  const { store, rows, records } = memStore(opts.fills, opts.armed);
+  const { store, rows, records, extraAlerts } = memStore(opts.fills, opts.armed);
   const sent: string[] = [];
   const logs: string[] = [];
   let fail = false;
+  let retryAfter: number | undefined;
   const tg: Telegram = {
     send: async (_chat, text) => {
-      if (fail) return { ok: false, error: "Too Many Requests" };
+      if (fail) return { ok: false, error: "Too Many Requests", ...(retryAfter ? { retryAfter } : {}) };
       sent.push(text);
       return { ok: true, messageId: 1000 + sent.length };
     },
@@ -164,8 +167,9 @@ function harness(opts: { fills: Map<string, Fill[]>; armed: number | null; quote
     prices: async (mints) => new Map(mints.filter((m) => opts.quotes[m]).map((m) => [m, opts.quotes[m]!])),
     log: (msg, extra) => logs.push(msg + (extra ? " " + JSON.stringify(extra) : "")),
     now: () => 1_000_000,
+    sleep: async () => undefined,
   };
-  return { deps, rows, records, sent, logs, st: newPassState(), setFail: (v: boolean) => (fail = v) };
+  return { deps, rows, records, sent, logs, st: newPassState(), extraAlerts, setFail: (v: boolean) => (fail = v), setRetryAfter: (v: number | undefined) => (retryAfter = v) };
 }
 
 const cfg = { chatId: "42", levels: [2, 5] };
@@ -355,5 +359,74 @@ describe("the record of what was sent (the Telegram page)", () => {
     await welcome(cfg, h.deps, h.st);
     expect(h.records).toHaveLength(1);
     expect(h.records[0]).toMatchObject({ kind: "welcome", ok: true });
+  });
+});
+
+describe("limits on what is sent", () => {
+  const crossing = async (h: ReturnType<typeof harness>) => {
+    await runPass(cfg, h.deps, h.st);
+    h.deps.prices = async () => new Map([["m1", quote(0.0042)]]);
+    await runPass(cfg, h.deps, h.st);
+  };
+
+  it("stops at the daily ceiling, says so once, and sends again when older alerts have fallen out of the last 24 hours", async () => {
+    const h = harness({ fills: oneBuy(), armed: 1_000_000, quotes: { m1: quote(0.003) } });
+    h.extraAlerts.n = 40;
+    await crossing(h);
+    await runPass(cfg, h.deps, h.st);
+    await runPass(cfg, h.deps, h.st);
+    expect(h.sent).toEqual([]);
+    expect(h.logs.filter((l) => l.includes("daily ceiling"))).toHaveLength(1);
+    expect(h.rows.has("m1|900000|2")).toBe(false);
+    h.extraAlerts.n = 39;
+    await runPass(cfg, h.deps, h.st);
+    expect(h.sent).toHaveLength(1);
+  });
+
+  it("waits when Telegram says slow down, for as long as it asks, and then sends", async () => {
+    let now = 1_000_000;
+    const h = harness({ fills: oneBuy(), armed: 1_000_000, quotes: { m1: quote(0.003) } });
+    h.deps.now = () => now;
+    await crossing(h);
+    h.setFail(true);
+    h.setRetryAfter(300);
+    await runPass(cfg, h.deps, h.st);
+    expect(h.sent).toEqual([]);
+    expect(h.st.pauseUntil).toBe(now + 300);
+    h.setFail(false);
+    now += 120;
+    const during = await runPass(cfg, h.deps, h.st);
+    expect(during.sent).toBe(0);
+    expect(h.sent).toEqual([]);
+    now += 400;
+    await runPass(cfg, h.deps, h.st);
+    expect(h.sent).toHaveLength(1);
+  });
+
+  it("never waits more than an hour, however long Telegram asks", async () => {
+    const h = harness({ fills: oneBuy(), armed: 1_000_000, quotes: { m1: quote(0.003) } });
+    await crossing(h);
+    h.setFail(true);
+    h.setRetryAfter(999_999);
+    await runPass(cfg, h.deps, h.st);
+    expect(h.st.pauseUntil).toBe(1_000_000 + 3600);
+  });
+
+  it("leaves a second between two messages of one pass", async () => {
+    const fills = new Map<string, Fill[]>([
+      ["a", [{ t: 900_000, side: "buy", tokens: 1000, usd: 2 }]],
+      ["b", [{ t: 900_000, side: "buy", tokens: 1000, usd: 2 }]],
+    ]);
+    const h = harness({ fills, armed: 1_000_000, quotes: { a: quote(0.003), b: quote(0.003) } });
+    const pauses: number[] = [];
+    h.deps.sleep = async (ms) => {
+      pauses.push(ms);
+    };
+    await runPass(cfg, h.deps, h.st);
+    h.deps.prices = async () => new Map([["a", quote(0.0042)], ["b", quote(0.0042)]]);
+    await runPass(cfg, h.deps, h.st);
+    await runPass(cfg, h.deps, h.st);
+    expect(h.sent).toHaveLength(2);
+    expect(pauses).toEqual([1100]);
   });
 });

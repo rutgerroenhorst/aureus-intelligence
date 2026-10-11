@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { internalFetch } from "@/lib/internalFetch";
+import { egressOver } from "@/lib/cloudScan";
 
 export const dynamic = "force-dynamic";
 
@@ -22,8 +23,11 @@ const SOURCES = {
   graduates: "/api/graduates",
 } as const;
 
-// Shared by every device that asks within the window, so a second phone or tablet costs no extra CPU.
-const TTL_MS = 15_000;
+// Shared by every device that asks within the window, so a second phone or tablet costs no extra CPU. One build reads about 200 KB from the
+// hosted database (more than 1 MB on the laptop's much bigger one), and that is what Supabase's free plan counts as egress (5 GB a month), so
+// on the hosted site the answer is kept for a minute, and for five when today's egress allowance is used up.
+const TTL_MS = process.env.VERCEL ? 60_000 : 15_000;
+const TTL_OVER_BUDGET_MS = 5 * 60_000;
 let memo: { at: number; body: string } | null = null;
 let inflight: Promise<void> | null = null;
 
@@ -67,13 +71,16 @@ async function build(): Promise<void> {
 }
 
 export async function GET() {
-  if (!memo || Date.now() - memo.at > TTL_MS) {
+  const ttl = process.env.VERCEL && (await egressOver().catch(() => false)) ? TTL_OVER_BUDGET_MS : TTL_MS;
+  if (!memo || Date.now() - memo.at > ttl) {
     inflight ??= build().finally(() => {
       inflight = null;
     });
     await inflight;
   }
+  // The edge may keep a complete answer for half a minute (every request it answers is a function that does not run); an incomplete one is never kept.
+  const complete = memo!.at > 0 && !memo!.body.includes('"failed":["');
   return new NextResponse(memo!.body, {
-    headers: { "content-type": "application/json", "cache-control": "no-store" },
+    headers: { "content-type": "application/json", "cache-control": process.env.VERCEL && complete ? "public, s-maxage=30, stale-while-revalidate=30" : "no-store" },
   });
 }

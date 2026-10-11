@@ -109,7 +109,8 @@ export default function RadarPageElite() {
     }
   };
 
-  usePolling(fetchAll, 20_000);
+  // every 30 s while in use (the hosted site keeps the answer for a minute anyway); idle and long-idle screens ask less, see usePolling
+  usePolling(fetchAll, 30_000);
   usePolling(async () => {
     try {
       const res = await fetch("/api/hot-chains", { cache: "no-store" });

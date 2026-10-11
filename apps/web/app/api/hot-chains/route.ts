@@ -8,7 +8,8 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 const noStore = { "Cache-Control": "no-store, max-age=0" };
-const FRESH_MIN = 5;
+// the laptop refreshes the ranking every 4 minutes; the hosted site only steps in when it is much older (a refresh takes ~20 s of function time)
+const FRESH_MIN = process.env.VERCEL ? 20 : 5;
 let inflight: Promise<HotReport | null> | null = null;
 let lastTry = 0;
 

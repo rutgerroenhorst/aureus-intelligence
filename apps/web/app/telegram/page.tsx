@@ -67,7 +67,7 @@ export default function TelegramPage() {
     } catch {
       setFailed(true);
     }
-  }, 30_000);
+  }, 60_000);
 
   const shown = (data?.messages ?? []).filter((m) => only === "all" || m.kind === "alert");
   const alerts = (data?.messages ?? []).filter((m) => m.kind === "alert" && m.ok).length;

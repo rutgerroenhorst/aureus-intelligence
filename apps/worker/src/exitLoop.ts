@@ -100,7 +100,7 @@ export interface Update {
 }
 
 export interface Telegram {
-  send(chatId: string, text: string): Promise<{ ok: true; messageId: number } | { ok: false; error: string }>;
+  send(chatId: string, text: string): Promise<{ ok: true; messageId: number } | { ok: false; error: string; retryAfter?: number }>;
   updates(offset: number): Promise<Update[] | null>;
 }
 
@@ -123,7 +123,8 @@ export function telegram(token: string, fetchImpl: typeof fetch = fetch): Telegr
     async send(chatId, text) {
       const r = await call("sendMessage", { chat_id: chatId, text, parse_mode: "HTML", disable_web_page_preview: true });
       if (r.json?.ok && r.json.result?.message_id != null) return { ok: true, messageId: Number(r.json.result.message_id) };
-      return { ok: false, error: clean(String(r.json?.description ?? r.error ?? `http ${r.status}`)).slice(0, 160) };
+      const retryAfter = Number(r.json?.parameters?.retry_after);
+      return { ok: false, error: clean(String(r.json?.description ?? r.error ?? `http ${r.status}`)).slice(0, 160), ...(Number.isFinite(retryAfter) && retryAfter > 0 ? { retryAfter } : {}) };
     },
     async updates(offset) {
       const r = await call("getUpdates", { offset, timeout: 0, allowed_updates: ["message"] });
@@ -189,6 +190,8 @@ export interface Store {
   expireClaims(): Promise<void>;
   /** keep a record of a message that was sent (or failed) for the Telegram page */
   logMessage(m: LoggedMessage): Promise<void>;
+  /** alerts Telegram accepted in the last 24 hours (the daily ceiling counts these) */
+  alertsLast24h(): Promise<number>;
 }
 
 export function pgStore(db: Db): Store {
@@ -250,6 +253,10 @@ export function pgStore(db: Db): Store {
     async logMessage(m) {
       await logMessage(db, m);
     },
+    async alertsLast24h() {
+      const { rows } = await db.query(`SELECT count(*)::int AS n FROM telegram_messages WHERE kind = 'alert' AND ok AND sent_at > now() - interval '24 hours'`);
+      return Number(rows[0]?.n ?? 0);
+    },
   };
 }
 
@@ -260,7 +267,10 @@ export interface Deps {
   tg: Telegram;
   prices: (mints: string[]) => Promise<Map<string, Priced>>;
   log: Log;
+  /** epoch seconds */
   now: () => number;
+  /** pause between two messages (Telegram asks for at most one a second to one chat); tests pass a no-op */
+  sleep?: (ms: number) => Promise<void>;
 }
 
 export interface PassState {
@@ -273,9 +283,16 @@ export interface PassState {
   logged: number;
   /** when a failed send was last recorded, per alert: a Telegram outage must not fill the page with the same failure */
   failLogged: Map<string, number>;
+  /** Telegram said "slow down": nothing is sent before this time (epoch seconds) */
+  pauseUntil: number;
+  /** the day (UTC date) on which the daily ceiling was last reported in the log */
+  capLoggedOn: string;
 }
 
-export const newPassState = (): PassState => ({ streak: new Map(), misses: new Map(), pass: 0, logged: 0, failLogged: new Map() });
+export const newPassState = (): PassState => ({ streak: new Map(), misses: new Map(), pass: 0, logged: 0, failLogged: new Map(), pauseUntil: 0, capLoggedOn: "" });
+/** A ceiling on the alerts of one day: a bug must never be able to flood the phone. A real day brings one to five. EXIT_ALERT_MAX_PER_DAY changes it. */
+const MAX_ALERTS_PER_DAY = Number(process.env.EXIT_ALERT_MAX_PER_DAY ?? 40);
+const realSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 const MAX_PER_PASS = 6;
 const GONE_AFTER = 30;
 
@@ -305,6 +322,9 @@ export async function runPass(cfg: { chatId: string; levels: number[] }, deps: D
     await store.setArmedAt(armed);
   }
   await store.expireClaims();
+  if (deps.now() < st.pauseUntil) return { positions: 0, sent: 0 };
+  // the ceiling for the last 24 hours: what is left to send in this pass
+  let room = MAX_ALERTS_PER_DAY > 0 ? MAX_ALERTS_PER_DAY - (await store.alertsLast24h()) : Number.POSITIVE_INFINITY;
   const held = await currentPositions(deps, st);
   const symbols = await store.symbols(held.map((h) => h.pos.mint));
   let sent = 0;
@@ -332,6 +352,14 @@ export async function runPass(cfg: { chatId: string; levels: number[] }, deps: D
       const n = (st.streak.get(key) ?? 0) + 1;
       st.streak.set(key, n);
       if (n < CONFIRM_CHECKS || sent >= MAX_PER_PASS) continue;
+      if (room <= 0) {
+        const day = new Date(deps.now() * 1000).toISOString().slice(0, 10);
+        if (st.capLoggedOn !== day) {
+          st.capLoggedOn = day;
+          log("exit alerts: the daily ceiling is reached, nothing more is sent until older alerts fall out of the last 24 hours", { ceiling: MAX_ALERTS_PER_DAY });
+        }
+        continue;
+      }
       if (await store.claim(pos.mint, started, level, { multiple: r.multiple, price: q.price, basis: pos.basis, value: r.value })) due.push(level);
       else st.streak.delete(key);
     }
@@ -340,6 +368,7 @@ export async function runPass(cfg: { chatId: string; levels: number[] }, deps: D
     const top = Math.max(...due);
     const symbol = symbols.get(pos.mint) ?? q.symbol ?? pos.mint.slice(0, 6);
     const text = alertText({ symbol, level: top, multiple: r.multiple, value: r.value, bought: pos.bought, sold: pos.sold, price: q.price, basis: pos.basis, liq: q.liq, link: dexLink(q.pair, pos.mint) });
+    if (sent > 0) await (deps.sleep ?? realSleep)(1100);
     const res = await tg.send(cfg.chatId, text);
     // the page shows what went out; a failed send is recorded once per half hour per alert
     const failKey = `${pos.mint}|${top}`;
@@ -358,9 +387,12 @@ export async function runPass(cfg: { chatId: string; levels: number[] }, deps: D
     }
     if (res.ok) {
       sent++;
+      room--;
       log("exit alert sent", { symbol, level: top, multiple: Number(r.multiple.toFixed(2)) });
     } else {
-      log("exit alert not sent", { symbol, level: top, error: res.error });
+      // Telegram asked to slow down: wait that long (at most an hour) before trying anything again
+      if (res.retryAfter) st.pauseUntil = deps.now() + Math.min(3600, res.retryAfter);
+      log("exit alert not sent", { symbol, level: top, error: res.error, ...(res.retryAfter ? { retryAfterS: res.retryAfter } : {}) });
     }
   }
   return { positions: held.length, sent };

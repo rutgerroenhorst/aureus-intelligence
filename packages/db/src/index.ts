@@ -21,6 +21,72 @@ import os from "node:os";
 // showed empty lists.
 const holder = globalThis as unknown as { __aureusPgPool?: pg.Pool; __aureusNamedPools?: Record<string, pg.Pool> };
 
+// ---- usage meter ----------------------------------------------------------------------------------------------
+// Supabase's free plan allows 5 GB of egress a month, and everything the database sends to the app counts: the pages, the scans and the lab all
+// read from it. The bytes that arrive on the pool's sockets are counted here (exact, and one addition per chunk) and added to one row per UTC day in
+// scan_lease ('usage:egress:YYYY-MM-DD'), so the site can slow itself down before a limit is reached (apps/web/lib/cloudScan.ts) and the Ops page
+// can show it. On while running on Vercel, or with AUREUS_EGRESS_METER=1; off on the laptop, where the database is local.
+interface Meter {
+  pending: number;
+  lastFlush: number;
+  flushing: boolean;
+}
+const meterHolder = globalThis as unknown as { __aureusMeter?: Meter };
+const meter: Meter = (meterHolder.__aureusMeter ??= { pending: 0, lastFlush: Date.now(), flushing: false });
+export const USAGE_FLUSH_EVERY_MS = 30_000;
+export const USAGE_FLUSH_AT_BYTES = 512 * 1024;
+
+/** Count bytes received from the database. */
+export function meterAdd(bytes: number): void {
+  if (bytes > 0) meter.pending += bytes;
+}
+/** Bytes counted in this process and not yet written to the database. */
+export function meterPending(): number {
+  return meter.pending;
+}
+export function meterReset(): void {
+  meter.pending = 0;
+  meter.lastFlush = Date.now();
+  meter.flushing = false;
+}
+/** Time to write the count down: a lot has been read, or it has been a while. */
+export function meterDue(now = Date.now()): boolean {
+  return meter.pending >= USAGE_FLUSH_AT_BYTES || (meter.pending > 0 && now - meter.lastFlush >= USAGE_FLUSH_EVERY_MS);
+}
+
+/** Add what this process has read to today's row. Best effort: if the write fails the count is kept for the next try. */
+export async function flushUsage(db: { query(text: string, params?: unknown[]): Promise<unknown> }): Promise<boolean> {
+  if (meter.flushing || meter.pending <= 0) return false;
+  meter.flushing = true;
+  const bytes = meter.pending;
+  meter.pending = 0;
+  meter.lastFlush = Date.now();
+  try {
+    await db.query(
+      `INSERT INTO scan_lease (name, locked_until, last_result)
+       VALUES ('usage:egress:' || to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD'), 'epoch', jsonb_build_object('bytes', $1::bigint))
+       ON CONFLICT (name) DO UPDATE SET last_result = jsonb_build_object('bytes', COALESCE((scan_lease.last_result->>'bytes')::bigint, 0) + $1::bigint)`,
+      [bytes],
+    );
+    return true;
+  } catch {
+    meter.pending += bytes;
+    return false;
+  } finally {
+    meter.flushing = false;
+  }
+}
+
+function installMeter(pool: pg.Pool): void {
+  pool.on("connect", (client) => {
+    const stream = (client as unknown as { connection?: { stream?: { on?: (ev: string, fn: (c: Buffer) => void) => void } } }).connection?.stream;
+    stream?.on?.("data", (chunk: Buffer) => meterAdd(chunk.length));
+  });
+  pool.on("release", () => {
+    if (meterDue()) void flushUsage(pool);
+  });
+}
+
 function createPool(connectionString?: string): pg.Pool {
   const cs = connectionString ?? getConfig().env.DATABASE_URL;
   // Serverless (Vercel) instances multiply: keep each pool tiny so the shared pooler is not exhausted.
@@ -45,6 +111,7 @@ function createPool(connectionString?: string): pg.Pool {
   pool.on("error", (err) => {
     console.error("[DB] Unexpected pool error:", err);
   });
+  if (serverless || process.env.AUREUS_EGRESS_METER === "1") installMeter(pool);
   return pool;
 }
 

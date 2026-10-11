@@ -70,6 +70,7 @@ a password, and it shows coin names and amounts. The welcome message sent at pai
 
 - **It only runs while the laptop is on and awake** (the daemon is a laptop process). A dead battery means no messages, and nothing tells you so. A 24/7 version
   needs a scheduler somewhere else (GitHub Actions or a hosted cron) and the hosted database's password and the bot token stored there: that is the user's decision.
+- **Ceilings** (docs/LIMITS.md): at most 40 alerts in any 24 hours (`EXIT_ALERT_MAX_PER_DAY`), at most 6 per pass with 1.1 seconds between messages, and when Telegram answers "slow down" nothing is sent until the time it names has passed (never more than an hour). A real day brings one to five alerts.
 - Prices come from DexScreener every two minutes and a level needs two checks: a spike shorter than about four minutes can be missed, and the message follows
   the price by two to four minutes.
 - The multiple is against what the wallet paid (price per token including fees), for the tokens still held; the wallet reader sees a trade within about five minutes.

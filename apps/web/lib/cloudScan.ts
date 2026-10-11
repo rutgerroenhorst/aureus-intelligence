@@ -1,4 +1,4 @@
-import { getPool } from "@aureus/db";
+import { getPool, meterPending } from "@aureus/db";
 
 /**
  * Keeps the data fresh without a machine of its own: the site scans the market itself, but only when
@@ -27,7 +27,7 @@ const RETENTION_EVERY_MIN = 360;
  * files, which is what the quota counts too. OFF unless set: the laptop database has no quota and is already several GB.
  * The Vercel project sets 440.
  */
-const STORAGE_LIMIT_MB = Number(process.env.SCAN_STORAGE_LIMIT_MB ?? 0);
+export const STORAGE_LIMIT_MB = Number(process.env.SCAN_STORAGE_LIMIT_MB ?? 0);
 const storageIsFull = (mb: number) => STORAGE_LIMIT_MB > 0 && mb >= STORAGE_LIMIT_MB;
 /** A job that never reports back (function killed) blocks the next one for at most this long. */
 const LEASE_TTL_MIN = { scan: 6, learning: 4, suggestions: 3, retention: 5, lab: 6 } as const;
@@ -40,8 +40,15 @@ const LAB_RETRY_AFTER_FAILURE_MIN = 30;
  * 24/7 must not be able to spend it. Scans count their own CPU per UTC day; past this many seconds the interval
  * stretches (x4) and catch-up rounds stop until the next day. The default leaves room for the pages' own requests.
  */
-const CPU_BUDGET_S_PER_DAY = Number(process.env.SCAN_CPU_BUDGET_S_PER_DAY ?? 300);
+export const CPU_BUDGET_S_PER_DAY = Number(process.env.SCAN_CPU_BUDGET_S_PER_DAY ?? 300);
 const OVER_BUDGET_INTERVAL_FACTOR = 4;
+/**
+ * Supabase's free plan allows 5 GB of egress a month: everything the database sends to the site's functions (the pages, the scans and the lab all
+ * read from it). The meter in @aureus/db adds up the bytes per UTC day; past this many MB in a day the same brakes apply as for CPU (the scan and the
+ * learning tick stretch x4, the lab and the catch-up rounds stop until the next day) and the Radar's bundle is served from memory for longer.
+ * 100 MB a day is about 3 GB a month, which leaves room under the 5 GB. 0 switches the brake off.
+ */
+export const EGRESS_BUDGET_MB_PER_DAY = Number(process.env.EGRESS_BUDGET_MB_PER_DAY ?? 100);
 const TODAY = `'usage:' || to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD')`;
 
 export type Job = keyof typeof LEASE_TTL_MIN;
@@ -63,6 +70,8 @@ export interface ScanState {
   learning: JobState;
   /** CPU the site's own scans used today (UTC) against the daily allowance */
   budget: { usedS: number; limitS: number; over: boolean };
+  /** what the database has sent to the site today against the daily allowance (Supabase's free plan counts 5 GB a month) */
+  egress: { usedMb: number; limitMb: number; over: boolean };
   /** database size against the point where scanning pauses */
   storage: { usedMb: number; limitMb: number; full: boolean };
 }
@@ -92,10 +101,13 @@ async function query(text: string, params?: unknown[]) {
   }
 }
 
+/** The jobs that read and write the most slow down when today's CPU or egress allowance is used up. */
+const STRETCHED = new Set<Job>(["scan", "learning", "suggestions"]);
+
 function dueFor(job: Job, row: LeaseRow | undefined, scannerAgeS: number | null, overBudget: boolean, storageFull: boolean): boolean {
   if (row?.running) return false;
   if (job === "scan" && storageFull) return false;
-  const every = EVERY_MIN[job] * (job === "scan" && overBudget ? OVER_BUDGET_INTERVAL_FACTOR : 1);
+  const every = EVERY_MIN[job] * (overBudget && STRETCHED.has(job) ? OVER_BUDGET_INTERVAL_FACTOR : 1);
   const wait = (failed(row?.last_result ?? null) ? RETRY_AFTER_FAILURE_MIN : every) * 60;
   if (row?.since_finished_s != null && row.since_finished_s < wait) return false;
   // Somebody else is already scanning (laptop worker, scheduled job): this site does not need to.
@@ -107,6 +119,24 @@ function dueFor(job: Job, row: LeaseRow | undefined, scannerAgeS: number | null,
 async function databaseMb(): Promise<number> {
   const { rows } = await query(`SELECT pg_database_size(current_database())::float / 1048576 AS mb`);
   return Number(rows[0]?.mb ?? 0);
+}
+
+let egressMemo: { at: number; mb: number } | null = null;
+/** MB the database has sent to this site's functions today (UTC): the stored count plus what this process has not written down yet. */
+export async function usedEgressMb(): Promise<number> {
+  if (!egressMemo || Date.now() - egressMemo.at > 30_000) {
+    try {
+      const { rows } = await query(`SELECT COALESCE((last_result->>'bytes')::bigint, 0) AS b FROM scan_lease WHERE name = 'usage:egress:' || to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD')`);
+      egressMemo = { at: Date.now(), mb: Number(rows[0]?.b ?? 0) / 1048576 };
+    } catch {
+      egressMemo = { at: Date.now(), mb: egressMemo?.mb ?? 0 };
+    }
+  }
+  return egressMemo.mb + meterPending() / 1048576;
+}
+/** Today's egress allowance is used up. */
+export async function egressOver(): Promise<boolean> {
+  return EGRESS_BUDGET_MB_PER_DAY > 0 && (await usedEgressMb()) >= EGRESS_BUDGET_MB_PER_DAY;
 }
 
 /** CPU milliseconds the site's scans have used today (UTC). */
@@ -132,7 +162,7 @@ async function addUsage(cpuMs: number): Promise<void> {
 
 /** What the shell needs to know: when the data is from, and whether a tick should be requested. */
 export async function getScanState(): Promise<ScanState> {
-  const [{ rows: leases }, used, mb, { rows: hb }] = await Promise.all([
+  const [{ rows: leases }, used, mb, { rows: hb }, egressMb] = await Promise.all([
     query(
       `SELECT name, locked_until > now() AS running,
               EXTRACT(EPOCH FROM (now() - last_finished))::float AS since_finished_s,
@@ -142,9 +172,11 @@ export async function getScanState(): Promise<ScanState> {
     usedTodayMs(),
     databaseMb(),
     query(`SELECT MAX(last_cycle_at) AS at, EXTRACT(EPOCH FROM (now() - MAX(last_cycle_at)))::float AS age_s FROM worker_heartbeats`),
+    usedEgressMb(),
   ]);
   const scannerAgeS: number | null = hb[0]?.age_s ?? null;
-  const overBudget = used / 1000 >= CPU_BUDGET_S_PER_DAY;
+  const egressIsOver = EGRESS_BUDGET_MB_PER_DAY > 0 && egressMb >= EGRESS_BUDGET_MB_PER_DAY;
+  const overBudget = used / 1000 >= CPU_BUDGET_S_PER_DAY || egressIsOver;
   const storageFull = storageIsFull(mb);
   const row = (job: Job) => leases.find((l) => l.name === LEASE_NAME[job]);
   const state = (job: Job): JobState => {
@@ -161,7 +193,8 @@ export async function getScanState(): Promise<ScanState> {
     everyMin: SCAN_EVERY_MIN,
     scan: state("scan"),
     learning: state("learning"),
-    budget: { usedS: Math.round(used / 1000), limitS: CPU_BUDGET_S_PER_DAY, over: overBudget },
+    budget: { usedS: Math.round(used / 1000), limitS: CPU_BUDGET_S_PER_DAY, over: used / 1000 >= CPU_BUDGET_S_PER_DAY },
+    egress: { usedMb: Math.round(egressMb), limitMb: EGRESS_BUDGET_MB_PER_DAY, over: egressIsOver },
     storage: { usedMb: Math.round(mb), limitMb: STORAGE_LIMIT_MB, full: storageFull },
   };
 }
@@ -172,8 +205,8 @@ export async function getScanState(): Promise<ScanState> {
  */
 export async function claim(job: Job, force = false): Promise<boolean> {
   if (job === "scan" && !force && STORAGE_LIMIT_MB > 0 && storageIsFull(await databaseMb())) return false;
-  const every =
-    EVERY_MIN[job] * (job === "scan" && !force && (await usedTodayMs()) / 1000 >= CPU_BUDGET_S_PER_DAY ? OVER_BUDGET_INTERVAL_FACTOR : 1);
+  const stretched = STRETCHED.has(job) && !force && ((await usedTodayMs()) / 1000 >= CPU_BUDGET_S_PER_DAY || (await egressOver()));
+  const every = EVERY_MIN[job] * (stretched ? OVER_BUDGET_INTERVAL_FACTOR : 1);
   const { rows } = await query(
     `INSERT INTO scan_lease (name, locked_until, last_started)
      VALUES ($1, now() + make_interval(mins => $2::int), now())
@@ -242,7 +275,7 @@ export function runScan(): Promise<Record<string, unknown>> {
     const { scanOnce } = await import("../../worker/src/run");
     const t0 = Date.now();
     const total = { rounds: 0, candidates: 0, fresh: 0, errors: 0, discovered: 0, due: 0 };
-    const rounds = (await usedTodayMs()) / 1000 >= CPU_BUDGET_S_PER_DAY ? 1 : CATCHUP_ROUNDS;
+    const rounds = (await usedTodayMs()) / 1000 >= CPU_BUDGET_S_PER_DAY || (await egressOver()) ? 1 : CATCHUP_ROUNDS;
     for (let round = 0; round < rounds; round++) {
       const scan = await scanOnce();
       if (!scan.ok) {
@@ -281,9 +314,9 @@ export function runLearning(): Promise<Record<string, unknown>> {
         return { ...(await generateSuggestions()) };
       });
     }
-    // The Learning Lab: collectors, lessons and (about hourly) the analyses. Skipped when today's CPU allowance is used up.
+    // The Learning Lab: collectors, lessons and the analyses. Skipped when today's CPU or egress allowance is used up.
     let lab: Record<string, unknown> | undefined;
-    if ((await usedTodayMs()) / 1000 < CPU_BUDGET_S_PER_DAY && (await claim("lab"))) {
+    if ((await usedTodayMs()) / 1000 < CPU_BUDGET_S_PER_DAY && !(await egressOver()) && (await claim("lab"))) {
       lab = await guarded("lab", async () => {
         const { runLab } = await import("./lab/tick");
         return { ...(await runLab()) };

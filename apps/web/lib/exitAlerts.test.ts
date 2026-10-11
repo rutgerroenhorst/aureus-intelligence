@@ -101,7 +101,10 @@ describe("the messages (Dutch, short)", () => {
   });
 
   it("the idea changes when the money is already back, and at 5x", () => {
-    expect(alertText({ ...facts, sold: 4 })).toContain("Je inleg is er al uit");
+    expect(alertText({ ...facts, sold: 4 })).toContain("Je inleg is er (bijna) al uit");
+    // $1.85 of $2 is back: nothing left to recover (the real Pepper alert read "half out, then your money is back")
+    expect(alertText({ ...facts, bought: 2, sold: 1.85 })).toContain("Je inleg is er (bijna) al uit");
+    expect(alertText({ ...facts, bought: 2, sold: 1.5 })).toContain("haal de helft eruit");
     expect(alertText({ ...facts, level: 5, multiple: 5.2, sold: 4 })).toContain("nog eens een derde");
     expect(alertText({ ...facts, level: 5, multiple: 5.2, sold: 0 })).toContain("haal de helft eruit");
   });

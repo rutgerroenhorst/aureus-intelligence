@@ -90,7 +90,7 @@ describe("bestThreshold", () => {
 });
 
 // ── polling back-off (lib/usePolling.ts) ──────────────────────────────────────────────────────────────────────
-import { pollDelay } from "./usePolling";
+import { pollDelay, pollStopped } from "./usePolling";
 
 describe("pollDelay", () => {
   const S = 1000, M = 60 * S;
@@ -156,5 +156,15 @@ describe("trade journal", () => {
     expect(s.touched2x).toBe(2);
     expect(s.gaveBack).toBe(1);
     expect(s.active).toBe(2);
+  });
+});
+
+describe("pollStopped", () => {
+  it("an untouched screen stops asking after two hours, and a touch brings it back", () => {
+    expect(pollStopped(0)).toBe(false);
+    expect(pollStopped(60 * 60_000)).toBe(false);
+    expect(pollStopped(2 * 60 * 60_000 + 1)).toBe(true);
+    expect(pollStopped(10 * 60_000, { stopAfterMs: 5 * 60_000 })).toBe(true);
+    expect(pollStopped(4 * 60_000, { stopAfterMs: 5 * 60_000 })).toBe(false);
   });
 });

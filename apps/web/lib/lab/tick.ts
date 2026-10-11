@@ -13,8 +13,13 @@ import { collectStatic } from "./statics";
 import { collectRugcheck } from "./rugcheck";
 import { computeReports, saveReports } from "./reports";
 
-const REPORT_EVERY_MIN = 55;
-const REPORT_AFTER_CHANGES = 12;
+/**
+ * How often the analyses are recomputed. Each recompute reads every lesson (about 6 MB now, more every day), and on the hosted site that is data
+ * leaving Supabase, whose free plan counts 5 GB a month. So the laptop (where reading is free) recomputes about hourly or when 12 lessons changed, and the
+ * hosted site only when its copy is 6 hours old (the laptop's worker and daemon do not push reports, so this is how the phone's copy is kept).
+ */
+const REPORT_EVERY_MIN = Number(process.env.LAB_REPORT_EVERY_MINUTES ?? (process.env.VERCEL ? 360 : 55));
+const REPORT_AFTER_CHANGES = process.env.VERCEL ? Number.POSITIVE_INFINITY : 12;
 /** Collector rows are folded into the lessons within a few days; the hosted database is small, the laptop keeps them for rebuilds. */
 const KEEP_SIGNALS_DAYS = process.env.VERCEL ? 6 : 60;
 /** Watch readings feed lessons that stay open for 8 days. */

@@ -100,7 +100,7 @@ export function TabsLegacy({ d }: { d: LabData }) {
     } catch {
       /* the lab above does not depend on this */
     }
-  }, 60_000);
+  }, 300_000);
   const tabs = d.tabs?.tabs ?? [];
   return (
     <>

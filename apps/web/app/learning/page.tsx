@@ -44,7 +44,7 @@ export default function LearningPage() {
     } catch (e) {
       setError("The Learning Lab could not be loaded right now.");
     }
-  }, 60_000);
+  }, 120_000);
 
   const ready = data && data.overview && data.meta;
   return (
