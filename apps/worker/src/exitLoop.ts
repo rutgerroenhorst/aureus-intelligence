@@ -17,7 +17,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import pg from "pg";
-import { logMessage, pushMessages, type LoggedMessage } from "./telegramLog";
+import { logMessage, type LoggedMessage } from "./telegramLog";
 import {
   alertText,
   CONFIRM_CHECKS,
@@ -176,13 +176,23 @@ export async function dexQuotes(mints: string[], fetchImpl: typeof fetch = fetch
 
 // ---------------------------------------------------------------- state in the database (migration 0034)
 
+/** How many checks in a row have shown a level, and when the last one was. Kept in the database so that any process (the site's own check, the laptop) can add to it. */
+export interface Streak {
+  n: number;
+  t: number;
+}
+
 export interface Store {
   fills(): Promise<Map<string, Fill[]>>;
+  /** a cheap fingerprint of the fills: while it has not changed the positions need not be read and worked out again */
+  fillsVersion(): Promise<string>;
   symbols(mints: string[]): Promise<Map<string, string>>;
   armedAt(): Promise<number | null>;
   setArmedAt(t: number): Promise<void>;
-  /** the levels already recorded for a position (0 = the position has been seen) */
-  known(mint: string, started: number): Promise<Set<number>>;
+  /** every level recorded for every position (0 = the position has been seen): key `${mint}|${started}` */
+  knownAll(): Promise<Map<string, Set<number>>>;
+  /** a cheap fingerprint of what knownAll would return */
+  knownVersion(): Promise<string>;
   seed(mint: string, started: number, levels: number[]): Promise<void>;
   claim(mint: string, started: number, level: number, facts: { multiple: number; price: number; basis: number; value: number }): Promise<boolean>;
   markSent(mint: string, started: number, level: number, messageId: number): Promise<void>;
@@ -192,6 +202,8 @@ export interface Store {
   logMessage(m: LoggedMessage): Promise<void>;
   /** alerts Telegram accepted in the last 24 hours (the daily ceiling counts these) */
   alertsLast24h(): Promise<number>;
+  loadStreaks(): Promise<Record<string, Streak>>;
+  saveStreaks(s: Record<string, Streak>): Promise<void>;
 }
 
 export function pgStore(db: Db): Store {
@@ -211,6 +223,10 @@ export function pgStore(db: Db): Store {
       }
       return out;
     },
+    async fillsVersion() {
+      const { rows } = await db.query(`SELECT count(*)::text || ':' || COALESCE(EXTRACT(EPOCH FROM max(t))::text, '0') AS v FROM wallet_fills WHERE side IN ('buy', 'sell')`);
+      return String(rows[0]?.v ?? "0");
+    },
     async symbols(mints) {
       if (!mints.length) return new Map();
       const { rows } = await db.query(`SELECT DISTINCT ON (mint) mint, symbol FROM my_trades WHERE mint = ANY($1::text[]) AND symbol IS NOT NULL AND symbol <> '' ORDER BY mint, entered_at`, [mints]);
@@ -223,9 +239,20 @@ export function pgStore(db: Db): Store {
     async setArmedAt(t) {
       await db.query(`INSERT INTO exit_alert_kv (key, value) VALUES ('armed_at', $1) ON CONFLICT (key) DO NOTHING`, [String(t)]);
     },
-    async known(mint, started) {
-      const { rows } = await db.query(`SELECT level::float8 AS level FROM exit_alerts WHERE mint = $1::text AND position_start = to_timestamp($2::float8)`, [mint, started]);
-      return new Set(rows.map((r) => Number(r.level)));
+    async knownAll() {
+      const { rows } = await db.query(`SELECT mint, EXTRACT(EPOCH FROM position_start)::float8 AS started, level::float8 AS level FROM exit_alerts`);
+      const out = new Map<string, Set<number>>();
+      for (const r of rows) {
+        const k = `${r.mint}|${Math.floor(Number(r.started))}`;
+        const set = out.get(k) ?? new Set<number>();
+        set.add(Number(r.level));
+        out.set(k, set);
+      }
+      return out;
+    },
+    async knownVersion() {
+      const { rows } = await db.query(`SELECT count(*)::text || ':' || count(*) FILTER (WHERE state = 'sent')::text || ':' || count(*) FILTER (WHERE state = 'claimed')::text AS v FROM exit_alerts`);
+      return String(rows[0]?.v ?? "0");
     },
     async seed(mint, started, levels) {
       await db.query(
@@ -257,6 +284,18 @@ export function pgStore(db: Db): Store {
       const { rows } = await db.query(`SELECT count(*)::int AS n FROM telegram_messages WHERE kind = 'alert' AND ok AND sent_at > now() - interval '24 hours'`);
       return Number(rows[0]?.n ?? 0);
     },
+    async loadStreaks() {
+      const { rows } = await db.query(`SELECT value FROM exit_alert_kv WHERE key = 'streaks'`);
+      try {
+        const parsed = rows[0] ? JSON.parse(String(rows[0].value)) : {};
+        return parsed && typeof parsed === "object" ? (parsed as Record<string, Streak>) : {};
+      } catch {
+        return {};
+      }
+    },
+    async saveStreaks(s) {
+      await db.query(`INSERT INTO exit_alert_kv (key, value) VALUES ('streaks', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`, [JSON.stringify(s)]);
+    },
   };
 }
 
@@ -271,11 +310,13 @@ export interface Deps {
   now: () => number;
   /** pause between two messages (Telegram asks for at most one a second to one chat); tests pass a no-op */
   sleep?: (ms: number) => Promise<void>;
+  /** two checks only count as two when they are at least this many seconds apart (default 60): two processes looking at the same moment are one check */
+  minGapS?: number;
 }
 
 export interface PassState {
-  /** consecutive checks that showed a level, per position and level (kept in memory: a restart simply counts again) */
-  streak: Map<string, number>;
+  /** checks that showed a level, per position and level; with `persistStreaks` they live in the database and every pass starts from there */
+  streak: Map<string, Streak>;
   /** consecutive passes in which a coin had no price: coins that are gone are asked about only now and then */
   misses: Map<string, number>;
   pass: number;
@@ -287,58 +328,94 @@ export interface PassState {
   pauseUntil: number;
   /** the day (UTC date) on which the daily ceiling was last reported in the log */
   capLoggedOn: string;
+  /** positions, worked out from the fills, and the fingerprint of the fills they were worked out from */
+  cache: { version: string; positions: Position[]; symbols: Map<string, string> } | null;
+  /** every recorded level, and the fingerprint it was read at */
+  known: { version: string; map: Map<string, Set<number>> } | null;
+  armed: number | null;
+  /** the streaks as last written to the database (to write only when something changed) */
+  streaksJson: string;
 }
 
-export const newPassState = (): PassState => ({ streak: new Map(), misses: new Map(), pass: 0, logged: 0, failLogged: new Map(), pauseUntil: 0, capLoggedOn: "" });
+export const newPassState = (): PassState => ({ streak: new Map(), misses: new Map(), pass: 0, logged: 0, failLogged: new Map(), pauseUntil: 0, capLoggedOn: "", cache: null, known: null, armed: null, streaksJson: "{}" });
 /** A ceiling on the alerts of one day: a bug must never be able to flood the phone. A real day brings one to five. EXIT_ALERT_MAX_PER_DAY changes it. */
 const MAX_ALERTS_PER_DAY = Number(process.env.EXIT_ALERT_MAX_PER_DAY ?? 40);
 const realSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 const MAX_PER_PASS = 6;
 const GONE_AFTER = 30;
+const STREAK_KEEP_S = 24 * 3600;
 
-/** What is held now: positions with their price, in one list (used by the pass and by the check script). */
-export async function currentPositions(deps: Pick<Deps, "store" | "prices">, st: PassState): Promise<Array<{ pos: Position; q: Priced | null }>> {
-  const fills = await deps.store.fills();
-  const positions: Position[] = [];
-  for (const [mint, f] of fills) {
-    const p = openPosition(mint, f);
-    if (p) positions.push(p);
+/** What is held now: positions with their price, plus the coins' names. The positions are only worked out again when the fills have changed. */
+export async function currentPositions(deps: Pick<Deps, "store" | "prices">, st: PassState): Promise<{ held: Array<{ pos: Position; q: Priced | null }>; symbols: Map<string, string> }> {
+  const version = await deps.store.fillsVersion();
+  if (!st.cache || st.cache.version !== version) {
+    const fills = await deps.store.fills();
+    const positions: Position[] = [];
+    for (const [mint, f] of fills) {
+      const p = openPosition(mint, f);
+      if (p) positions.push(p);
+    }
+    st.cache = { version, positions, symbols: await deps.store.symbols(positions.map((p) => p.mint)) };
   }
+  const positions = st.cache.positions;
   const ask = positions.filter((p) => (st.misses.get(p.mint) ?? 0) < GONE_AFTER || st.pass % GONE_AFTER === 0);
   const quotes = ask.length ? await deps.prices(ask.map((p) => p.mint)) : new Map<string, Priced>();
   for (const p of ask) {
     if (quotes.has(p.mint)) st.misses.delete(p.mint);
     else st.misses.set(p.mint, (st.misses.get(p.mint) ?? 0) + 1);
   }
-  return positions.map((pos) => ({ pos, q: quotes.get(pos.mint) ?? null }));
+  return { held: positions.map((pos) => ({ pos, q: quotes.get(pos.mint) ?? null })), symbols: st.cache.symbols };
 }
 
-export async function runPass(cfg: { chatId: string; levels: number[] }, deps: Deps, st: PassState): Promise<{ positions: number; sent: number }> {
+export interface PassOptions {
+  /** read the streaks from the database at the start of the pass and write them back at the end (the site's own check, which may start in a new process every time) */
+  persistStreaks?: boolean;
+}
+
+export async function runPass(cfg: { chatId: string; levels: number[] }, deps: Deps, st: PassState, opts: PassOptions = {}): Promise<{ positions: number; priced: number; sent: number }> {
   const { store, tg, log } = deps;
   st.pass++;
-  let armed = await store.armedAt();
-  if (armed == null) {
-    armed = deps.now();
-    await store.setArmedAt(armed);
+  if (st.armed == null) {
+    st.armed = await store.armedAt();
+    if (st.armed == null) {
+      st.armed = deps.now();
+      await store.setArmedAt(st.armed);
+    }
   }
-  await store.expireClaims();
-  if (deps.now() < st.pauseUntil) return { positions: 0, sent: 0 };
-  // the ceiling for the last 24 hours: what is left to send in this pass
-  let room = MAX_ALERTS_PER_DAY > 0 ? MAX_ALERTS_PER_DAY - (await store.alertsLast24h()) : Number.POSITIVE_INFINITY;
-  const held = await currentPositions(deps, st);
-  const symbols = await store.symbols(held.map((h) => h.pos.mint));
+  const armed = st.armed;
+  if (st.pass % 10 === 1) await store.expireClaims();
+  if (deps.now() < st.pauseUntil) return { positions: 0, priced: 0, sent: 0 };
+  if (opts.persistStreaks) {
+    const loaded = await store.loadStreaks();
+    st.streak = new Map(Object.entries(loaded));
+    st.streaksJson = JSON.stringify(loaded);
+  }
+  // the ceiling for the last 24 hours: asked about only when there is something to send
+  let room: number | null = null;
+  const roomLeft = async () => (room ??= MAX_ALERTS_PER_DAY > 0 ? MAX_ALERTS_PER_DAY - (await store.alertsLast24h()) : Number.POSITIVE_INFINITY);
+  const { held, symbols } = await currentPositions(deps, st);
+  // every recorded level in one read, and again only when the fingerprint says something was written
+  const kv = await store.knownVersion();
+  if (!st.known || st.known.version !== kv) st.known = { version: kv, map: await store.knownAll() };
+  const knownMap = st.known.map;
+  let wrote = false;
+  const gap = deps.minGapS ?? 60;
   let sent = 0;
+  let priced = 0;
   for (const { pos, q } of held) {
     if (!q) continue;
+    priced++;
     const r = readPosition(pos, q, cfg.levels);
     const started = Math.floor(pos.started);
-    const known = await store.known(pos.mint, started);
-    if (!known.has(0)) {
+    const posKey = `${pos.mint}|${started}`;
+    let known = knownMap.get(posKey);
+    if (!known) {
       // first time this position is seen: what it had already reached before the alerts were switched on is not news
       const seed = pos.started < armed ? r.reached : [];
       await store.seed(pos.mint, started, seed);
-      known.add(0);
-      for (const l of seed) known.add(l);
+      known = new Set([0, ...seed]);
+      knownMap.set(posKey, known);
+      wrote = true;
     }
     // levels that have now been shown by enough checks in a row; claimed first, so two processes can never both report the same one
     const due: number[] = [];
@@ -349,10 +426,14 @@ export async function runPass(cfg: { chatId: string; levels: number[] }, deps: D
         st.streak.delete(key);
         continue;
       }
-      const n = (st.streak.get(key) ?? 0) + 1;
-      st.streak.set(key, n);
+      const prev = st.streak.get(key);
+      let n = prev?.n ?? 0;
+      if (!prev || deps.now() - prev.t >= gap) {
+        n++;
+        st.streak.set(key, { n, t: deps.now() });
+      }
       if (n < CONFIRM_CHECKS || sent >= MAX_PER_PASS) continue;
-      if (room <= 0) {
+      if ((await roomLeft()) <= 0) {
         const day = new Date(deps.now() * 1000).toISOString().slice(0, 10);
         if (st.capLoggedOn !== day) {
           st.capLoggedOn = day;
@@ -360,8 +441,10 @@ export async function runPass(cfg: { chatId: string; levels: number[] }, deps: D
         }
         continue;
       }
-      if (await store.claim(pos.mint, started, level, { multiple: r.multiple, price: q.price, basis: pos.basis, value: r.value })) due.push(level);
-      else st.streak.delete(key);
+      if (await store.claim(pos.mint, started, level, { multiple: r.multiple, price: q.price, basis: pos.basis, value: r.value })) {
+        due.push(level);
+        wrote = true;
+      } else st.streak.delete(key);
     }
     if (!due.length) continue;
     // a coin that jumped over two levels at once gets one message, for the highest
@@ -380,6 +463,7 @@ export async function runPass(cfg: { chatId: string; levels: number[] }, deps: D
     for (const level of due) {
       if (res.ok) {
         await store.markSent(pos.mint, started, level, res.messageId);
+        known.add(level);
         st.streak.delete(`${pos.mint}|${started}|${level}`);
       } else {
         await store.release(pos.mint, started, level);
@@ -387,7 +471,7 @@ export async function runPass(cfg: { chatId: string; levels: number[] }, deps: D
     }
     if (res.ok) {
       sent++;
-      room--;
+      room = (room ?? 0) - 1;
       log("exit alert sent", { symbol, level: top, multiple: Number(r.multiple.toFixed(2)) });
     } else {
       // Telegram asked to slow down: wait that long (at most an hour) before trying anything again
@@ -395,13 +479,22 @@ export async function runPass(cfg: { chatId: string; levels: number[] }, deps: D
       log("exit alert not sent", { symbol, level: top, error: res.error, ...(res.retryAfter ? { retryAfterS: res.retryAfter } : {}) });
     }
   }
-  return { positions: held.length, sent };
+  // what this pass wrote is already in `known`; the next pass reads again only if somebody else wrote too
+  if (wrote) st.known = null;
+  if (opts.persistStreaks) {
+    for (const [k, v] of st.streak) if (deps.now() - v.t > STREAK_KEEP_S) st.streak.delete(k);
+    const json = JSON.stringify(Object.fromEntries(st.streak));
+    if (json !== st.streaksJson) {
+      await store.saveStreaks(Object.fromEntries(st.streak));
+      st.streaksJson = json;
+    }
+  }
+  return { positions: held.length, priced, sent };
 }
 
 /** The first message after pairing: how it works, and what is already above the first level (listed, not reported again). */
 export async function welcome(cfg: { chatId: string; levels: number[] }, deps: Deps, st: PassState): Promise<boolean> {
-  const held = await currentPositions(deps, st);
-  const symbols = await deps.store.symbols(held.map((h) => h.pos.mint));
+  const { held, symbols } = await currentPositions(deps, st);
   const above: HeldNow[] = [];
   for (const { pos, q } of held) {
     if (!q) continue;
@@ -435,14 +528,22 @@ export async function pairFromUpdates(code: string, tg: Telegram, offset: { next
 const EVERY_MS = Number(process.env.EXIT_ALERT_EVERY_SECONDS ?? 120) * 1000;
 const PAIRING_EVERY_MS = 20_000;
 
-/** Start the loop; returns a function that stops it. Does nothing (and says so once) when no token is configured. */
+/**
+ * Start the loop; returns a function that stops it. Does nothing (and says so once) when no token is configured.
+ *
+ * With LAB_SYNC_URL set (the hosted database) this process is a second runner beside the site's own 24/7 check (apps/web/lib/exitTick.ts): what has
+ * been seen, claimed and sent, the streaks, the wallet's fills and the record of messages all live in the hosted database, so the two can run at the
+ * same time and a level is still reported exactly once (the claim is one row). If the hosted database cannot be reached the pass is skipped: the
+ * laptop never falls back to a private state of its own, which could report something twice. Without LAB_SYNC_URL the local database is the state.
+ */
 export function startExitLoop(db: Db, log: Log): () => void {
   if (process.env.EXIT_ALERTS === "0") return () => undefined;
   if (!readConfig()) {
     log("exit alerts off: no token configured");
     return () => undefined;
   }
-  const store = pgStore(db);
+  const hostedUrl = process.env.LAB_SYNC_URL;
+  const localStore = pgStore(db);
   const st = newPassState();
   const offset = { next: 0 };
   let stopped = false;
@@ -451,19 +552,11 @@ export function startExitLoop(db: Db, log: Log): () => void {
   let failures = 0;
   let waiting = false;
   let hosted: pg.Pool | null = null;
-  let copied = -1;
-  /** copy new records to the hosted database (when LAB_SYNC_URL is set), so the Telegram page on the phone has them; tried again next tick if it fails */
-  const copyLog = async () => {
-    const url = process.env.LAB_SYNC_URL;
-    if (!url || copied === st.logged) return;
-    try {
-      hosted ??= new pg.Pool({ connectionString: url, max: 1, statement_timeout: 30_000, idleTimeoutMillis: 20_000, connectionTimeoutMillis: 15_000 });
-      const n = await pushMessages(db, hosted as unknown as Db);
-      copied = st.logged;
-      if (n) log("telegram log copied to the hosted database", { rows: n });
-    } catch (e) {
-      log("telegram log copy failed", { error: String((e as Error)?.message ?? e).slice(0, 120) });
-    }
+  /** the database that holds the state of the alerts */
+  const stateStore = (): Store => {
+    if (!hostedUrl) return localStore;
+    hosted ??= new pg.Pool({ connectionString: hostedUrl, max: 1, statement_timeout: 30_000, idleTimeoutMillis: 20_000, connectionTimeoutMillis: 15_000 });
+    return pgStore(hosted as unknown as Db);
   };
   const tick = async (): Promise<number> => {
     if (running) return EVERY_MS;
@@ -472,6 +565,7 @@ export function startExitLoop(db: Db, log: Log): () => void {
       const cfg = readConfig();
       if (!cfg) return EVERY_MS;
       const tg = telegram(cfg.token);
+      const store = stateStore();
       const deps: Deps = { store, tg, prices: (m) => dexQuotes(m), log, now: () => Date.now() / 1000 };
       if (!cfg.chatId) {
         if (!cfg.pairCode) {
@@ -489,14 +583,12 @@ export function startExitLoop(db: Db, log: Log): () => void {
         await store.setArmedAt(deps.now());
         await welcome({ chatId: chat, levels: cfg.levels }, deps, st);
         await tg.updates(offset.next);
-        await copyLog();
         log("exit alerts paired and on", { levels: cfg.levels });
         return 5_000;
       }
-      const r = await runPass({ chatId: cfg.chatId, levels: cfg.levels }, deps, st);
+      const r = await runPass({ chatId: cfg.chatId, levels: cfg.levels }, deps, st, { persistStreaks: Boolean(hostedUrl) });
       if (failures > 0) log("exit alerts running again", { positions: r.positions });
       failures = 0;
-      await copyLog();
       return EVERY_MS;
     } catch (e) {
       failures++;
@@ -511,7 +603,7 @@ export function startExitLoop(db: Db, log: Log): () => void {
     const next = await tick();
     if (!stopped) timer = setTimeout(() => void loop(), next);
   };
-  log("exit alerts on", { everyMs: EVERY_MS });
+  log("exit alerts on", { everyMs: EVERY_MS, state: hostedUrl ? "hosted database (second runner beside the site's own check)" : "local database" });
   timer = setTimeout(() => void loop(), 10_000);
   return () => {
     stopped = true;

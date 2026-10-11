@@ -18,6 +18,8 @@ interface Data {
   total: number;
   sent: number;
   lastSentAt: string | null;
+  /** when the site's own exit check last ran, and what it saw; null before the first run */
+  check: { at: string; positions: number | null; priced: number | null; sent: number | null } | null;
 }
 
 const card: React.CSSProperties = { background: "#141418", border: "1px solid #2a2a2f", borderRadius: 10, padding: 14, minWidth: 0 };
@@ -77,8 +79,28 @@ export default function TelegramPage() {
     <div style={{ padding: 16, maxWidth: 760, margin: "0 auto" }}>
       <h2 style={{ margin: "0 0 4px", color: "#fff", fontSize: 20 }}>Telegram</h2>
       <p style={{ ...dim, margin: "0 0 12px" }}>
-        What the system sent to your Telegram: an alert when a coin you hold reaches <b>2×</b> or <b>5×</b> what you paid for what you still hold, the welcome message and tests. They are sent from the laptop, so nothing is sent while it is off.
+        What the system sent to your Telegram: an alert when a coin you hold reaches <b>2×</b> or <b>5×</b> what you paid for what you still hold, the welcome message and tests. The site checks by itself every 2 minutes, day and night; the laptop does not need to be on and no screen needs to be open.
       </p>
+
+      {(() => {
+        const at = data?.check?.at ?? null;
+        const min = at ? Math.max(0, Math.round((Date.now() - new Date(at).getTime()) / 60_000)) : null;
+        // the clock ticks every 2 minutes: more than 8 without a heartbeat means something is wrong
+        const late = data != null && (min == null || min > 8);
+        return (
+          <div style={{ ...card, marginBottom: 12, borderColor: late ? "#6a4a1a" : "#2a2a2f", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <span style={{ width: 9, height: 9, borderRadius: 9, background: !data ? "#5a5a6e" : late ? "#ff9f0a" : "#34c759", flex: "none" }} />
+            <span style={{ color: "#e5e5e7", fontSize: 13 }}>
+              {!data
+                ? "Reading the site's check…"
+                : !at
+                  ? "The site has not run its check yet."
+                  : `The site's check ran ${ago(at)}${data.check?.positions != null ? ` · watching ${data.check.positions} position${data.check.positions === 1 ? "" : "s"}` : ""}${data.check?.priced != null ? ` · ${data.check.priced} priced` : ""}`}
+            </span>
+            {late && at && <span style={{ color: "#ff9f0a", fontSize: 12 }}>Later than expected: a message can be late until it runs again.</span>}
+          </div>
+        );
+      })()}
 
       <div style={{ ...card, display: "flex", gap: 18, flexWrap: "wrap", marginBottom: 12 }}>
         <div>

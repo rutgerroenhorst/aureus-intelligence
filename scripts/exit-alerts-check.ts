@@ -17,8 +17,7 @@ const ALL = process.argv.includes("--all");
 
 async function main() {
   const store = pgStore(pool);
-  const held = await currentPositions({ store, prices: (m) => dexQuotes(m) }, newPassState());
-  const symbols = await store.symbols(held.map((h) => h.pos.mint));
+  const { held, symbols } = await currentPositions({ store, prices: (m) => dexQuotes(m) }, newPassState());
   const rows = held
     .map(({ pos, q }) => ({ pos, q, r: q ? readPosition(pos, q, LEVELS_DEFAULT) : null, sym: symbols.get(pos.mint) ?? q?.symbol ?? pos.mint.slice(0, 6) }))
     .sort((a, b) => (b.r?.multiple ?? -1) - (a.r?.multiple ?? -1));

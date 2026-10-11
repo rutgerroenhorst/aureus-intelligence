@@ -29,7 +29,7 @@ async function hosted() {
     const month = new Date().toISOString().slice(0, 7);
     let egress = 0;
     let cpu = 0;
-    console.log("  day         sent out of the database   scan CPU   (budgets: 100 MB and 300 s a day)");
+    console.log("  day         sent out of the database   scan + exit-check CPU   (budgets: 100 MB and 240 s a day)");
     const days = new Map<string, { e: number; c: number }>();
     for (const r of rows) {
       const m = /^usage:(egress:)?(\d{4}-\d{2}-\d{2})$/.exec(r.name);
@@ -42,7 +42,7 @@ async function hosted() {
     for (const [day, d] of [...days].sort((a, b) => b[0].localeCompare(a[0])).slice(0, 7)) console.log(`  ${day}  ${mb(d.e).padStart(10)}                 ${d.c.toFixed(0).padStart(5)} s`);
     for (const [day, d] of days) if (day.startsWith(month)) { egress += d.e; cpu += d.c; }
     console.log(`  this month     sent out ${mb(egress)} of 5 GB   ${bar(egress, 5 * 1073741824)}   (meter started with the 2026-10-11 deployment)`);
-    console.log(`  this month     scan CPU ${(cpu / 3600).toFixed(2)} h of 4 h   ${bar(cpu, 4 * 3600)}   (scans and the lab only; the pages add a little)`);
+    console.log(`  this month     counted CPU ${(cpu / 3600).toFixed(2)} h of 4 h   ${bar(cpu, 4 * 3600)}   (scans, the lab and the 24/7 exit check; the pages add a little)`);
     const tg = (await db.query(`SELECT count(*)::int AS n FROM telegram_messages WHERE sent_at > now() - interval '24 hours'`).catch(() => ({ rows: [{ n: "?" }] }))).rows[0].n;
     console.log(`  Telegram messages in the last 24 hours (hosted copy): ${tg}\n`);
   } finally {
@@ -65,7 +65,7 @@ async function vercel() {
     const gbh = sum("function_execution_successful_gb_hours") + sum("function_execution_error_gb_hours") + sum("function_execution_timeout_gb_hours");
     console.log(`  requests       ${req.toLocaleString().padStart(9)} (plan: 1,000,000 function invocations)   ${bar(inv, 1_000_000)}  invocations ${inv.toLocaleString()}`);
     console.log(`  bandwidth out  ${(sum("bandwidth_outgoing_bytes") / 1073741824).toFixed(2).padStart(9)} GB of 100 GB   ${bar(sum("bandwidth_outgoing_bytes"), 100 * 1073741824)}`);
-    console.log(`  function time  ${gbh.toFixed(2).padStart(9)} GB-hours (the CPU part is in the scan CPU above; Vercel shows Active CPU on its Usage page)`);
+    console.log(`  function time  ${gbh.toFixed(2).padStart(9)} GB-hours (the CPU part is in the counted CPU above; Vercel shows Active CPU on its Usage page)`);
     console.log(`  throttled ${sum("function_invocation_throttle_count")}, timeouts ${sum("function_invocation_timeout_count")}, errors ${sum("function_invocation_error_count")}\n`);
   } catch (e) {
     console.log(`  not available: ${String((e as Error).message).slice(0, 80)}\n`);

@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { newPassState, pairFromUpdates, parseEnv, readConfig, runPass, setEnvVar, telegram, welcome, type Deps, type Priced, type Store, type Telegram, type Update } from "./exitLoop";
+import { newPassState, pairFromUpdates, parseEnv, readConfig, runPass, setEnvVar, telegram, welcome, type Deps, type PassState, type Priced, type Store, type Streak, type Telegram, type Update } from "./exitLoop";
 import type { Fill } from "../../web/lib/exitAlerts";
 import type { LoggedMessage } from "./telegramLog";
 
@@ -112,18 +112,36 @@ describe("pairing: only whoever has the one-time code", () => {
 
 function memStore(fills: Map<string, Fill[]>, armed: number | null) {
   const extraAlerts = { n: 0 };
+  /** how often the big reads happened */
+  const reads = { fills: 0, knownAll: 0, alertsLast24h: 0 };
+  let streaks: Record<string, Streak> = {};
   const rows = new Map<string, { state: string; messageId?: number }>();
   const records: LoggedMessage[] = [];
   let armedAt = armed;
   const key = (m: string, s: number, l: number) => `${m}|${s}|${l}`;
   const store: Store = {
-    fills: async () => fills,
+    fills: async () => {
+      reads.fills++;
+      return fills;
+    },
+    fillsVersion: async () => String([...fills.values()].reduce((a, f) => a + f.length, 0)),
     symbols: async (mints) => new Map(mints.map((m) => [m, m.toUpperCase()])),
     armedAt: async () => armedAt,
     setArmedAt: async (t) => {
       armedAt ??= t;
     },
-    known: async (m, s) => new Set([...rows.keys()].filter((k) => k.startsWith(`${m}|${s}|`)).map((k) => Number(k.split("|")[2]))),
+    knownAll: async () => {
+      reads.knownAll++;
+      const out = new Map<string, Set<number>>();
+      for (const k of rows.keys()) {
+        const [m, st, l] = k.split("|");
+        const set = out.get(`${m}|${st}`) ?? new Set<number>();
+        set.add(Number(l));
+        out.set(`${m}|${st}`, set);
+      }
+      return out;
+    },
+    knownVersion: async () => `${rows.size}:${[...rows.values()].filter((r) => r.state === "sent").length}:${[...rows.values()].filter((r) => r.state === "claimed").length}`,
     seed: async (m, s, levels) => {
       for (const l of [0, ...levels]) if (!rows.has(key(m, s, l))) rows.set(key(m, s, l), { state: "seeded" });
     },
@@ -142,13 +160,20 @@ function memStore(fills: Map<string, Fill[]>, armed: number | null) {
     logMessage: async (m) => {
       records.push(m);
     },
-    alertsLast24h: async () => records.filter((r) => r.kind === "alert" && r.ok).length + extraAlerts.n,
+    alertsLast24h: async () => {
+      reads.alertsLast24h++;
+      return records.filter((r) => r.kind === "alert" && r.ok).length + extraAlerts.n;
+    },
+    loadStreaks: async () => JSON.parse(JSON.stringify(streaks)),
+    saveStreaks: async (x) => {
+      streaks = JSON.parse(JSON.stringify(x));
+    },
   };
-  return { store, rows, records, extraAlerts };
+  return { store, rows, records, extraAlerts, reads, streaks: () => streaks };
 }
 
 function harness(opts: { fills: Map<string, Fill[]>; armed: number | null; quotes: Record<string, Priced | undefined> }) {
-  const { store, rows, records, extraAlerts } = memStore(opts.fills, opts.armed);
+  const { store, rows, records, extraAlerts, reads, streaks } = memStore(opts.fills, opts.armed);
   const sent: string[] = [];
   const logs: string[] = [];
   let fail = false;
@@ -168,8 +193,10 @@ function harness(opts: { fills: Map<string, Fill[]>; armed: number | null; quote
     log: (msg, extra) => logs.push(msg + (extra ? " " + JSON.stringify(extra) : "")),
     now: () => 1_000_000,
     sleep: async () => undefined,
+    // each pass of the tests is a separate check, whatever the clock says
+    minGapS: 0,
   };
-  return { deps, rows, records, sent, logs, st: newPassState(), extraAlerts, setFail: (v: boolean) => (fail = v), setRetryAfter: (v: number | undefined) => (retryAfter = v) };
+  return { deps, rows, records, reads, streaks, sent, logs, st: newPassState(), extraAlerts, setFail: (v: boolean) => (fail = v), setRetryAfter: (v: number | undefined) => (retryAfter = v) };
 }
 
 const cfg = { chatId: "42", levels: [2, 5] };
@@ -428,5 +455,92 @@ describe("limits on what is sent", () => {
     await runPass(cfg, h.deps, h.st);
     expect(h.sent).toHaveLength(2);
     expect(pauses).toEqual([1100]);
+  });
+});
+
+describe("running where every check may start in a new process (the site's own 24/7 check)", () => {
+  const persist = { persistStreaks: true } as const;
+  const priceAt = (h: ReturnType<typeof harness>, price: number) => {
+    h.deps.prices = async () => new Map([["m1", quote(price)]]);
+  };
+
+  it("two checks made by two different processes still count as two: the count is kept in the database", async () => {
+    let now = 1_000_000;
+    const h = harness({ fills: oneBuy(), armed: 1_000_000, quotes: { m1: quote(0.003) } });
+    h.deps.now = () => now;
+    h.deps.minGapS = 60;
+    await runPass(cfg, h.deps, newPassState(), persist); // first look: seeds, nothing above a level
+    priceAt(h, 0.0042);
+    await runPass(cfg, h.deps, newPassState(), persist); // one check at 2.1x, by a process that is gone afterwards
+    expect(h.sent).toEqual([]);
+    expect(Object.values(h.streaks())).toEqual([{ n: 1, t: now }]);
+    now += 120;
+    await runPass(cfg, h.deps, newPassState(), persist); // a brand new process, two minutes later
+    expect(h.sent).toHaveLength(1);
+    expect(h.streaks()).toEqual({});
+  });
+
+  it("without the database's count a process that starts fresh every time would never get to two (this is why it is kept)", async () => {
+    let now = 1_000_000;
+    const h = harness({ fills: oneBuy(), armed: 1_000_000, quotes: { m1: quote(0.003) } });
+    h.deps.now = () => now;
+    h.deps.minGapS = 60;
+    await runPass(cfg, h.deps, newPassState());
+    priceAt(h, 0.0042);
+    for (let i = 0; i < 4; i++) {
+      now += 120;
+      await runPass(cfg, h.deps, newPassState()); // no persistStreaks
+    }
+    expect(h.sent).toEqual([]);
+  });
+
+  it("two runners looking at the same moment make one check, and a level is reported once whoever gets there first", async () => {
+    let now = 1_000_000;
+    const h = harness({ fills: oneBuy(), armed: 1_000_000, quotes: { m1: quote(0.003) } });
+    h.deps.now = () => now;
+    h.deps.minGapS = 60;
+    const a = newPassState();
+    const b = newPassState();
+    await runPass(cfg, h.deps, a, persist);
+    priceAt(h, 0.0042);
+    await runPass(cfg, h.deps, a, persist);
+    await runPass(cfg, h.deps, b, persist); // the same second: not a second check
+    expect(h.sent).toEqual([]);
+    now += 120;
+    await runPass(cfg, h.deps, a, persist);
+    now += 1;
+    await runPass(cfg, h.deps, b, persist);
+    now += 120;
+    await runPass(cfg, h.deps, a, persist);
+    await runPass(cfg, h.deps, b, persist);
+    expect(h.sent).toHaveLength(1);
+    expect(h.rows.get("m1|900000|2")?.state).toBe("sent");
+  });
+
+  it("reads the wallet's fills and the recorded levels again only when something changed", async () => {
+    const fills = oneBuy();
+    const h = harness({ fills, armed: 1_000_000, quotes: { m1: quote(0.003), m2: quote(0.003) } });
+    await runPass(cfg, h.deps, h.st, persist);
+    await runPass(cfg, h.deps, h.st, persist);
+    await runPass(cfg, h.deps, h.st, persist);
+    expect(h.reads.fills).toBe(1);
+    expect(h.reads.knownAll).toBeLessThanOrEqual(2); // once, and once more because the first pass wrote the "seen" rows
+    // a new buy: the fingerprint changes, the positions are worked out again and the new coin is seen
+    fills.set("m2", [{ t: 999_000, side: "buy", tokens: 1000, usd: 2 }]);
+    await runPass(cfg, h.deps, h.st, persist);
+    expect(h.reads.fills).toBe(2);
+    expect(h.rows.has("m2|999000|0")).toBe(true);
+  });
+
+  it("asks about the daily ceiling only when there is something to send", async () => {
+    const h = harness({ fills: oneBuy(), armed: 1_000_000, quotes: { m1: quote(0.003) } });
+    await runPass(cfg, h.deps, h.st);
+    await runPass(cfg, h.deps, h.st);
+    expect(h.reads.alertsLast24h).toBe(0);
+    priceAt(h, 0.0042);
+    await runPass(cfg, h.deps, h.st);
+    await runPass(cfg, h.deps, h.st);
+    expect(h.reads.alertsLast24h).toBe(1);
+    expect(h.sent).toHaveLength(1);
   });
 });

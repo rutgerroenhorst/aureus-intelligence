@@ -38,9 +38,10 @@ const LAB_RETRY_AFTER_FAILURE_MIN = 30;
 /**
  * Vercel Hobby allows 4 CPU-hours a month and blocks the project for 30 days beyond that, so a screen left open
  * 24/7 must not be able to spend it. Scans count their own CPU per UTC day; past this many seconds the interval
- * stretches (x4) and catch-up rounds stop until the next day. The default leaves room for the pages' own requests.
+ * stretches (x4) and catch-up rounds stop until the next day. The default (240 s, 2 hours a month) leaves room for the pages' own requests
+ * and for the 24/7 exit check, which is counted in the same number (it needs about 40 s a day).
  */
-export const CPU_BUDGET_S_PER_DAY = Number(process.env.SCAN_CPU_BUDGET_S_PER_DAY ?? 300);
+export const CPU_BUDGET_S_PER_DAY = Number(process.env.SCAN_CPU_BUDGET_S_PER_DAY ?? 240);
 const OVER_BUDGET_INTERVAL_FACTOR = 4;
 /**
  * Supabase's free plan allows 5 GB of egress a month: everything the database sends to the site's functions (the pages, the scans and the lab all
@@ -145,7 +146,8 @@ async function usedTodayMs(): Promise<number> {
   return Number(rows[0]?.cpu_ms ?? 0);
 }
 
-async function addUsage(cpuMs: number): Promise<void> {
+/** Add CPU milliseconds to today's count (the scans, and the 24/7 exit check, which is counted but never held back by it). */
+export async function addUsage(cpuMs: number): Promise<void> {
   try {
     await query(
       `INSERT INTO scan_lease (name, locked_until, last_result)
