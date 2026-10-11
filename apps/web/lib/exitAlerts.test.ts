@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { alertText, fmtMultiple, fmtPrice, fmtUsd, MIN_POOL_USD, openPosition, readPosition, welcomeText, type Fill, type Position } from "./exitAlerts";
+import { alertText, fmtMultiple, fmtPrice, fmtUsd, MIN_POOL_USD, openPosition, readPosition, testText, welcomeText, type Fill, type Position } from "./exitAlerts";
 
 const buy = (t: number, tokens: number, usd: number | null): Fill => ({ t, side: "buy", tokens, usd });
 const sell = (t: number, tokens: number, usd: number | null): Fill => ({ t, side: "sell", tokens, usd });
@@ -118,5 +118,16 @@ describe("the messages (Dutch, short)", () => {
     expect(w).toContain("2× of 5×");
     expect(w).toContain("niet nog eens gemeld");
     expect(welcomeText([2, 5], [])).toContain("geen coin");
+  });
+});
+
+describe("the test message", () => {
+  it("says it is a test, shows an alert with invented numbers, and says when real ones come", () => {
+    const t = testText();
+    expect(t).toContain("Testbericht");
+    expect(t).toContain("VOORBEELD");
+    expect(t).toContain("verzonnen");
+    expect(t).toContain("2× of 5×");
+    expect(t).not.toMatch(/undefined|NaN/);
   });
 });

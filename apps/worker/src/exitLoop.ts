@@ -16,6 +16,8 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import pg from "pg";
+import { logMessage, pushMessages, type LoggedMessage } from "./telegramLog";
 import {
   alertText,
   CONFIRM_CHECKS,
@@ -185,6 +187,8 @@ export interface Store {
   markSent(mint: string, started: number, level: number, messageId: number): Promise<void>;
   release(mint: string, started: number, level: number): Promise<void>;
   expireClaims(): Promise<void>;
+  /** keep a record of a message that was sent (or failed) for the Telegram page */
+  logMessage(m: LoggedMessage): Promise<void>;
 }
 
 export function pgStore(db: Db): Store {
@@ -243,6 +247,9 @@ export function pgStore(db: Db): Store {
     async expireClaims() {
       await db.query(`DELETE FROM exit_alerts WHERE state = 'claimed' AND created_at < now() - interval '10 minutes'`);
     },
+    async logMessage(m) {
+      await logMessage(db, m);
+    },
   };
 }
 
@@ -262,9 +269,13 @@ export interface PassState {
   /** consecutive passes in which a coin had no price: coins that are gone are asked about only now and then */
   misses: Map<string, number>;
   pass: number;
+  /** messages recorded so far in this process: the loop copies the log to the hosted database when it changes */
+  logged: number;
+  /** when a failed send was last recorded, per alert: a Telegram outage must not fill the page with the same failure */
+  failLogged: Map<string, number>;
 }
 
-export const newPassState = (): PassState => ({ streak: new Map(), misses: new Map(), pass: 0 });
+export const newPassState = (): PassState => ({ streak: new Map(), misses: new Map(), pass: 0, logged: 0, failLogged: new Map() });
 const MAX_PER_PASS = 6;
 const GONE_AFTER = 30;
 
@@ -328,7 +339,15 @@ export async function runPass(cfg: { chatId: string; levels: number[] }, deps: D
     // a coin that jumped over two levels at once gets one message, for the highest
     const top = Math.max(...due);
     const symbol = symbols.get(pos.mint) ?? q.symbol ?? pos.mint.slice(0, 6);
-    const res = await tg.send(cfg.chatId, alertText({ symbol, level: top, multiple: r.multiple, value: r.value, bought: pos.bought, sold: pos.sold, price: q.price, basis: pos.basis, liq: q.liq, link: dexLink(q.pair, pos.mint) }));
+    const text = alertText({ symbol, level: top, multiple: r.multiple, value: r.value, bought: pos.bought, sold: pos.sold, price: q.price, basis: pos.basis, liq: q.liq, link: dexLink(q.pair, pos.mint) });
+    const res = await tg.send(cfg.chatId, text);
+    // the page shows what went out; a failed send is recorded once per half hour per alert
+    const failKey = `${pos.mint}|${top}`;
+    if (res.ok || deps.now() - (st.failLogged.get(failKey) ?? 0) > 1800) {
+      await store.logMessage({ kind: "alert", ok: res.ok, messageId: res.ok ? res.messageId : null, symbol, level: top, multiple: r.multiple, html: text, error: res.ok ? null : res.error });
+      st.logged++;
+      if (!res.ok) st.failLogged.set(failKey, deps.now());
+    }
     for (const level of due) {
       if (res.ok) {
         await store.markSent(pos.mint, started, level, res.messageId);
@@ -357,7 +376,10 @@ export async function welcome(cfg: { chatId: string; levels: number[] }, deps: D
     const r = readPosition(pos, q, cfg.levels);
     if (r.alertable && r.reached.length) above.push({ symbol: symbols.get(pos.mint) ?? q.symbol ?? pos.mint.slice(0, 6), multiple: r.multiple, value: r.value });
   }
-  const res = await deps.tg.send(cfg.chatId, welcomeText(cfg.levels, above));
+  const html = welcomeText(cfg.levels, above);
+  const res = await deps.tg.send(cfg.chatId, html);
+  await deps.store.logMessage({ kind: "welcome", ok: res.ok, messageId: res.ok ? res.messageId : null, html, error: res.ok ? null : res.error });
+  st.logged++;
   if (!res.ok) deps.log("exit alerts: welcome not sent", { error: res.error });
   return res.ok;
 }
@@ -396,6 +418,21 @@ export function startExitLoop(db: Db, log: Log): () => void {
   let running = false;
   let failures = 0;
   let waiting = false;
+  let hosted: pg.Pool | null = null;
+  let copied = -1;
+  /** copy new records to the hosted database (when LAB_SYNC_URL is set), so the Telegram page on the phone has them; tried again next tick if it fails */
+  const copyLog = async () => {
+    const url = process.env.LAB_SYNC_URL;
+    if (!url || copied === st.logged) return;
+    try {
+      hosted ??= new pg.Pool({ connectionString: url, max: 1, statement_timeout: 30_000, idleTimeoutMillis: 20_000, connectionTimeoutMillis: 15_000 });
+      const n = await pushMessages(db, hosted as unknown as Db);
+      copied = st.logged;
+      if (n) log("telegram log copied to the hosted database", { rows: n });
+    } catch (e) {
+      log("telegram log copy failed", { error: String((e as Error)?.message ?? e).slice(0, 120) });
+    }
+  };
   const tick = async (): Promise<number> => {
     if (running) return EVERY_MS;
     running = true;
@@ -420,12 +457,14 @@ export function startExitLoop(db: Db, log: Log): () => void {
         await store.setArmedAt(deps.now());
         await welcome({ chatId: chat, levels: cfg.levels }, deps, st);
         await tg.updates(offset.next);
+        await copyLog();
         log("exit alerts paired and on", { levels: cfg.levels });
         return 5_000;
       }
       const r = await runPass({ chatId: cfg.chatId, levels: cfg.levels }, deps, st);
       if (failures > 0) log("exit alerts running again", { positions: r.positions });
       failures = 0;
+      await copyLog();
       return EVERY_MS;
     } catch (e) {
       failures++;
@@ -445,5 +484,6 @@ export function startExitLoop(db: Db, log: Log): () => void {
   return () => {
     stopped = true;
     if (timer) clearTimeout(timer);
+    void hosted?.end().catch(() => undefined);
   };
 }

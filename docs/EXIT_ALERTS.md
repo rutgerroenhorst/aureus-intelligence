@@ -56,6 +56,16 @@ corepack pnpm exec tsx scripts/lab-daemon.ts        # from the repository folder
 `corepack pnpm exec tsx scripts/exit-alerts-check.ts` shows what the loop sees right now (every held coin, the multiple, whether an alert could go out) without
 sending or storing anything. State is in `exit_alerts` and `exit_alert_kv` (migration 0034; counts of what was seeded and sent, no token, no chat id).
 
+## The Telegram page (menu: Tracking > Telegram)
+
+Every message the system sends (an alert, the welcome message, a test) is recorded in `telegram_messages` (migration 0035) with the text as the user read it,
+the kind, whether Telegram accepted it and, for an alert, the coin and level; a refused send is recorded too (once per half hour per alert) with Telegram's
+reason. The laptop loop copies new records to the hosted database (same ids, when `LAB_SYNC_URL` is set), and `/telegram` plus `GET /api/telegram-messages`
+show the last 100. No token, chat id or address is ever in that table. Like Results, the page is public for anyone who has the site's address until the site gets
+a password, and it shows coin names and amounts. The welcome message sent at pairing predates the log and is not in it.
+
+`corepack pnpm exec tsx scripts/exit-alerts-test.ts` sends a test message to the paired chat (an invented example alert) and records it like any other.
+
 ## Limits, honestly
 
 - **It only runs while the laptop is on and awake** (the daemon is a laptop process). A dead battery means no messages, and nothing tells you so. A 24/7 version
@@ -65,4 +75,5 @@ sending or storing anything. State is in `exit_alerts` and `exit_alert_kv` (migr
 - The multiple is against what the wallet paid (price per token including fees), for the tokens still held; the wallet reader sees a trade within about five minutes.
 - A message is an idea. At the user's sizes ($2 to $5 a coin) the sums are small; the evidence is in docs/WALLET_REVIEW.md, and it describes three weeks, not the future.
 - Files: `apps/web/lib/exitAlerts.ts` (positions, levels, texts; pure), `apps/worker/src/exitLoop.ts` (Telegram, prices, state, pairing, the loop),
-  `scripts/exit-alerts-check.ts`, tests `apps/web/lib/exitAlerts.test.ts` and `apps/worker/src/exitLoop.test.ts`.
+  `apps/worker/src/telegramLog.ts` (the record and its copy to the hosted database), `apps/web/app/telegram/page.tsx` and `apps/web/app/api/telegram-messages/route.ts`,
+  `scripts/exit-alerts-check.ts`, `scripts/exit-alerts-test.ts`, tests `apps/web/lib/exitAlerts.test.ts`, `apps/worker/src/exitLoop.test.ts` and `apps/worker/src/telegramLog.test.ts`.

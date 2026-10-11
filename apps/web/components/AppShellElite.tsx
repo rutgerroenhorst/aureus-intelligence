@@ -50,6 +50,8 @@ const NavIcon = ({ type }: { type: string }) => {
       return <svg {...iconProps}><polygon points="12 2 15.09 10.26 23.77 11.27 17.88 17.14 19.54 25.88 12 21.77 4.46 25.88 6.12 17.14 0.23 11.27 8.91 10.26"/></svg>;
     case "ops":
       return <svg {...iconProps}><circle cx="6" cy="6" r="1"/><circle cx="18" cy="6" r="1"/><circle cx="6" cy="18" r="1"/><circle cx="18" cy="18" r="1"/></svg>;
+    case "telegram":
+      return <svg {...iconProps}><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>;
     case "more":
       return <svg {...iconProps}><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg>;
     default:
@@ -107,6 +109,7 @@ const moreNav = [
   { label: "Forensics", href: "/forensics", type: "forensics" },
   { label: "Wallets", href: "/wallets", type: "wallets" },
   { label: "Watchlist", href: "/watchlist", type: "watchlist" },
+  { label: "Telegram", href: "/telegram", type: "telegram" },
   { label: "Ops", href: "/ops", type: "ops" },
 ];
 
@@ -169,6 +172,7 @@ export default function AppShellElite({ children }: AppShellEliteProps) {
     { label: "Forensics", href: "/forensics", type: "forensics", group: "Analysis" },
     { label: "Wallets", href: "/wallets", type: "wallets", group: "Analysis" },
     { label: "Watchlist", href: "/watchlist", type: "watchlist", group: "Tracking" },
+    { label: "Telegram", href: "/telegram", type: "telegram", group: "Tracking" },
     { label: "Ops", href: "/ops", type: "ops", group: "Tracking" },
   ];
 

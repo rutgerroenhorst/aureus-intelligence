@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { newPassState, pairFromUpdates, parseEnv, readConfig, runPass, setEnvVar, telegram, welcome, type Deps, type Priced, type Store, type Telegram, type Update } from "./exitLoop";
 import type { Fill } from "../../web/lib/exitAlerts";
+import type { LoggedMessage } from "./telegramLog";
 
 const TOKEN = "111:not-a-real-token-unit-test";
 
@@ -111,6 +112,7 @@ describe("pairing: only whoever has the one-time code", () => {
 
 function memStore(fills: Map<string, Fill[]>, armed: number | null) {
   const rows = new Map<string, { state: string; messageId?: number }>();
+  const records: LoggedMessage[] = [];
   let armedAt = armed;
   const key = (m: string, s: number, l: number) => `${m}|${s}|${l}`;
   const store: Store = {
@@ -136,12 +138,15 @@ function memStore(fills: Map<string, Fill[]>, armed: number | null) {
       if (rows.get(key(m, s, l))?.state === "claimed") rows.delete(key(m, s, l));
     },
     expireClaims: async () => undefined,
+    logMessage: async (m) => {
+      records.push(m);
+    },
   };
-  return { store, rows };
+  return { store, rows, records };
 }
 
 function harness(opts: { fills: Map<string, Fill[]>; armed: number | null; quotes: Record<string, Priced | undefined> }) {
-  const { store, rows } = memStore(opts.fills, opts.armed);
+  const { store, rows, records } = memStore(opts.fills, opts.armed);
   const sent: string[] = [];
   const logs: string[] = [];
   let fail = false;
@@ -160,7 +165,7 @@ function harness(opts: { fills: Map<string, Fill[]>; armed: number | null; quote
     log: (msg, extra) => logs.push(msg + (extra ? " " + JSON.stringify(extra) : "")),
     now: () => 1_000_000,
   };
-  return { deps, rows, sent, logs, st: newPassState(), setFail: (v: boolean) => (fail = v) };
+  return { deps, rows, records, sent, logs, st: newPassState(), setFail: (v: boolean) => (fail = v) };
 }
 
 const cfg = { chatId: "42", levels: [2, 5] };
@@ -305,5 +310,50 @@ describe("the welcome message", () => {
     expect(h.sent[0]).not.toContain("FLAT");
     expect(h.sent[0]).not.toContain("THIN");
     expect(h.sent[0]).toContain("Exit-meldingen staan aan");
+  });
+});
+
+describe("the record of what was sent (the Telegram page)", () => {
+  it("records an alert with its text, the coin, the level and Telegram's message id", async () => {
+    const h = harness({ fills: oneBuy(), armed: 1_000_000, quotes: { m1: quote(0.003) } });
+    await runPass(cfg, h.deps, h.st);
+    h.deps.prices = async () => new Map([["m1", quote(0.0042)]]);
+    await runPass(cfg, h.deps, h.st);
+    await runPass(cfg, h.deps, h.st);
+    expect(h.records).toHaveLength(1);
+    expect(h.records[0]).toMatchObject({ kind: "alert", ok: true, messageId: 1001, symbol: "M1", level: 2 });
+    expect(h.records[0]!.html).toBe(h.sent[0]);
+    expect(h.st.logged).toBe(1);
+  });
+
+  it("records a refused send, but only once in half an hour for the same alert", async () => {
+    let now = 1_000_000;
+    const h = harness({ fills: oneBuy(), armed: 1_000_000, quotes: { m1: quote(0.003) } });
+    h.deps.now = () => now;
+    await runPass(cfg, h.deps, h.st);
+    h.deps.prices = async () => new Map([["m1", quote(0.0042)]]);
+    await runPass(cfg, h.deps, h.st);
+    h.setFail(true);
+    await runPass(cfg, h.deps, h.st);
+    now += 120;
+    await runPass(cfg, h.deps, h.st);
+    now += 120;
+    await runPass(cfg, h.deps, h.st);
+    expect(h.records).toHaveLength(1);
+    expect(h.records[0]).toMatchObject({ kind: "alert", ok: false, error: "Too Many Requests" });
+    now += 3600;
+    await runPass(cfg, h.deps, h.st);
+    expect(h.records).toHaveLength(2);
+    h.setFail(false);
+    await runPass(cfg, h.deps, h.st);
+    expect(h.records[2]).toMatchObject({ ok: true });
+  });
+
+  it("records the welcome message", async () => {
+    const fills = new Map<string, Fill[]>([["hot", [{ t: 900_000, side: "buy", tokens: 1000, usd: 2 }]]]);
+    const h = harness({ fills, armed: null, quotes: { hot: quote(0.02) } });
+    await welcome(cfg, h.deps, h.st);
+    expect(h.records).toHaveLength(1);
+    expect(h.records[0]).toMatchObject({ kind: "welcome", ok: true });
   });
 });

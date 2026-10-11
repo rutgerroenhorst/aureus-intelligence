@@ -164,3 +164,9 @@ export function welcomeText(levels: number[], above: HeldNow[]): string {
 }
 
 export const dexLink = (pair: string | null, mint: string): string => `https://dexscreener.com/solana/${pair ?? mint}`;
+
+/** A test message: says it is a test and shows what a real alert looks like, with invented numbers. */
+export function testText(): string {
+  const example = alertText({ symbol: "VOORBEELD", level: 2, multiple: 2.1, value: 4.2, bought: 2, sold: 0, price: 0.0000484, basis: 0.0000231, liq: 38_000, link: "https://dexscreener.com" });
+  return [`🧪 <b>Testbericht</b>`, `De exit-meldingen werken. Zo ziet een echte melding eruit (de getallen hieronder zijn verzonnen):`, ``, example, ``, `Echte meldingen komen alleen als een coin die je bezit 2× of 5× je instap raakt.`].join("\n");
+}
