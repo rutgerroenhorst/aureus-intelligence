@@ -1,12 +1,15 @@
 /**
  * The clock that makes the site run by itself, day and night, without the laptop and without a screen open.
  *
- * Four jobs live inside the hosted database (Supabase's pg_cron). The first three call the site over HTTPS with the site's secret (pg_net does the call):
+ * Five jobs live inside the hosted database (Supabase's pg_cron). The first three call the site over HTTPS with the site's secret (pg_net does the call):
  *   aureus-exit-alerts   every 2 minutes   GET /api/cron/exit-alerts        the Telegram exit check (apps/web/lib/exitTick.ts)
  *   aureus-maintenance   hourly, at :00    GET /api/scan                     the site's own round when nobody has a screen open: a market scan if one is due, then the
  *                                                                           learning round and the housekeeping (RETENTION_DAYS), exactly what a screen asks for
  *   aureus-learning      hourly, at :30    GET /api/scan?only=learning       follows and grades the coins already tracked (cheap: no market scan, little written)
  *   aureus-cron-cleanup  daily 03:15 UTC   (SQL only)                        deletes the clock's own run history older than 2 days (pg_cron never does; 720 rows a day)
+ *   aureus-watchdog      every 5 minutes   (SQL only, db/hosted/watchdog.sql) messages the user on Telegram when the site's own exit check has stopped or gets no prices
+ *                                                                           (only installed when EXIT_ALERT_TOKEN and EXIT_ALERT_CHAT_ID are in the environment: the bot token and
+ *                                                                           the chat go to Supabase Vault, are read from there each time and never appear in a job's text)
  * Why the market scan is hourly while nobody looks: every coin it checks writes about 13 KB to the 500 MB free database (about 4,000 checks a day made it grow
  * 40-60 MB a day), a screen that is open still gets one every 10 minutes, and a screen that opens after a quiet spell asks for a catch-up scan itself.
  * Vercel's own cron cannot do this on the free plan (once a day at most), which is why the clock is in the database.
@@ -20,11 +23,17 @@
  * the jobs read it from the vault when they run. SITE_URL defaults to the production address. `remove` stops the clock (the site keeps working
  * as before; only the unattended checks stop). The extensions stay installed; `--secret` also deletes the vault entry.
  */
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import pg from "pg";
 
 const HOSTED = process.env.LAB_SYNC_URL ?? process.env.CLOUD_URL;
 const SITE = (process.env.SITE_URL ?? "https://aureus-intelligence-nu.vercel.app").replace(/\/+$/, "");
 const SECRET_NAME = "aureus_cron_secret";
+const TOKEN_NAME = "aureus_telegram_token";
+const CHAT_NAME = "aureus_telegram_chat";
+const WATCHDOG_SQL = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "db", "hosted", "watchdog.sql");
 
 const JOBS: ReadonlyArray<{ name: string; every: string; path?: string; sql?: string }> = [
   { name: "aureus-exit-alerts", every: "*/2 * * * *", path: "/api/cron/exit-alerts" },
@@ -57,14 +66,35 @@ async function install(db: pg.Pool) {
   if (!/^[A-Za-z0-9_\-=+/.]{32,200}$/.test(secret)) throw new Error("CRON_SECRET must be 32-200 plain characters (letters, digits and _-=+/.)");
   await db.query(`create extension if not exists pg_cron with schema pg_catalog`);
   await db.query(`create extension if not exists pg_net with schema extensions`);
-  const have = (await db.query(`select id from vault.secrets where name = $1`, [SECRET_NAME])).rows[0];
-  if (have) await db.query(`select vault.update_secret($1::uuid, $2::text)`, [have.id, secret]);
-  else await db.query(`select vault.create_secret($1::text, $2::text, 'sent by the database clock to the site as Authorization: Bearer')`, [secret, SECRET_NAME]);
-  console.log(`vault: secret ${SECRET_NAME} ${have ? "updated" : "created"} (not shown)`);
-  for (const j of JOBS) {
-    const r = await db.query(`select cron.schedule($1::text, $2::text, $3::text) as id`, [j.name, j.every, j.path ? jobCommand(SITE, j.path) : j.sql!]);
-    console.log(`job ${j.name}: ${j.every} -> ${j.path ? `${SITE}${j.path}` : "SQL"} (id ${r.rows[0].id})`);
+  await putSecret(db, SECRET_NAME, secret, "sent by the database clock to the site as Authorization: Bearer");
+  for (const j of JOBS) await schedule(db, j);
+
+  // the watchdog: needs the bot token and the paired chat, which come from the environment and go straight into the vault
+  const token = process.env.EXIT_ALERT_TOKEN ?? "";
+  const chat = process.env.EXIT_ALERT_CHAT_ID ?? "";
+  if (!token && !chat) {
+    console.log("watchdog: not installed (EXIT_ALERT_TOKEN and EXIT_ALERT_CHAT_ID are not in the environment)");
+    return;
   }
+  if (!/^\d{6,12}:[A-Za-z0-9_-]{30,60}$/.test(token)) throw new Error("EXIT_ALERT_TOKEN does not look like a Telegram bot token");
+  if (!/^-?\d{3,20}$/.test(chat)) throw new Error("EXIT_ALERT_CHAT_ID must be a number");
+  await putSecret(db, TOKEN_NAME, token, "the Telegram bot token, read by the watchdog (db/hosted/watchdog.sql) when it has something to say");
+  await putSecret(db, CHAT_NAME, chat, "the paired Telegram chat, read by the watchdog");
+  await db.query(fs.readFileSync(WATCHDOG_SQL, "utf8"));
+  console.log("watchdog: function public.aureus_watchdog installed");
+  await schedule(db, { name: "aureus-watchdog", every: "*/5 * * * *", sql: "select public.aureus_watchdog();" });
+}
+
+async function putSecret(db: pg.Pool, name: string, value: string, description: string) {
+  const have = (await db.query(`select id from vault.secrets where name = $1`, [name])).rows[0];
+  if (have) await db.query(`select vault.update_secret($1::uuid, $2::text)`, [have.id, value]);
+  else await db.query(`select vault.create_secret($1::text, $2::text, $3::text)`, [value, name, description]);
+  console.log(`vault: secret ${name} ${have ? "updated" : "created"} (not shown)`);
+}
+
+async function schedule(db: pg.Pool, j: { name: string; every: string; path?: string; sql?: string }) {
+  const r = await db.query(`select cron.schedule($1::text, $2::text, $3::text) as id`, [j.name, j.every, j.path ? jobCommand(SITE, j.path) : j.sql!]);
+  console.log(`job ${j.name}: ${j.every} -> ${j.path ? `${SITE}${j.path}` : "SQL"} (id ${r.rows[0].id})`);
 }
 
 async function remove(db: pg.Pool, withSecret: boolean) {
@@ -72,8 +102,11 @@ async function remove(db: pg.Pool, withSecret: boolean) {
   for (const j of jobs) await db.query(`select cron.unschedule($1::text)`, [j.jobname]);
   console.log(`jobs removed: ${jobs.length}`);
   if (withSecret) {
-    const r = await db.query(`delete from vault.secrets where name = $1`, [SECRET_NAME]);
-    console.log(`vault secret removed: ${r.rowCount ?? 0}`);
+    const r = await db.query(`delete from vault.secrets where name = any($1::text[])`, [[SECRET_NAME, TOKEN_NAME, CHAT_NAME]]);
+    console.log(`vault secrets removed: ${r.rowCount ?? 0}`);
+    await db.query(`drop function if exists public.aureus_watchdog(boolean, text, text)`);
+    await db.query(`drop function if exists public.aureus_dur(numeric)`);
+    console.log("watchdog functions dropped");
   }
 }
 
@@ -95,6 +128,17 @@ async function status(db: pg.Pool) {
   for (const a of answers) console.log(`  ${a.at}  http ${a.status_code ?? "-"}${a.timed_out ? " TIMED OUT" : ""}${a.err ? ` ${a.err}` : ""}  ${a.body}`);
   const hist = (await db.query(`select status_code, count(*)::int as n from net._http_response group by 1 order by 1`)).rows;
   console.log(`-- answers kept: ${hist.map((h) => `${h.status_code ?? "none"} x${h.n}`).join(", ") || "none"}`);
+  // the watchdog: is it there, can it speak, what does it think of the site's check right now (names and states only, never a secret)
+  const w = (
+    await db.query(
+      `select to_regprocedure('public.aureus_watchdog(boolean,text,text)') is not null as installed,
+              (select count(*)::int from vault.secrets where name in ($1, $2)) as secrets,
+              (select value from exit_alert_kv where key = 'watchdog') as state,
+              (select round((extract(epoch from (now() - updated_at)) / 60)::numeric, 1) from exit_alert_kv where key = 'hosted_tick_ok') as beat_min`,
+      [TOKEN_NAME, CHAT_NAME],
+    )
+  ).rows[0];
+  console.log(`-- watchdog: ${w.installed ? "installed" : "NOT installed"}, ${w.secrets}/2 secrets in the vault, the site's last finished check ${w.beat_min == null ? "never" : `${w.beat_min} min ago`}, state ${w.state ?? "none yet"}`);
 }
 
 main().catch((e) => {

@@ -52,7 +52,9 @@ check: `CRON_SECRET`, `EXIT_ALERT_TOKEN`, `EXIT_ALERT_CHAT_ID` (docs/EXIT_ALERTS
 **The database clock (2026-10-11).** The hosted database has the extensions `pg_cron` and `pg_net`, one entry in Supabase Vault (`aureus_cron_secret`) and four jobs:
 `aureus-exit-alerts` (every 2 minutes, calls `/api/cron/exit-alerts`), `aureus-maintenance` (hourly, calls `/api/scan`: a market scan if one is due, the learning round and the
 housekeeping, the same round a screen asks for), `aureus-learning` (at :30 every hour, `/api/scan?only=learning`) and `aureus-cron-cleanup` (daily, deletes the clock's own run history
-older than 2 days). To stop them: `LAB_SYNC_URL=<hosted connection string> corepack pnpm exec tsx scripts/cron-setup.ts remove` (add `--secret` to delete the vault entry as well); the extensions are
+older than 2 days). The fifth job, `aureus-watchdog` (every 5 minutes, db/hosted/watchdog.sql: messages the user on Telegram when the site's own check stops), keeps the bot token and the chat id in Vault (`aureus_telegram_token`,
+`aureus_telegram_chat`) and two functions (`public.aureus_watchdog`, `public.aureus_dur`) in the hosted database. To stop them: `LAB_SYNC_URL=<hosted connection string> corepack pnpm exec tsx scripts/cron-setup.ts remove` (add `--secret` to delete
+the vault entries and drop the two functions as well); the extensions are
 harmless and stay. The site then behaves as before: scans only while a screen is open, exit alerts only from the laptop daemon. The extra rows in `exit_alert_kv` (`hosted_tick`,
 `hosted_tick_ok`, `streaks`) and the 111 rows copied into the hosted `exit_alerts` are only read by the new code.
 

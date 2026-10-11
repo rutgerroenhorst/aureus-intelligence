@@ -64,6 +64,22 @@ recomputed when the fills change. The laptop daemon stays on as a **second runne
 position and level, `INSERT ... ON CONFLICT DO NOTHING`) lets exactly one of them send. If the laptop cannot reach the hosted database it skips the pass; it never
 keeps a private state of its own, which could report something twice.
 
+### The watchdog: a message when the check itself stops (2026-10-12)
+
+The site cannot tell you that the site has stopped, so a second clock does: **`aureus-watchdog`**, a pg_cron job inside the database that runs every 5 minutes (`db/hosted/watchdog.sql`, installed by
+`scripts/cron-setup.ts` when it is given the bot token and the chat in its environment). It reads the heartbeat the check leaves after every finished pass and messages the user on Telegram, from the
+database, through pg_net:
+
+- **"Exit-controle staat stil"** when no pass has finished for more than 10 minutes (the clock calls the site every 2): the site, Vercel, the secret or the database connection is broken;
+- **"Exit-controle krijgt geen prijzen"** when passes finish but for 15 minutes in a row not one held coin got a price (DexScreener not answering);
+- once when a problem starts, again after 6 hours if it is still there ("Nog steeds"), and **"Exit-controle loopt weer"** with how long it lasted when it is over; a blip that ends before it is worth mentioning is
+  never mentioned. The state is the row `exit_alert_kv 'watchdog'`.
+
+The bot token and the chat id are kept in **Supabase Vault** (`aureus_telegram_token`, `aureus_telegram_chat`; encrypted, readable only by the database's own privileged role, not by the site's role) and read
+each time the watchdog has something to say; they are in no message, log, state row or job text. What it cannot do: if the database itself (or Supabase's cron) is down, nothing can tell you; it does not watch
+the laptop; and it does not know whether the prices are right, only that there are some. `scripts/cron-setup.ts status` shows whether it is installed, whether it has its secrets and what it thinks of the check;
+`scripts/cron-watchdog-test.ts` checks its logic against a scratch database (26 checks); a silent test message is `select public.aureus_watchdog(true, 'test_hb', 'test_watchdog')` after writing a stale `test_hb` row.
+
 `?test=1` on the route sends the test message from the site (proves that the token and the chat set on Vercel work). The measured cost of a call is in
 docs/LIMITS.md. To look at the clock: `LAB_SYNC_URL=<hosted connection string> corepack pnpm exec tsx scripts/cron-setup.ts status`; to stop it: `... remove`
 (docs/RESTORE.md).
@@ -74,7 +90,8 @@ The bot token and the chat id are in **`.env.exit-alerts.local`** in the reposit
 readable by the owner only) or in the process environment, and, for the check on the site, in the Vercel project as the production variables
 `EXIT_ALERT_TOKEN` and `EXIT_ALERT_CHAT_ID` of type *sensitive* (encrypted; the dashboard and the API cannot show them again). The clock's secret `CRON_SECRET` is
 a sensitive Vercel variable too and an encrypted entry in Supabase Vault (`aureus_cron_secret`); the clock reads it from the vault each time it calls the site, so
-it is not in the text of any job. The route compares it in constant time. None of these are in git, the database tables, a log, a report or an API answer, and
+it is not in the text of any job. Since 2026-10-12 the token and the chat id are also in Supabase Vault (`aureus_telegram_token`, `aureus_telegram_chat`), for the watchdog (below): so the bot token now
+lives in three places (the private file, Vercel, Vault); revoking it in BotFather and putting the new one in all three is how to rotate it. The route compares it in constant time. None of these are in git, the database tables, a log, a report or an API answer, and
 an error from Telegram is cleaned of the token before anything is logged. Messages only go to `api.telegram.org`, only to the paired chat.
 
 Variables: `EXIT_ALERT_TOKEN` (the bot token from @BotFather), `EXIT_ALERT_CHAT_ID` (set by pairing), `EXIT_ALERT_PAIR_CODE` (one-time, removed by pairing),
