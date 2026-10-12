@@ -77,16 +77,18 @@ const CHAIN_HOURS = 6;
 /** A serial creator, by Jupiter's count of the tokens that wallet has minted. */
 const SERIAL_MINTS = 10;
 
-export async function buildGraduates(db: Queryable): Promise<GraduatesReport> {
+export async function buildGraduates(db: Queryable, opts: { chain?: boolean } = {}): Promise<GraduatesReport> {
   const nowS = Date.now() / 1000;
+  // the chain feed's rows are the biggest read of this list (the hosted database charges for what it sends): currentGraduates leaves them out while the laptop's snapshot is fresh
+  const withChain = opts.chain !== false;
   const grads = await db
     .query(
       `SELECT g.mint, COALESCE(g.symbol, w.symbol) AS symbol, COALESCE(g.name, w.name) AS name, EXTRACT(EPOCH FROM g.migrated_at)::float8 AS migrated_s, g.create_to_migrate_min, g.initial_buy_sol, g.mayhem,
               g.creator_launches_72h, w.note, g.via, g.facts
          FROM pump_graduates g LEFT JOIN lab_watch w ON w.mint = g.mint
-        WHERE (g.via <> 'chain' AND g.migrated_at > now() - interval '72 hours') OR (g.via = 'chain' AND g.migrated_at > now() - make_interval(hours => $1::int))
+        WHERE (g.via <> 'chain' AND g.migrated_at > now() - interval '72 hours') OR ($2::boolean AND g.via = 'chain' AND g.migrated_at > now() - make_interval(hours => $1::int))
         ORDER BY g.migrated_at DESC LIMIT 700`,
-      [CHAIN_HOURS],
+      [CHAIN_HOURS, withChain],
     )
     .then((r) => r.rows)
     .catch(() => [] as any[]);
@@ -216,9 +218,10 @@ const PUSHED_FRESH_MIN = 20;
  */
 export async function currentGraduates(db: Queryable): Promise<GraduatesReport> {
   if (memo && Date.now() - memo.at < 60_000) return memo.body;
-  const local = await buildGraduates(db);
   const pushed = await loadPushedGraduates(db);
   const pushedFresh = pushed?.asOf != null && Date.now() - new Date(pushed.asOf).getTime() <= PUSHED_FRESH_MIN * 60_000;
+  // while the laptop's snapshot is fresh it wins anyway: do not read the chain rows at all
+  const local = await buildGraduates(db, { chain: !pushedFresh });
   const body =
     local.candidates.length > 0 && local.source !== "chain" ? local : pushed && pushedFresh ? pushed : local.candidates.length > 0 ? local : pushed ?? local;
   memo = { at: Date.now(), body };

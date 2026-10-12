@@ -23,10 +23,13 @@ interface Row {
 }
 const row = (o: Partial<Row> & { mint: string }): Row => ({ symbol: o.mint.slice(0, 3).toUpperCase(), name: "Coin", migrated_s: NOW_S - 3600, create_to_migrate_min: 200, initial_buy_sol: null, mayhem: false, creator_launches_72h: null, note: null, via: "chain", facts: null, ...o });
 
-function fakeDb(rows: Row[], extra: { pushed?: { payload: unknown; computed_at: string } | null; finished?: string | null; readings?: any[] } = {}) {
+function fakeDb(rows: Row[], extra: { pushed?: { payload: unknown; computed_at: string } | null; finished?: string | null; readings?: any[]; seen?: unknown[][] } = {}) {
   return {
-    query: async (text: string) => {
-      if (/FROM pump_graduates g/.test(text)) return { rows };
+    query: async (text: string, params?: unknown[]) => {
+      if (/FROM pump_graduates g/.test(text)) {
+        extra.seen?.push(params ?? []);
+        return { rows };
+      }
       if (/kind = 'lanes'/.test(text)) return { rows: [] };
       if (/source = 'watch'/.test(text)) return { rows: extra.readings ?? [] };
       if (/source = 'rugcheck'/.test(text)) return { rows: [] };
@@ -93,6 +96,17 @@ describe("which list the hosted site shows", () => {
     const g = await currentGraduates(fakeDb(chainRows, { finished, pushed: pushedAt(3) }));
     expect(g.source).toBe("laptop");
     expect(g.candidates[0]!.mint).toBe("PUSHED");
+  });
+  it("does not read the chain rows at all while the laptop's snapshot is fresh (they are the biggest read, and the snapshot wins anyway), and reads them when it is not", async () => {
+    const seen: unknown[][] = [];
+    await currentGraduates(fakeDb(chainRows, { finished, pushed: pushedAt(3), seen }));
+    expect(seen.at(-1)![1]).toBe(false);
+    resetGraduatesMemo();
+    await currentGraduates(fakeDb(chainRows, { finished, pushed: pushedAt(45), seen }));
+    expect(seen.at(-1)![1]).toBe(true);
+    resetGraduatesMemo();
+    await currentGraduates(fakeDb(chainRows, { finished, pushed: null, seen }));
+    expect(seen.at(-1)![1]).toBe(true);
   });
   it("shows the site's own chain feed once the laptop's snapshot is more than 20 minutes old", async () => {
     const g = await currentGraduates(fakeDb(chainRows, { finished, pushed: pushedAt(45) }));
