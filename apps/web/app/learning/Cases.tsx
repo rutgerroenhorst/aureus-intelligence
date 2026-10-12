@@ -4,6 +4,7 @@ import { Empty, Note, Section } from "./parts";
 import { hours, usd } from "./format";
 import type { LabData } from "./types";
 import type { CaseStudy } from "@/lib/lab/cases";
+import { brand } from "@/lib/brand";
 
 const W = 680;
 const H = 250;
@@ -47,7 +48,7 @@ function Chart({ c }: { c: CaseStudy }) {
           <text x={x(g + c.door.minAgeMin * 60) + 6} y={PAD.t + 11} fontSize="10" fill="#ff9f0a">the first hour: the door waits</text>
         </>
       )}
-      <path d={line} fill="none" stroke="#30b0c0" strokeWidth="1.8" />
+      <path d={line} fill="none" stroke={brand.blueText} strokeWidth="1.8" />
     </svg>
   );
 }

@@ -38,15 +38,7 @@ html {
   .ae-top-logo {
     display: flex;
     align-items: center;
-    gap: 8px;
-    color: #fff;
-    font-size: 13px;
-    font-weight: 700;
-    letter-spacing: 0.5px;
-  }
-  .ae-top-logo svg {
-    width: 24px;
-    height: 24px;
+    gap: 10px;
   }
   .ae-top-solana,
   .ae-top-sep {
@@ -97,7 +89,7 @@ html {
     height: 22px;
   }
   .ae-bottomnav .active {
-    color: #35dcff;
+    color: var(--brand-text);
   }
 
   /* "More" sheet sits above the tab bar */
@@ -139,8 +131,8 @@ html {
     font-weight: 600;
   }
   .ae-sheet a.active {
-    color: #35dcff;
-    background: rgba(53, 220, 255, 0.12);
+    color: var(--brand-text);
+    background: var(--brand-soft);
   }
   .ae-sheet a svg {
     width: 18px;

@@ -165,7 +165,7 @@ export function DecisionCard({ v, rank, now, flash }: { v: CandidateDecisionView
       {/* what we're waiting for */}
       {v.status !== "REJECTED" && v.status !== "INVALIDATED" ? (
         <div className="waitbox">
-          <div className="wb-h">{v.status === "ENTRY_READY" ? "ENTRY PLAN" : "WHAT AUREUS IS WAITING FOR"}</div>
+          <div className="wb-h">{v.status === "ENTRY_READY" ? "ENTRY PLAN" : "WHAT AURIGA IS WAITING FOR"}</div>
           <div className="wb-cols">
             <div>
               <div className="wb-t">Confirmed</div>

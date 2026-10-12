@@ -236,7 +236,7 @@ export const PageHeader = ({
         marginBottom: "10px",
       }}
     >
-      Aureus Intelligence
+      Auriga
     </div>
     <h1
       style={{

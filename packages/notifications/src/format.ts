@@ -21,7 +21,7 @@ const bullets = (items: string[]) => items.map((i) => `• ${escapeHtml(i)}`).jo
 /** Render an alert to safe Telegram HTML. All dynamic tokens are escaped. */
 export function renderMessage(p: AlertProposal, f: MessageFacts): string {
   const sym = escapeHtml(f.symbol ? `$${f.symbol}` : "unknown");
-  const head = `${EMOJI[p.level] ?? "•"} <b>AUREUS ${p.level.replace(/_/g, " ")}</b> — ${sym}`;
+  const head = `${EMOJI[p.level] ?? "•"} <b>AURIGA ${p.level.replace(/_/g, " ")}</b> — ${sym}`;
   const lines: string[] = [head, ""];
 
   if (p.level === "RISK") {
@@ -48,6 +48,6 @@ export function renderMessage(p: AlertProposal, f: MessageFacts): string {
     }
   }
   lines.push("");
-  lines.push(`<a href="${escapeHtml(f.dexUrl)}">Dex Screener</a> · <a href="${escapeHtml(f.aureusUrl)}">Aureus</a>`);
+  lines.push(`<a href="${escapeHtml(f.dexUrl)}">Dex Screener</a> · <a href="${escapeHtml(f.aureusUrl)}">Auriga</a>`);
   return lines.join("\n");
 }

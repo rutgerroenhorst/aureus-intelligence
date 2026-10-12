@@ -1,38 +1,46 @@
 :root {
   /* ═══════════════════════════════════════════════════════════════════════════
-     AUREUS INTELLIGENCE — Premium Futuristic Crypto Intelligence Terminal
+     AURIGA — nero, bianco, blu corsa (docs/BRAND.md)
      ═══════════════════════════════════════════════════════════════════════════ */
 
-  /* BASE PALETTE — Almost-black midnight navy, electric blue technology */
-  --bg-base: #020914;
-  --bg-sidebar: #04101F;
-  --bg-surface: #061326;
-  --bg-raised: #06172A;
-  --bg-interactive: #08203A;
-  --bg-selected: #0A2848;
-  --bg-elevated: #0C3158;
-  --bg-selected-state: #0D3B70;
+  /* THE BRAND: black, warm white, one blue (lib/brand.ts mirrors these). The blue is the interface (selection, links, logo);
+     it never means profit, warning or loss, which keep --emerald, --amber-warn and --coral-danger below. */
+  --brand-bg: #0b0b0c;
+  --brand-fg: #f3f0e8;
+  --brand: #2f5bff;
+  --brand-text: #7f97ff;
+  --brand-soft: rgba(47, 91, 255, 0.16);
 
-  /* TEXT HIERARCHY — Cold blue tone */
-  --text-primary: #F4F9FF;
-  --text-secondary: #A8BFDB;
-  --text-muted: #6883A3;
+  /* BASE PALETTE — neutral near-black */
+  --bg-base: #0b0b0c;
+  --bg-sidebar: #0e0e10;
+  --bg-surface: #131316;
+  --bg-raised: #17171b;
+  --bg-interactive: #1d1d22;
+  --bg-selected: #14193a;
+  --bg-elevated: #232329;
+  --bg-selected-state: #1b2a6b;
 
-  /* STRUCTURE BORDERS — Electric blue accents */
-  --border-color: rgba(65, 145, 255, 0.18);
-  --border-color-strong: rgba(65, 145, 255, 0.42);
-  --border-color-highlight: rgba(61, 154, 255, 0.35);
+  /* TEXT HIERARCHY — warm white */
+  --text-primary: #f3f0e8;
+  --text-secondary: #b8b4aa;
+  --text-muted: #8a877e;
+
+  /* STRUCTURE BORDERS — hairlines in the warm white */
+  --border-color: rgba(243, 240, 232, 0.10);
+  --border-color-strong: rgba(243, 240, 232, 0.18);
+  --border-color-highlight: rgba(47, 91, 255, 0.45);
 
   /* SEMANTIC ACCENT COLORS — Premium institutional palette */
-  --blue-electric: #2585FF;
-  --blue-bright: #3D9AFF;
-  --cyan-ice: #35DCFF;
+  --blue-electric: #2f5bff;
+  --blue-bright: #5b7bff;
+  --cyan-ice: #7f97ff;
   --violet: #866CFF;
   --emerald: #20E7A3;
   --amber-warn: #FFB52F;
   --coral-danger: #FF5268;
-  --neutral: #6883A3;
-  --blue-primary: #2585FF;
+  --neutral: #8a877e;
+  --blue-primary: #2f5bff;
 
   /* Legacy aliases for compatibility */
   --bg: var(--bg-base);
@@ -43,12 +51,12 @@
   --text: var(--text-primary);
   --muted: var(--text-muted);
   --muted-2: var(--text-secondary);
-  --gold: var(--blue-electric);
-  --gold-dim: var(--blue-primary);
+  --gold: var(--brand-text);
+  --gold-dim: var(--brand);
   --amber: var(--amber-warn);
   --green: var(--emerald);
   --red: var(--coral-danger);
-  --blue: var(--blue-primary);
+  --blue: var(--brand-text);
   --up: var(--emerald);
   --down: var(--coral-danger);
 }

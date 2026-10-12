@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { usePolling } from "@/lib/usePolling";
+import { brand } from "@/lib/brand";
 
 interface Msg {
   id: number;
@@ -27,7 +28,7 @@ const dim: React.CSSProperties = { color: "#8a8a9e", fontSize: 12, lineHeight: 1
 const KIND: Record<Msg["kind"], { label: string; color: string }> = {
   alert: { label: "Alert", color: "#ff9f0a" },
   welcome: { label: "Welcome", color: "#34c759" },
-  test: { label: "Test", color: "#30b0c0" },
+  test: { label: "Test", color: brand.blueText },
 };
 
 const when = (iso: string) => new Date(iso).toLocaleString("nl-NL", { timeZone: "Europe/Amsterdam", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });

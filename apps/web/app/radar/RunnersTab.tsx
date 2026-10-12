@@ -1,6 +1,7 @@
 "use client";
 import { useMemo, useState } from "react";
 import { CheckBadge, CheckButton, CheckPanel, useCoinCheck, type CheckNote } from "./CoinCheck";
+import { brand } from "@/lib/brand";
 
 export interface Runner {
   mint: string;
@@ -103,12 +104,12 @@ export function RunnersTab({ runners, lab, prior, entered, failedMints, onEnter,
   }, [runners, sort, kind]);
   return (
     <div style={{ padding: 16 }}>
-      <h3 style={{ color: "#30b0c0", marginBottom: 6 }}>🏃 Runners ({runners.length})</h3>
+      <h3 style={{ color: brand.blueText, marginBottom: 6 }}>🏃 Runners ({runners.length})</h3>
       <div style={{ fontSize: 12, color: "#b4b4c6", marginBottom: 8, lineHeight: 1.5 }}>
         Healthy coins that are already up and too big or too old for the other tabs (the kind HOTBOT was). Late entries: most of them give a lot back.
       </div>
       <details style={{ marginBottom: 10, fontSize: 12, color: "#8a8a8e", lineHeight: 1.5 }}>
-        <summary style={{ cursor: "pointer", color: "#30b0c0" }}>More about this tab</summary>
+        <summary style={{ cursor: "pointer", color: brand.blueText }}>More about this tab</summary>
         <div style={{ marginTop: 6 }}>
           They come from Jupiter's free lists of the most organic, most traded and trending coins and have to look healthy: $0.3M to $150M, real liquidity, thousands of holders. "Young and exploding" are hours old and past the Radar's $150K cap; the first hours are where most coins give everything back.
           {" "}The Learning Lab follows each one for a week{lab && lab.followed3d >= 8 && lab.held2 ? ` (so far ${lab.followed3d} followed for 3 days: ${Math.round(lab.held2.p * 100)}% held 2x, ${lab.held3 != null ? Math.round(lab.held3 * 100) : "-"}% held 3x)` : " (no result yet: a coin counts after 3 days)"}.

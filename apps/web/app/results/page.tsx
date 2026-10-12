@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { usePolling } from '@/lib/usePolling';
 import { ExitCheck } from './ExitCheck';
 import type { WalletMoney } from '@/lib/walletMoney';
+import { brand } from "@/lib/brand";
 
 interface ResultsCoin {
   symbol: string;
@@ -89,9 +90,9 @@ export default function ResultsPage() {
           onClick={() => setActiveTab('system')}
           style={{
             padding: '8px 16px',
-            background: activeTab === 'system' ? '#34c759' : '#1a1a1f',
-            color: activeTab === 'system' ? '#000' : '#8a8a8e',
-            border: `1px solid ${activeTab === 'system' ? '#34c759' : '#2a2a2f'}`,
+            background: activeTab === 'system' ? brand.blue : '#1a1a1f',
+            color: activeTab === 'system' ? brand.fg : '#8a8a8e',
+            border: `1px solid ${activeTab === 'system' ? brand.blue : '#2a2a2f'}`,
             borderRadius: '6px',
             cursor: 'pointer',
             fontWeight: 700,
@@ -103,9 +104,9 @@ export default function ResultsPage() {
           onClick={() => setActiveTab('trades')}
           style={{
             padding: '8px 16px',
-            background: activeTab === 'trades' ? '#34c759' : '#1a1a1f',
-            color: activeTab === 'trades' ? '#000' : '#8a8a8e',
-            border: `1px solid ${activeTab === 'trades' ? '#34c759' : '#2a2a2f'}`,
+            background: activeTab === 'trades' ? brand.blue : '#1a1a1f',
+            color: activeTab === 'trades' ? brand.fg : '#8a8a8e',
+            border: `1px solid ${activeTab === 'trades' ? brand.blue : '#2a2a2f'}`,
             borderRadius: '6px',
             cursor: 'pointer',
             fontWeight: 700,
@@ -156,7 +157,7 @@ export default function ResultsPage() {
                   <DetectorCard name="Elite" count={detectorBreakdown.Elite} color="#34c759" />
                   <DetectorCard name="Buy Signals" count={detectorBreakdown['Buy Signal']} color="#007AFF" />
                   <DetectorCard name="Momentum" count={detectorBreakdown['Ultra Momentum']} color="#FF9500" />
-                  <DetectorCard name="Incubation" count={detectorBreakdown['Incubation'] ?? 0} color="#30b0c0" />
+                  <DetectorCard name="Incubation" count={detectorBreakdown['Incubation'] ?? 0} color={brand.blueText} />
                   <DetectorCard name="Not tracked" count={detectorBreakdown['Not tracked'] ?? 0} color="#8a8a8e" />
                 </>
               )}
@@ -245,7 +246,7 @@ export default function ResultsPage() {
                 <StatBox
                   label="Deposited in total"
                   value={`$${Math.round(money.deposited.usd).toLocaleString('en-US')}`}
-                  color="#30b0c0"
+                  color={brand.blueText}
                   sub={`${money.deposited.n} deposits · ${money.deposited.sol.toFixed(2)} SOL${money.deposited.first ? ` · since ${new Date(money.deposited.first).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : ''}${money.withdrawn.n > 0 ? ` · taken out $${Math.round(money.withdrawn.usd).toLocaleString('en-US')}` : ''}`}
                 />
               )}
@@ -268,7 +269,7 @@ export default function ResultsPage() {
 
           {money && money.deposited.n > 0 && (
             <details style={{ margin: '-8px 0 20px', fontSize: '12px', color: '#8a8a8e', lineHeight: 1.55 }}>
-              <summary style={{ cursor: 'pointer', color: '#30b0c0' }}>What counts as deposited, and the deposits one by one</summary>
+              <summary style={{ cursor: 'pointer', color: brand.blueText }}>What counts as deposited, and the deposits one by one</summary>
               <div style={{ marginTop: 8 }}>
                 SOL that another address sent to your wallet, each valued in dollars at that hour's SOL price{money.deposited.unpriced > 0 ? ` (${money.deposited.unpriced} without a price are not in the total)` : ''}. Not counted: trades, swapping SOL for USDC inside the wallet,
                 and USDC sent in directly (it cannot be told apart from the proceeds of a sale). Read from the chain with only the public address, so a deposit shows up a few minutes after it arrived.
@@ -303,7 +304,7 @@ export default function ResultsPage() {
             >
               <p style={{ color: '#8a8a8e' }}>
                 No trades yet. Press "✔ Enter" on any coin in the Radar: the tab you used, your entry and its highest and lowest point afterwards are saved here.
-                (Market caps are checked while Aureus is open, so a spike between two checks is not seen.)
+                (Market caps are checked while Auriga is open, so a spike between two checks is not seen.)
               </p>
             </div>
           ) : (
@@ -378,7 +379,7 @@ export default function ResultsPage() {
                       >
                         <td style={{ padding: '12px', color: '#fff', fontWeight: 600 }}>
                           {trade.symbol}
-                          {trade.chain && trade.chain !== 'solana' && <span style={{ marginLeft: 6, fontSize: 9, color: '#30b0c0', border: '1px solid #30b0c0', borderRadius: 3, padding: '0 3px' }}>{trade.chain}</span>}
+                          {trade.chain && trade.chain !== 'solana' && <span style={{ marginLeft: 6, fontSize: 9, color: brand.blueText, border: `1px solid ${brand.blueText}`, borderRadius: 3, padding: '0 3px' }}>{trade.chain}</span>}
                         </td>
                         <td style={{ padding: '12px', color: '#8a8a8e' }}>
                           {hours}h ago

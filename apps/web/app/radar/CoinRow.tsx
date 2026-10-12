@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { CheckBadge, CheckButton, CheckPanel, useCoinCheck, type CheckNote } from "./CoinCheck";
+import { brand } from "@/lib/brand";
 
 /**
  * One coin on the CATE, Buy Signals, Elite and Incubation tabs. A component of its own (not one defined inside the page): a component defined inside another
@@ -87,9 +88,9 @@ export function CoinRow({ c, color, score, isBuySignal, tab, note }: { c: any; c
               }}
               style={{
                 padding: "4px 8px",
-                background: entered ? "#34c759" : "#1a1a1f",
-                color: entered ? "#000" : saveFailed ? "#ff9f0a" : "#34c759",
-                border: `1px solid ${saveFailed ? "#ff9f0a" : "#34c759"}`,
+                background: entered ? brand.blue : "#1a1a1f",
+                color: entered ? brand.fg : saveFailed ? "#ff9f0a" : brand.blueText,
+                border: `1px solid ${saveFailed ? "#ff9f0a" : brand.blue}`,
                 borderRadius: "4px",
                 fontSize: "10px",
                 fontWeight: 600,
@@ -107,8 +108,8 @@ export function CoinRow({ c, color, score, isBuySignal, tab, note }: { c: any; c
               style={{
                 padding: "4px 8px",
                 background: "#1a1a1f",
-                color: "#34c759",
-                border: "1px solid #34c759",
+                color: brand.blueText,
+                border: `1px solid ${brand.blueLine}`,
                 borderRadius: "4px",
                 fontSize: "10px",
                 fontWeight: 600,
@@ -188,9 +189,9 @@ export function UltraCard({ c, entered, onEnter, tab, note }: { c: any; entered:
             }}
             style={{
               padding: "4px 8px",
-              background: entered ? "#34c759" : "#1a1a1f",
-              color: entered ? "#000" : "#34c759",
-              border: "1px solid #34c759",
+              background: entered ? brand.blue : "#1a1a1f",
+              color: entered ? brand.fg : brand.blueText,
+              border: `1px solid ${brand.blue}`,
               borderRadius: "4px",
               fontSize: "10px",
               fontWeight: 600,
@@ -208,8 +209,8 @@ export function UltraCard({ c, entered, onEnter, tab, note }: { c: any; entered:
             style={{
               padding: "4px 8px",
               background: "#1a1a1f",
-              color: "#ff9500",
-              border: "1px solid #ff9500",
+              color: brand.blueText,
+              border: `1px solid ${brand.blueLine}`,
               borderRadius: "4px",
               fontSize: "10px",
               fontWeight: 600,

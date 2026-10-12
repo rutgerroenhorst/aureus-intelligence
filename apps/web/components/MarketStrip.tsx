@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { usePolling } from "@/lib/usePolling";
+import { brand } from "@/lib/brand";
 
 interface Meta { name: string; slug: string; mcap: number | null; h24: number | null; h6: number | null }
 interface Now {
@@ -47,7 +48,7 @@ export function MarketStrip() {
       {item("Solana DEX volume", usd(n.dex24h), `${sgn(n.dexChange1d, 0)} vs yesterday · ${sgn(n.dexChange7d, 0)} vs last week`, tone(n.dexChange1d))}
       {item("pump.fun volume", usd(n.pump24h), `${sgn(n.pumpChange1d, 0)} vs yesterday`, tone(n.pumpChange1d))}
       {item("Fear and greed", n.fng != null ? `${n.fng} ${n.fngLabel ?? ""}` : "-")}
-      {hot.length > 0 && item("Narratives moving", hot.map((m) => m.name).join(" · "), hot.map((m) => sgn(m.h24, 1)).join(" · "), "#30b0c0")}
+      {hot.length > 0 && item("Narratives moving", hot.map((m) => m.name).join(" · "), hot.map((m) => sgn(m.h24, 1)).join(" · "), brand.blueText)}
     </div>
   );
 }

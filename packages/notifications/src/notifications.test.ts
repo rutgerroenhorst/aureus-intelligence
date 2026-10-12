@@ -29,7 +29,7 @@ describe("html escaping", () => {
   });
   it("RISK message shows previous/new state", () => {
     const msg = renderMessage(proposal({ level: "RISK", policyId: "RISK", stateFrom: "ENTRY_WATCH", stateTo: "REJECTED", riskReasons: ["SAF-005 FAIL"] }), facts);
-    expect(msg).toContain("AUREUS RISK");
+    expect(msg).toContain("AURIGA RISK");
     expect(msg).toContain("New state: REJECTED");
     expect(msg).toContain("SAF-005 FAIL");
   });

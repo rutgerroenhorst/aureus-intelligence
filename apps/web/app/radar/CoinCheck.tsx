@@ -2,6 +2,7 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import type { CheckLine } from "@/lib/coinCheck";
 import { AWAY_HOURS } from "@/lib/checkAway";
+import { brand } from "@/lib/brand";
 
 /** What the site answered when a coin was checked (lib/coinCheck.ts judgeCoin, plus when). */
 export interface CheckAnswer {
@@ -155,7 +156,7 @@ export function CheckBadge({ note }: { note: CheckNote | undefined }) {
   if (!note) return null;
   const said = note.verdict === "agree" ? "you doubted it, the site agreed" : note.verdict === "disagree" ? "you doubted it, the site did not agree" : "you doubted it, the site was unsure";
   return (
-    <div style={{ marginTop: 5, fontSize: 11, lineHeight: 1.4, color: note.returned ? "#30b0c0" : "#8a8a8e" }} title="From your earlier Check of this coin on this tab">
+    <div style={{ marginTop: 5, fontSize: 11, lineHeight: 1.4, color: note.returned ? brand.blueText : "#8a8a8e" }} title="From your earlier Check of this coin on this tab">
       {note.returned ? "↩ Back on this tab" : "🔍 Checked"} · {ago(note.at)} ({said}){note.returned ? ": the tab listed it again" : ""}
     </div>
   );
@@ -167,7 +168,7 @@ export function AwayLine({ count, shown, onToggle }: { count: number; shown: boo
   return (
     <div style={{ padding: "10px 16px 0", fontSize: 12, lineHeight: 1.5, color: "#8a8a8e" }}>
       🔍 {count} coin{count === 1 ? "" : "s"} left out because you checked {count === 1 ? "it" : "them"} and the site agreed (dead, or a serious problem). They come back after {AWAY_HOURS} hours, or when the tab lists them again.{" "}
-      <button onClick={onToggle} style={{ background: "none", border: "none", color: "#30b0c0", cursor: "pointer", padding: 0, fontSize: 12, textDecoration: "underline" }}>
+      <button onClick={onToggle} style={{ background: "none", border: "none", color: brand.blueText, cursor: "pointer", padding: 0, fontSize: 12, textDecoration: "underline" }}>
         {shown ? "Leave them out again" : "Show them"}
       </button>
     </div>

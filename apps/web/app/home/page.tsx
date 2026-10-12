@@ -4,6 +4,7 @@ import { usePolling } from "@/lib/usePolling";
 import { MarketStrip } from "@/components/MarketStrip";
 import { planCheck } from "@/lib/exitPlan";
 import { dexUrl } from "@/lib/chains";
+import { brand } from "@/lib/brand";
 
 interface Trade { id?: string; symbol: string; mint?: string; chain?: string; status: "active" | "exited"; multiplier: number; peakMultiple: number; lowMultiple: number; sizeUsd?: number | null; soldUsd?: number | null; soldFraction?: number | null; peakKnown?: boolean }
 interface Runner { mint: string; symbol: string | null; mcap: number | null; change24h: number | null; via: string; organic: number | null; holders: number | null; seenHoursAgo: number; flags: string[] }
@@ -69,7 +70,7 @@ export default function HomePage() {
   const label: Record<string, string> = { drained: "drained", empty: "empty pools", born: "born graduated", mayhem: "Mayhem Mode", gone: "no longer listed", small: "pools under $5K", waiting: "without a reading yet" };
   const skippedWhy = Object.entries(skipped.reduce<Record<string, number>>((a, g) => ((a[g.hiddenWhy ?? "small"] = (a[g.hiddenWhy ?? "small"] ?? 0) + 1), a), {})).map(([k, n]) => `${n} ${label[k] ?? k}`).join(", ");
   const gradAge = gradAsOf ? Math.max(0, Math.round((Date.now() - new Date(gradAsOf).getTime()) / 60_000)) : null;
-  const link = (href: string, text: string) => <a href={href} style={{ color: "#30b0c0", fontSize: 12, fontWeight: 600, textDecoration: "none" }}>{text}</a>;
+  const link = (href: string, text: string) => <a href={href} style={{ color: brand.blueText, fontSize: 12, fontWeight: 600, textDecoration: "none" }}>{text}</a>;
 
   return (
     <div style={{ padding: "18px 16px 90px", color: "#ececf4", maxWidth: 1100, margin: "0 auto" }}>

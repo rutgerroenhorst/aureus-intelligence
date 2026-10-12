@@ -1,4 +1,6 @@
-# Aureus Intelligence
+# Auriga
+
+*(formerly Aureus Intelligence. The name, mark and colours are described in [`docs/BRAND.md`](docs/BRAND.md); package names, the database and the environment variables keep the old name.)*
 
 Private, read-only Solana early-coin intelligence platform. Ingests market,
 on-chain, wallet, deployer, liquidity, and attention data and converts it into a

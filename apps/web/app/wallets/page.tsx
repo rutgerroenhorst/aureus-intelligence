@@ -49,7 +49,7 @@ export default function WalletsPage() {
               No wallets tracked yet
             </h2>
             <p style={{ fontSize: "14px", color: "var(--text-muted)", lineHeight: 1.6 }}>
-              Wallets verified through Aureus intelligence analysis will appear here.
+              Wallets verified through Auriga's analysis will appear here.
             </p>
           </div>
         </div>
@@ -74,7 +74,7 @@ export default function WalletsPage() {
                   (e.currentTarget as HTMLElement).style.background = "linear-gradient(180deg, var(--bg-interactive) 0%, var(--bg-elevated) 100%)";
                   (e.currentTarget as HTMLElement).style.borderColor = "var(--border-color-highlight)";
                 }}>
-                <div style={{ width: "40px", height: "40px", borderRadius: "8px", background: "linear-gradient(135deg, #866CFF 0%, #2585FF 100%)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <div style={{ width: "40px", height: "40px", borderRadius: "8px", background: "linear-gradient(135deg, #866CFF 0%, #2f5bff 100%)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                   <span style={{ fontSize: "14px", fontWeight: 700, color: "#020914" }}>W</span>
                 </div>
                 <div style={{ flex: 1, minWidth: "0" }}>

@@ -86,7 +86,7 @@ export default function Error({ error, reset }: { error: Error & { digest?: stri
     <div className="errpage">
       <div className="err-kicker">{dbDown ? "DATASTORE UNREACHABLE" : "PAGE RENDER FAILED"}</div>
       <h1 className="err-h">
-        {dbDown ? "Aureus cannot reach its database" : "This page failed to render"}
+        {dbDown ? "Auriga cannot reach its database" : "This page failed to render"}
       </h1>
 
       {dbDown ? (

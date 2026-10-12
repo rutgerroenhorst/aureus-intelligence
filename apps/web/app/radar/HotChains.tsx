@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { dexUrl } from "@/lib/chains";
 import { CheckBadge, CheckButton, CheckPanel, useCoinCheck, type CheckNote } from "./CoinCheck";
 import type { HotChain, HotPool } from "@/lib/hotChains";
+import { brand } from "@/lib/brand";
 
 export interface HotClient {
   at: string;
@@ -21,7 +22,7 @@ const pct = (v: number | null | undefined) => (v == null || !Number.isFinite(v) 
 const col = (v: number | null | undefined) => (v == null ? "#b4b4c6" : v >= 0 ? "#34c759" : "#ff453a");
 const age = (h: number | null) => (h == null ? null : h < 48 ? `${Math.max(1, Math.round(h))} h` : h < 24 * 90 ? `${Math.round(h / 24)} d` : `${(h / 24 / 365).toFixed(1)} y`);
 
-const btn: React.CSSProperties = { padding: "6px 12px", background: "#1a1a1f", color: "#34c759", border: "1px solid #34c759", borderRadius: 4, fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap", textDecoration: "none" };
+const btn: React.CSSProperties = { padding: "6px 12px", background: "#1a1a1f", color: brand.blueText, border: `1px solid ${brand.blue}`, borderRadius: 4, fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap", textDecoration: "none" };
 const chip = (on: boolean): React.CSSProperties => ({ padding: "5px 10px", fontSize: 12, borderRadius: 6, cursor: "pointer", background: on ? "#2a2a3e" : "#1a1a1f", color: on ? "#fff" : "#8a8a8e", border: `1px solid ${on ? "#4a4a66" : "#2a2a2f"}` });
 
 /** New or exploding, small, with a pool that can be traded: the coins worth a look rather than the blue chips that trend every day. */
@@ -37,11 +38,11 @@ export function HotChainsBar({ hot, selected, onSelect }: { hot: HotClient | nul
         {hot.chains.map((c) => {
           const on = c.id === sel?.id;
           return (
-            <button key={c.id} onClick={() => onSelect(c.id)} style={{ flex: "0 0 auto", minWidth: 96, textAlign: "left", padding: "7px 10px", borderRadius: 8, cursor: "pointer", background: on ? "#16301f" : "#141418", border: `1px solid ${on ? "#34c759" : "#2a2a2f"}`, color: "#fff" }}>
+            <button key={c.id} onClick={() => onSelect(c.id)} style={{ flex: "0 0 auto", minWidth: 96, textAlign: "left", padding: "7px 10px", borderRadius: 8, cursor: "pointer", background: on ? brand.blueSoft : "#141418", border: `1px solid ${on ? brand.blue : "#2a2a2f"}`, color: "#fff" }}>
               <div style={{ display: "flex", alignItems: "baseline", gap: 6, fontSize: 13, fontWeight: 700 }}>
                 <span style={{ color: c.rank === 1 ? "#ff9f0a" : "#8a8a8e", fontSize: 12 }}>{c.rank}</span>
                 <span>{c.label}</span>
-                {c.fomo && <span title="Supported by the FOMO app" style={{ fontSize: 9, color: "#30b0c0", border: "1px solid #30b0c0", borderRadius: 3, padding: "0 3px" }}>FOMO</span>}
+                {c.fomo && <span title="Supported by the FOMO app" style={{ fontSize: 9, color: brand.blueText, border: `1px solid ${brand.blueText}`, borderRadius: 3, padding: "0 3px" }}>FOMO</span>}
               </div>
               <div style={{ height: 3, borderRadius: 2, background: "#2a2a2f", marginTop: 6 }}>
                 <div style={{ height: 3, borderRadius: 2, width: `${Math.max(4, c.heat)}%`, background: c.heat >= 66 ? "#ff9f0a" : c.heat >= 33 ? "#34c759" : "#4a4a66" }} />
@@ -79,10 +80,10 @@ function HotCard({ p, entered, failed, onEnter, note }: { p: HotPool; entered: b
           </div>
         </div>
         <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-          <button onClick={() => onEnter(p)} disabled={entered} style={{ ...btn, background: entered ? "#34c759" : "#1a1a1f", color: entered ? "#000" : failed ? "#ff9f0a" : "#34c759", borderColor: failed ? "#ff9f0a" : "#34c759" }}>
+          <button onClick={() => onEnter(p)} disabled={entered} style={{ ...btn, background: entered ? brand.blue : "#1a1a1f", color: entered ? brand.fg : failed ? "#ff9f0a" : brand.blueText, borderColor: failed ? "#ff9f0a" : brand.blue }}>
             {entered ? "✅ Entered" : failed ? "⚠ Not saved" : "✔ Enter"}
           </button>
-          <a href={dexUrl(p.chain, p.pair)} target="_blank" rel="noreferrer" style={btn}>
+          <a href={dexUrl(p.chain, p.pair)} target="_blank" rel="noreferrer" style={{ ...btn, border: `1px solid ${brand.blueLine}` }}>
             DexScreener
           </a>
           <CheckButton state={check} fontSize={12} />

@@ -6,13 +6,13 @@ const WatchlistGraphic = () => (
     <defs>
       <linearGradient id="watchGrad" x1="0%" y1="0%" x2="100%" y2="100%">
         <stop offset="0%" stopColor="#20E7A3" stopOpacity="0.4" />
-        <stop offset="100%" stopColor="#2585FF" stopOpacity="0.2" />
+        <stop offset="100%" stopColor="#2f5bff" stopOpacity="0.2" />
       </linearGradient>
     </defs>
     <path d="M200 50 L350 150 L300 300 L100 300 L50 150 Z" fill="none" stroke="url(#watchGrad)" strokeWidth="2" opacity="0.6" />
     <circle cx="200" cy="180" r="60" fill="none" stroke="#20E7A3" strokeWidth="1.5" opacity="0.4" />
-    <path d="M200 120 L200 240" stroke="#2585FF" strokeWidth="1" opacity="0.3" />
-    <path d="M140 180 L260 180" stroke="#2585FF" strokeWidth="1" opacity="0.3" />
+    <path d="M200 120 L200 240" stroke="#2f5bff" strokeWidth="1" opacity="0.3" />
+    <path d="M140 180 L260 180" stroke="#2f5bff" strokeWidth="1" opacity="0.3" />
   </svg>
 );
 

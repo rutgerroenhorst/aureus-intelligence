@@ -45,7 +45,7 @@ const StreamOfflineState = () => (
           Live feed disconnected
         </h2>
         <p style={{ fontSize: "14px", color: "var(--text-muted)", lineHeight: 1.6, marginBottom: "28px" }}>
-          Waiting for Aureus backend connection. Token discoveries and evaluation events will appear here as they flow through the system.
+          Waiting for the Auriga backend connection. Token discoveries and evaluation events will appear here as they flow through the system.
         </p>
         <div style={{ display: "flex", alignItems: "center", gap: "8px", justifyContent: "center", color: "var(--text-secondary)", fontSize: "12px", fontWeight: 600 }}>
           <div style={{ width: "7px", height: "7px", borderRadius: "50%", background: "#FF546A" }} />

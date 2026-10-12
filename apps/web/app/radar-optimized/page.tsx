@@ -190,7 +190,7 @@ export default function RadarOptimized() {
         borderBottom: "1px solid #2a2a2f",
         background: "#0f1116"
       }}>
-        <h1 style={{ margin: "0 0 12px 0", fontSize: "24px", fontWeight: 700 }}>📡 Aureus Radar</h1>
+        <h1 style={{ margin: "0 0 12px 0", fontSize: "24px", fontWeight: 700 }}>📡 Auriga Radar</h1>
         <div style={{ fontSize: "12px", color: "#8a8a8e" }}>
           Real-time early coin detection powered by velocity signals
         </div>

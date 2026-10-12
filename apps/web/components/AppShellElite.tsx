@@ -3,25 +3,12 @@ import React, { ReactNode, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { usePolling, msSinceTouch, DEFAULT_DEEP_IDLE_AFTER_MS, SCAN_DONE_EVENT } from "@/lib/usePolling";
+import { brand } from "@/lib/brand";
+import { AurigaMark, AurigaWordmark } from "./AurigaLogo";
 
 interface AppShellEliteProps {
   children: ReactNode;
 }
-
-// Each instance needs its own gradient id: a gradient defined inside a display:none SVG (the sidebar on
-// phones) cannot be referenced from another SVG, which made the top-bar logo disappear.
-const AureusLogo = ({ id = "aGrad" }: { id?: string }) => (
-  <svg viewBox="0 0 40 40" width="28" height="28" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <defs>
-      <linearGradient id={id} x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" stopColor="#2585FF" />
-        <stop offset="100%" stopColor="#35DCFF" />
-      </linearGradient>
-    </defs>
-    <path d="M 8 32 L 20 8 L 32 32 M 14 24 L 26 24" stroke={`url(#${id})`} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-    <circle cx="20" cy="20" r="18" fill="none" stroke={`url(#${id})`} strokeWidth="1" opacity="0.3"/>
-  </svg>
-);
 
 const NavIcon = ({ type }: { type: string }) => {
   const iconProps = { width: "16", height: "16", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
@@ -68,7 +55,7 @@ interface Health {
 const HEALTH_COLOR: Record<HealthLevel, string> = {
   unknown: "#8a8a8e",
   ok: "#34c759",
-  scanning: "#30b0c0",
+  scanning: brand.blueText,
   stale: "#ff9f0a",
   down: "#ff3b30",
 };
@@ -182,26 +169,26 @@ export default function AppShellElite({ children }: AppShellEliteProps) {
   const moreActive = moreNav.some((n) => isActive(n.href));
 
   return (
-    <div className="ae-root" style={{ display: "flex", height: "100vh", background: "#0a0908", fontFamily: "'Inter', -apple-system, sans-serif" }}>
+    <div className="ae-root" style={{ display: "flex", height: "100vh", background: brand.bg, fontFamily: "'Inter', -apple-system, sans-serif" }}>
       {/* PREMIUM SIDEBAR (desktop / tablet landscape) */}
       <aside className="ae-aside" style={{
         width: "220px",
-        background: "linear-gradient(180deg, #0f1116 0%, #0a0908 100%)",
+        background: `linear-gradient(180deg, #0f1116 0%, ${brand.bg} 100%)`,
         borderRight: "1px solid #1a1a1f",
         display: "flex",
         flexDirection: "column",
         padding: "20px 0",
         overflowY: "auto",
-        color: "#e5e5e7",
+        color: brand.fg,
       }}>
         {/* LOGO AREA */}
         <div style={{ paddingLeft: "16px", paddingRight: "16px", marginBottom: "32px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
-            <AureusLogo />
-            <span style={{ fontSize: "13px", fontWeight: 700, letterSpacing: "0.5px", color: "#fff" }}>AUREUS</span>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "7px" }}>
+            <AurigaMark size={24} />
+            <AurigaWordmark size={15} />
           </div>
-          <div style={{ fontSize: "10px", fontWeight: 600, color: "#8a8a8e", letterSpacing: "0.4px", textTransform: "uppercase" }}>
-            Elite Intelligence
+          <div style={{ fontSize: "9px", fontWeight: 600, color: "#8a8a8e", letterSpacing: "0.14em", textTransform: "uppercase" }}>
+            {brand.descriptor}
           </div>
         </div>
 
@@ -236,12 +223,12 @@ export default function AppShellElite({ children }: AppShellEliteProps) {
                         padding: "8px 16px",
                         margin: "2px 10px",
                         borderRadius: "6px",
-                        color: active ? "#35DCFF" : "#a1a1a6",
+                        color: active ? brand.blueText : "#a1a1a6",
                         textDecoration: "none",
                         fontSize: "12px",
                         fontWeight: active ? 600 : 500,
-                        background: active ? "rgba(53, 220, 255, 0.12)" : "transparent",
-                        borderLeft: `2px solid ${active ? "#35DCFF" : "transparent"}`,
+                        background: active ? brand.blueSoft : "transparent",
+                        borderLeft: `2px solid ${active ? brand.blue : "transparent"}`,
                         transition: "all 150ms ease",
                         cursor: "pointer",
                       }}
@@ -299,8 +286,8 @@ export default function AppShellElite({ children }: AppShellEliteProps) {
         flex: 1,
         display: "flex",
         flexDirection: "column",
-        background: "#0a0908",
-        color: "#e5e5e7",
+        background: brand.bg,
+        color: brand.fg,
         overflow: "hidden",
       }}>
         {/* TOP BAR */}
@@ -311,11 +298,11 @@ export default function AppShellElite({ children }: AppShellEliteProps) {
           alignItems: "center",
           paddingLeft: "32px",
           paddingRight: "32px",
-          background: "linear-gradient(90deg, #0f1116 0%, #0a0908 100%)",
+          background: `linear-gradient(90deg, #0f1116 0%, ${brand.bg} 100%)`,
         }}>
           <div className="ae-top-logo">
-            <AureusLogo id="aGradTop" />
-            <span>AUREUS</span>
+            <AurigaMark size={22} />
+            <AurigaWordmark size={14} />
           </div>
           <div style={{
             display: "flex",

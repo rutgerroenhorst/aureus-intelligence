@@ -61,7 +61,7 @@ export class TelegramChannel implements NotificationChannel {
 
   /** Simple connectivity test used by `pnpm telegram:test`. */
   testConnection(): Promise<SendResult> {
-    return this.send({ text: "Aureus Intelligence Telegram connection successful.", parseMode: "HTML" });
+    return this.send({ text: "Auriga Telegram connection successful.", parseMode: "HTML" });
   }
 }
 

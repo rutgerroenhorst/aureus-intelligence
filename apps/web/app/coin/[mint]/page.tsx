@@ -5,6 +5,7 @@ import s from "@/app/learning/lab.module.css";
 import { Badge, Note, Section } from "@/app/learning/parts";
 import { hours, usd } from "@/app/learning/format";
 import type { Dossier } from "@/lib/dossier";
+import { brand } from "@/lib/brand";
 
 const pct = (v: number | null | undefined, d = 0) => (v == null || !Number.isFinite(v) ? "-" : `${v >= 0 && d === 0 && false ? "+" : ""}${v.toFixed(d)}%`);
 const signed = (v: number | null | undefined) => (v == null || !Number.isFinite(v) ? "-" : `${v >= 0 ? "+" : "−"}${Math.abs(v) >= 100 ? Math.abs(v).toFixed(0) : Math.abs(v).toFixed(1)}%`);
@@ -40,7 +41,7 @@ function Chart({ candles, mcapPerPrice }: { candles: Array<[number, number, numb
       {days.map((t) => (
         <text key={t} x={x(t)} y={H - 6} textAnchor="middle" fontSize="10" fill="#8a8a9e">{new Date(t * 1000).toISOString().slice(5, 10)}</text>
       ))}
-      <path d={line} fill="none" stroke="#30b0c0" strokeWidth="1.7" />
+      <path d={line} fill="none" stroke={brand.blueText} strokeWidth="1.7" />
     </svg>
   );
 }

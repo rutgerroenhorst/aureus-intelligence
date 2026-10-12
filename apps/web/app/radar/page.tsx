@@ -8,6 +8,7 @@ import { HotChainsBar, HotTab, isNewSmall, type HotClient } from "./HotChains";
 import { AwayLine, CheckHubContext, type CheckAnswer, type CheckHub, type CheckNote } from "./CoinCheck";
 import { CoinRow, UltraCard } from "./CoinRow";
 import { leaveOut, mergeNotes, noteKey } from "@/lib/checkAway";
+import { brand } from "@/lib/brand";
 
 interface Candidate {
   id: string;
@@ -39,9 +40,9 @@ function TabButton({ label, count, active, onSelect }: { label: string; count?: 
       onClick={onSelect}
       style={{
         padding: "8px 16px",
-        background: active ? "#34c759" : "#1a1a1f",
-        color: active ? "#000" : "#8a8a8e",
-        border: `1px solid ${active ? "#34c759" : "#2a2a2f"}`,
+        background: active ? brand.blue : "#1a1a1f",
+        color: active ? brand.fg : "#8a8a8e",
+        border: `1px solid ${active ? brand.blue : "#2a2a2f"}`,
         borderRadius: "6px",
         cursor: "pointer",
         fontSize: "12px",
@@ -281,7 +282,7 @@ export default function RadarPageElite() {
               <div style={{ color: "#8a8a8e", marginTop: "4px" }}>🔥 Hot</div>
             </div>
             <div style={{ background: "#1a1a1f", padding: "12px", borderRadius: "6px", textAlign: "center" }}>
-              <div style={{ color: "#30b0c0", fontWeight: 700, fontSize: "16px" }}>{tiles.rising || 0}</div>
+              <div style={{ color: brand.blueText, fontWeight: 700, fontSize: "16px" }}>{tiles.rising || 0}</div>
               <div style={{ color: "#8a8a8e", marginTop: "4px" }}>⚡ Rising</div>
             </div>
             <div style={{ background: "#1a1a1f", padding: "12px", borderRadius: "6px", textAlign: "center" }}>
@@ -307,8 +308,8 @@ export default function RadarPageElite() {
 
         {rising.length > 0 && (
           <>
-            <h3 style={{ color: "#30b0c0", marginBottom: "12px", marginTop: "16px" }}>⚡ RISING ({rising.length})</h3>
-            {rising.map((c, i) => <CoinRow key={`rising-${c.mint ?? i}`} c={c} color="#30b0c0" score={c.cateScore} {...rowProps(c)} />)}
+            <h3 style={{ color: brand.blueText, marginBottom: "12px", marginTop: "16px" }}>⚡ RISING ({rising.length})</h3>
+            {rising.map((c, i) => <CoinRow key={`rising-${c.mint ?? i}`} c={c} color={brand.blueText} score={c.cateScore} {...rowProps(c)} />)}
           </>
         )}
 
@@ -422,7 +423,7 @@ export default function RadarPageElite() {
       <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
         <div style={{ marginBottom: "24px" }}>
           <h1 style={{ fontSize: "24px", fontWeight: 700, marginBottom: "16px", color: "#fff" }}>
-            📊 Aureus Radar
+            📊 Auriga Radar
           </h1>
           
           {/* the networks only change the Hot tab: every other tab is Solana, so the bar would suggest a choice that does nothing there */}

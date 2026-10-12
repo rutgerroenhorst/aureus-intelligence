@@ -297,7 +297,7 @@ function WatchPlan({ c }: { c: BoardCandidate }) {
   const p = w.plan;
   return (
     <div className={`ab-entry ${w.status === "ENTRY_READY" ? "go" : "wait"}`}>
-      <div className="ab-entry-h">{p?.label ?? "WHAT AUREUS IS WAITING FOR"}</div>
+      <div className="ab-entry-h">{p?.label ?? "WHAT AURIGA IS WAITING FOR"}</div>
       <div className="ab-check">
         <div className="col"><div className="ttl">Confirmed</div>
           {(w.confirmed.length ? w.confirmed : w.positives).map((t, i) => <div key={i} className="ok">✓ {t}</div>)}
@@ -359,7 +359,7 @@ function EntryPanel({ c }: { c: BoardCandidate }) {
   }
   return (
     <div className="ab-entry wait">
-      <div className="ab-entry-h">WHAT AUREUS IS WAITING FOR</div>
+      <div className="ab-entry-h">WHAT AURIGA IS WAITING FOR</div>
       <div className="ab-check">
         <div className="col"><div className="ttl">Confirmed</div>{a.waitingConfirmed.map((t, i) => <div key={i} className="ok">✓ {t}</div>)}</div>
         <div className="col"><div className="ttl">Waiting</div>{a.waitingOpen.map((t, i) => <div key={i} className="open">○ {t}</div>)}</div>

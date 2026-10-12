@@ -102,7 +102,7 @@ export default function OpsPage() {
                   </div>
                   <div style={{ padding: "12px", background: "var(--bg-raised)", border: "1px solid var(--border-color)", borderRadius: "8px" }}>
                     <div style={{ fontSize: "11px", color: "var(--text-muted)", marginBottom: "4px" }}>Total Candidates</div>
-                    <div style={{ fontSize: "16px", fontWeight: 700, color: "#2585FF" }}>{status.candidateCount || "—"}</div>
+                    <div style={{ fontSize: "16px", fontWeight: 700, color: "#7f97ff" }}>{status.candidateCount || "—"}</div>
                   </div>
                 </div>
               </div>

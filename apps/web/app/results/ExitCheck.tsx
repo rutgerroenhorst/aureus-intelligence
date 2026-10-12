@@ -32,7 +32,7 @@ export function ExitCheck({ trades }: { trades: Trade[] }) {
     <div style={{ background: "#0f1116", border: "1px solid #2a2a2f", borderRadius: 8, padding: 16, marginBottom: 24 }}>
       <h3 style={{ margin: "0 0 4px", color: "#fff", fontSize: 15 }}>Your open trades against an example exit plan</h3>
       <div style={{ fontSize: 12, color: "#8a8a8e", lineHeight: 1.5, marginBottom: 12 }}>
-        The example plan sells a quarter at 2x, 5x and 10x, stops out at -50% until the first sale and 40% below the highest point after it. It is not advice and not a promise: it only shows what the plan would have kept from the gain each trade offered. Based on the highest, lowest and latest market caps the journal saved (checked while Aureus is open); a stop is assumed to fill at its level, which on a thin pool can be worse.
+        The example plan sells a quarter at 2x, 5x and 10x, stops out at -50% until the first sale and 40% below the highest point after it. It is not advice and not a promise: it only shows what the plan would have kept from the gain each trade offered. Based on the highest, lowest and latest market caps the journal saved (checked while Auriga is open); a stop is assumed to fill at its level, which on a thin pool can be worse.
       </div>
       <div style={{ fontSize: 13, color: "#ececf4", marginBottom: 12 }}>
         {left > 0 && <span style={{ color: "#8a8a8e" }}>({left} older trades from your wallet are left out: their price path was not recorded.) </span>}

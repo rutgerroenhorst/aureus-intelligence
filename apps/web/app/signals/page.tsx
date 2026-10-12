@@ -41,7 +41,7 @@ const Sparkline = ({ change }: { change?: number }) => {
 
 const TokenAvatar = ({ symbol }: { symbol?: string }) => {
   const initials = (symbol || "?").slice(0, 2).toUpperCase();
-  const colors = ["#20E5A3", "#2585FF", "#866CFF", "#FFB52F", "#FF546A"];
+  const colors = ["#20E5A3", "#7f97ff", "#866CFF", "#FFB52F", "#FF546A"];
   const colorIndex = (symbol || "").charCodeAt(0) % colors.length;
   return (
     <div style={{
@@ -90,7 +90,7 @@ export default function SignalsPage() {
 
   const getCategoryColor = (cat: string) => {
     const colors: Record<string, string> = {
-      "Wallets": "#2585FF",
+      "Wallets": "#7f97ff",
       "Structure": "#20E5A3",
       "Liquidity": "#FFB52F",
       "Risk": "#FF546A",
@@ -102,7 +102,7 @@ export default function SignalsPage() {
     const colors: Record<string, string> = {
       "CRITICAL": "#FF546A",
       "HIGH": "#FFB52F",
-      "MEDIUM": "#2585FF",
+      "MEDIUM": "#7f97ff",
     };
     return colors[pri] || "#20E5A3";
   };
@@ -125,7 +125,7 @@ export default function SignalsPage() {
           {/* KPIs */}
           <div className="sig-pad" style={{ padding: "16px 24px", borderBottom: "1px solid var(--border-color)", display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "12px", flexShrink: 0 }}>
           {[
-            { label: "Live Signals", value: signals.length, color: "#2585FF" },
+            { label: "Live Signals", value: signals.length, color: "#7f97ff" },
             { label: "Qualified", value: criticalCount, color: "#20E5A3" },
             { label: "In Watch", value: highCount, color: "#FFB52F" },
             { label: "Rejected", value: mediumCount, color: "#FF546A" },
@@ -150,9 +150,9 @@ export default function SignalsPage() {
                 style={{
                   padding: "8px 12px",
                   borderRadius: "6px",
-                  border: statusFilter === f.key ? "1px solid #2585FF" : "1px solid var(--border-color)",
+                  border: statusFilter === f.key ? "1px solid #2f5bff" : "1px solid var(--border-color)",
                   background: statusFilter === f.key ? "rgba(37, 133, 255, 0.1)" : "transparent",
-                  color: statusFilter === f.key ? "#2585FF" : "var(--text-secondary)",
+                  color: statusFilter === f.key ? "#7f97ff" : "var(--text-secondary)",
                   fontSize: "11px",
                   fontWeight: 600,
                   cursor: "pointer",
@@ -205,7 +205,7 @@ export default function SignalsPage() {
                       borderBottom: "1px solid var(--border-color)",
                       background: selectedSignal?.id === signal.id ? "rgba(37, 133, 255, 0.08)" : "transparent",
                       cursor: "pointer",
-                      borderLeft: selectedSignal?.id === signal.id ? "3px solid #2585FF" : "3px solid transparent",
+                      borderLeft: selectedSignal?.id === signal.id ? "3px solid #2f5bff" : "3px solid transparent",
                     }}>
                     <td style={{ padding: "10px 12px", color: "var(--text-muted)", fontSize: "9px" }}>
                       {new Date(signal.createdAt).toLocaleTimeString()}
@@ -284,7 +284,7 @@ export default function SignalsPage() {
           </div>
 
           <div style={{ padding: "12px 14px", borderTop: "1px solid var(--border-color)", flexShrink: 0, display: "flex", gap: "8px", flexDirection: "column" }}>
-            <button style={{ width: "100%", padding: "10px", background: "#2585FF", color: "#020914", border: "none", borderRadius: "6px", fontWeight: 700, fontSize: "12px", cursor: "pointer" }}>
+            <button style={{ width: "100%", padding: "10px", background: "#2f5bff", color: "#f3f0e8", border: "none", borderRadius: "6px", fontWeight: 700, fontSize: "12px", cursor: "pointer" }}>
               Set Alert
             </button>
             <button style={{ width: "100%", padding: "10px", background: "transparent", color: "var(--text-secondary)", border: "1px solid var(--border-color)", borderRadius: "6px", fontWeight: 600, fontSize: "12px", cursor: "pointer" }}>

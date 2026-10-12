@@ -81,7 +81,7 @@ export default function CommandCenter() {
     <div style={{ minHeight: "100vh", background: "#0a0a0d", color: "#fff", fontFamily: "monospace", display: "flex", flexDirection: "column" }}>
       {/* HEADER */}
       <div style={{ background: "#0f1116", borderBottom: "1px solid #2a2a2f", padding: "16px 20px" }}>
-        <h1 style={{ margin: "0", fontSize: "18px" }}>📡 AUREUS COMMAND CENTER</h1>
+        <h1 style={{ margin: "0", fontSize: "18px" }}>📡 AURIGA COMMAND CENTER</h1>
         <div style={{ fontSize: "11px", color: "#8a8a8e" }}>Bloomberg Terminal for moonshots</div>
       </div>
 
