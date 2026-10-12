@@ -175,7 +175,7 @@ registered for graduations first seen after 2026-10-10 15:35 UTC. The Graduation
 example: a coin 12 minutes after graduation with 2,698 holders where insider networks of 4,759 wallets held 91% of the supply.
 
 **Without the laptop (2026-10-12).** The Graduations *tab* no longer depends on the stream: the site reads pump.fun's graduations from the chain every 3 minutes (docs/GRADUATIONS_FEED.md) and builds the same
-tab from those rows when the laptop's own rows or its pushed snapshot (at most 20 minutes old) are not there. The lab's launch tables, its watch list (lane `graduate` from minute 0) and everything it learns
+tab from those rows when the laptop's own rows or its pushed snapshot (at most 8 minutes old) are not there. The lab's launch tables, its watch list (lane `graduate` from minute 0) and everything it learns
 from the first seconds still come from the stream, so they stay laptop-only.
 
 **The phone.** The stream can only be held by a long-running process on the laptop. With `LAB_SYNC_URL` (a connection string for the hosted

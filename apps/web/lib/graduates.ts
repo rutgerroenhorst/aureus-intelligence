@@ -205,8 +205,12 @@ export const resetGraduatesMemo = () => {
   memo = null;
 };
 
-/** The laptop's pushed snapshot counts as live while it is younger than this: it pushes every 3 minutes while it is awake. */
-const PUSHED_FRESH_MIN = 20;
+/**
+ * The laptop's pushed snapshot counts as live while it is younger than this: it pushes every 3 minutes while it is awake, so a snapshot older than two missed pushes means the laptop is
+ * asleep or closed, and the site's own list (the chain feed, refreshed every 3 minutes) takes over. It was 20 minutes, which left a phone looking at a frozen list for 20 minutes
+ * after the laptop was closed.
+ */
+const PUSHED_FRESH_MIN = 8;
 
 /**
  * What to show right now:

@@ -108,7 +108,13 @@ describe("which list the hosted site shows", () => {
     await currentGraduates(fakeDb(chainRows, { finished, pushed: null, seen }));
     expect(seen.at(-1)![1]).toBe(true);
   });
-  it("shows the site's own chain feed once the laptop's snapshot is more than 20 minutes old", async () => {
+  it("hands over to the site's own list within minutes of the laptop going quiet: a snapshot of 6 minutes still counts as live, one of 10 does not", async () => {
+    resetGraduatesMemo();
+    expect((await currentGraduates(fakeDb(chainRows, { finished, pushed: pushedAt(6) }))).source).toBe("laptop");
+    resetGraduatesMemo();
+    expect((await currentGraduates(fakeDb(chainRows, { finished, pushed: pushedAt(10) }))).source).toBe("chain");
+  });
+  it("shows the site's own chain feed once the laptop's snapshot is more than 8 minutes old", async () => {
     const g = await currentGraduates(fakeDb(chainRows, { finished, pushed: pushedAt(45) }));
     expect(g.source).toBe("chain");
     expect(g.candidates[0]!.mint).toBe(mint("B"));

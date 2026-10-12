@@ -39,9 +39,9 @@ what makes it "born".
 
 ## Which source the tab shows
 
-In this order (`currentGraduates`): the stream's own rows when this process has them (the laptop) → the snapshot the laptop pushed, if it is **at most 20 minutes old** → the chain rows (the last 6
+In this order (`currentGraduates`): the stream's own rows when this process has them (the laptop) → the snapshot the laptop pushed, if it is **at most 8 minutes old** (it pushes every 3 minutes while awake) → the chain rows (the last 6
 hours) → an older pushed snapshot (with the warning). So with the laptop awake nothing changes (the stream has the exact second and everything the lab learns from); when it sleeps, the site takes over
-within 20 minutes, and the tab says which source it is reading and how old it is ("Read from the chain every 3 minutes by the site itself (no laptop needed)").
+within 8 minutes of the laptop going quiet (it was 20 minutes until 2026-10-12 evening, which left a phone looking at a frozen list), and the tab says which source it is reading and how old it is ("Read from the chain every 3 minutes by the site itself (no laptop needed)").
 
 ## Checked against the stream
 
