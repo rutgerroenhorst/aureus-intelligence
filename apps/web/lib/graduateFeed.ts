@@ -79,6 +79,7 @@ export interface JupToken {
   id: string;
   name?: string;
   symbol?: string;
+  decimals?: number;
   launchpad?: string | null;
   createdAt?: string;
   graduatedAt?: string | null;
@@ -88,7 +89,17 @@ export interface JupToken {
   mcap?: number;
   fdv?: number;
   dev?: string;
-  audit?: { devMints?: number; devMigrations?: number };
+  holderCount?: number;
+  audit?: {
+    devMints?: number;
+    devMigrations?: number;
+    mintAuthorityDisabled?: boolean;
+    freezeAuthorityDisabled?: boolean;
+    /** share of the supply held by the 10 largest holders, in percent (0-100) */
+    topHoldersPercentage?: number;
+    /** share of the supply the creator still holds, in percent (0-100) */
+    devBalancePercentage?: number;
+  };
   stats5m?: JStats;
   stats1h?: JStats;
   stats6h?: JStats;

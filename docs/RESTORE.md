@@ -49,13 +49,14 @@ adds `coin_checks` (the user's Check presses with what was measured). Both addit
 Environment variables on Vercel: none were added or changed overnight. On 2026-10-11 three production variables of type *sensitive* were added for the 24/7 exit
 check: `CRON_SECRET`, `EXIT_ALERT_TOKEN`, `EXIT_ALERT_CHAT_ID` (docs/EXIT_ALERTS.md). Without them the route answers 401 or "no bot token configured" and nothing else changes.
 
-**The database clock (2026-10-11).** The hosted database has the extensions `pg_cron` and `pg_net`, one entry in Supabase Vault (`aureus_cron_secret`) and four jobs:
-`aureus-exit-alerts` (every 2 minutes, calls `/api/cron/exit-alerts`), `aureus-maintenance` (hourly, calls `/api/scan`: a market scan if one is due, the learning round and the
-housekeeping, the same round a screen asks for), `aureus-learning` (at :30 every hour, `/api/scan?only=learning`) and `aureus-cron-cleanup` (daily, deletes the clock's own run history
-older than 2 days). The fifth job, `aureus-watchdog` (every 5 minutes, db/hosted/watchdog.sql: messages the user on Telegram when the site's own check stops), keeps the bot token and the chat id in Vault (`aureus_telegram_token`,
+**The database clock (2026-10-11, extended 2026-10-12).** The hosted database has the extensions `pg_cron` and `pg_net`, one entry in Supabase Vault (`aureus_cron_secret`) and six jobs:
+`aureus-exit-alerts` (every 2 minutes, calls `/api/cron/exit-alerts`), `aureus-graduates` (every 3 minutes, calls `/api/cron/graduates`: reads pump.fun's graduations from the chain, docs/GRADUATIONS_FEED.md;
+migration `0039_pump_graduates_chain.sql` only adds the columns `via` and `facts` to `pump_graduates` and an index, so it can stay when the job is removed), `aureus-maintenance` (hourly, calls `/api/scan`: a market
+scan if one is due, the learning round and the housekeeping, the same round a screen asks for), `aureus-learning` (at :30 every hour, `/api/scan?only=learning`) and `aureus-cron-cleanup` (daily, deletes the
+clock's own run history older than 2 days). The sixth job, `aureus-watchdog` (every 5 minutes, db/hosted/watchdog.sql: messages the user on Telegram when the site's own check stops), keeps the bot token and the chat id in Vault (`aureus_telegram_token`,
 `aureus_telegram_chat`) and two functions (`public.aureus_watchdog`, `public.aureus_dur`) in the hosted database. To stop them: `LAB_SYNC_URL=<hosted connection string> corepack pnpm exec tsx scripts/cron-setup.ts remove` (add `--secret` to delete
 the vault entries and drop the two functions as well); the extensions are
-harmless and stay. The site then behaves as before: scans only while a screen is open, exit alerts only from the laptop daemon. The extra rows in `exit_alert_kv` (`hosted_tick`,
+harmless and stay. The site then behaves as before: scans only while a screen is open, exit alerts only from the laptop daemon, graduations only from the laptop's stream (and its pushed snapshot). The extra rows in `exit_alert_kv` (`hosted_tick`,
 `hosted_tick_ok`, `streaks`) and the 111 rows copied into the hosted `exit_alerts` are only read by the new code.
 
 Background processes started on the laptop during the overnight work: `scripts/lab-daemon.ts` (holds pump.fun's event stream and runs a lab round every 10 minutes). Stop it with `pkill -f lab-daemon`. The restore point's worker does not start it or the stream. If it was started with `LAB_SYNC_URL`, it also writes one row (`lab_reports`, kind `gradlist`) to the hosted database every 3 minutes; that row is additive and the restore point's code never reads it (delete it with `DELETE FROM lab_reports WHERE kind = 'gradlist'` if you want it gone).

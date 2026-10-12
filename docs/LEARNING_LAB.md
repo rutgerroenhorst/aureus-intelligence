@@ -136,7 +136,7 @@ averaged -25%. Crossing $300K does not make a coin special; the runner lane test
 - **Jupiter organic flow**: net buyers and organic volume are now collected with the same call (`net_buyer_share`, `organic_vol_share`, for
   coins seen from now on).
 
-### pump.fun's event stream (laptop only)
+### pump.fun's event stream (laptop only; the Graduations tab can also run without it)
 
 `apps/worker/src/pumpFeed.ts` holds PumpPortal's free websocket (one connection in the whole system, guarded by a database lock): every
 launch goes to `pump_launches` (72 h), every graduation to `pump_graduates` with what was known (minutes from launch to graduation, the
@@ -173,6 +173,10 @@ models until a forward test says they earn their place; hypothesis H10 (insider 
 registered for graduations first seen after 2026-10-10 15:35 UTC. The Graduations cards show holders, largest wallet and insider share, and flag
 "insider networks hold N%", "one wallet holds N%" and "liquidity not locked" (warnings only; nothing is hidden because of them yet). First real
 example: a coin 12 minutes after graduation with 2,698 holders where insider networks of 4,759 wallets held 91% of the supply.
+
+**Without the laptop (2026-10-12).** The Graduations *tab* no longer depends on the stream: the site reads pump.fun's graduations from the chain every 3 minutes (docs/GRADUATIONS_FEED.md) and builds the same
+tab from those rows when the laptop's own rows or its pushed snapshot (at most 20 minutes old) are not there. The lab's launch tables, its watch list (lane `graduate` from minute 0) and everything it learns
+from the first seconds still come from the stream, so they stay laptop-only.
 
 **The phone.** The stream can only be held by a long-running process on the laptop. With `LAB_SYNC_URL` (a connection string for the hosted
 database) set, the worker or `scripts/lab-daemon.ts` copies one small snapshot (graduations of the last 72 hours with their readings, and the
@@ -275,8 +279,8 @@ Cross-checked against GeckoTerminal's daily highs for the biggest winners afterw
 - Discovery blind spots found with HOTBOT (a coin the user holds that went about 10x): coins that graduate from pump.fun and pass
   $150K within the first hour, and coins days old that are already past the door's cap, never enter the Radar. The lanes (section 5)
   measure them from the moment the lab first sees them. The `graduate` lane only holds the young coins the worker's discovery pass
-  happens to see in DexScreener's search and launch feeds; seeing every graduation from minute 0 needs an on-chain feed (a Helius
-  key), which the system does not have. The `runner` lane is fed by Jupiter's lists, so it only holds coins that are already running.
+  happens to see in DexScreener's search and launch feeds; seeing every graduation from minute 0 needs a push feed (the laptop's PumpPortal stream); the
+  Graduations tab's chain feed (docs/GRADUATIONS_FEED.md) reads the same graduations from free public RPC endpoints, without a key, but only within 3 minutes and not into the lab's watch list. The `runner` lane is fed by Jupiter's lists, so it only holds coins that are already running.
 - The lab's lessons for lane coins start when the lab first sees them, usually after a big move: a runner's "first look" is not its
   launch. Lanes are compared with the Radar's coins as groups, not as if they had been entered at the same moment.
 - The lab follows at most 120 coins at once on the hosted site (600 on the laptop) and 7 days each; the free database is small.

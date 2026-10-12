@@ -76,7 +76,7 @@ async function install(db: pg.Pool) {
   const token = process.env.EXIT_ALERT_TOKEN ?? "";
   const chat = process.env.EXIT_ALERT_CHAT_ID ?? "";
   if (!token && !chat) {
-    console.log("watchdog: not installed (EXIT_ALERT_TOKEN and EXIT_ALERT_CHAT_ID are not in the environment)");
+    console.log("watchdog: not touched (EXIT_ALERT_TOKEN and EXIT_ALERT_CHAT_ID are not in the environment); one installed earlier keeps running, `status` shows whether it is there");
     return;
   }
   if (!/^\d{6,12}:[A-Za-z0-9_-]{30,60}$/.test(token)) throw new Error("EXIT_ALERT_TOKEN does not look like a Telegram bot token");
