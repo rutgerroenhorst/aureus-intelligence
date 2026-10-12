@@ -61,9 +61,11 @@ the time of writing and should be checked on the dashboards when a plan changes.
 10. **The exit check's running time**: the wallet (public Solana RPC, 5 to 10 seconds a call from Vercel) is read at most every 3.5 minutes instead of every call, the pause between
     DexScreener batches went from 0.4 to 0.15 s; the page shows a warning when the check ran but got no prices.
 11. **The graduation feed** (2026-10-12): a sixth job, `aureus-graduates`, calls `/api/cron/graduates` every 3 minutes and reads pump.fun's graduations from the chain (docs/GRADUATIONS_FEED.md),
-    so the Graduations tab no longer needs the laptop. First live ticks: 7.0 s and 360 ms of CPU for the first tick (23 graduations to catch up), then **1.5 s and 75 ms of CPU** for a steady tick
-    (a few new graduations, about ten coins re-read). At 480 ticks a day that is about 36 s of CPU a day (0.3 hours a month of the 4), about 12 minutes of function time a day, 14,400
-    invocations a month; its CPU is added to the daily budget. It writes `pump_graduates.facts` (a few hundred bytes per coin, rows older than 4 days deleted).
+    so the Graduations tab no longer needs the laptop. First live ticks: 7.0 s and 360 ms of CPU for the first tick (23 graduations to catch up), then **0.6 s and 71 ms of CPU on average** over the
+    next 14 ticks (at most 0.9 s and 182 ms). At 480 ticks a day that is about 34 s of CPU a day (0.3 hours a month of the 4), about 5 minutes of function time a day, 14,400
+    invocations a month; its CPU is added to the daily budget. It writes `pump_graduates.facts` (about 300 bytes per coin, rows older than 4 days deleted). The Graduations list reads the chain rows
+    (about 25 KB for 41 coins, growing to roughly 70 KB over six hours) only while the laptop's snapshot is not fresh. **The day's database egress was 76 MB of the 100 MB daily brake by 09:30 UTC**
+    (open screens: a Radar build reads 5 to 40 KB a minute); yesterday ended at 113 MB, so the brake is already doing its job on days with screens open all day, and the month (5 GB) is not at risk.
 12. **The Check button now asks four sources** (DexScreener, Jupiter twice, RugCheck, the database): at most 15 presses a minute for the whole site (it was 30 for one source).
 
 ## Measured costs (production build, one request each; the laptop's database has 30 days of data, the hosted one about 7)

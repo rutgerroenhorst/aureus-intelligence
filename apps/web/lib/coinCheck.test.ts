@@ -108,7 +108,7 @@ describe("keeping the checks", () => {
 
 const NOW = 1_800_000_000;
 const rug = (o: Partial<RugRow> = {}): RugRow => ({ at: NOW, score: 7, rugged: false, lp: 100, holders: 5000, liq: 50_000, ins: 0, insPct: 0.01, top1: 0.04, top5: 0.1, top10: 0.15, risks: [], mintOff: true, freezeOff: true, ...o });
-const sellOk = { state: "ok", usdOut: 4.9 } as const;
+const sellOk = { state: "ok", usdOut: 4.9, impact: 0.002 } as const;
 const solid: Extras = { sell: sellOk, rug: rug(), memory: { firstAt: NOW - 2 * 86400, firstP: 0.0001, maxP: 0.0005, maxLiq: 25_000 } };
 const verdict = (extra: Extras, f: Fresh = alive, tab = "elite") => judgeCoin(f, { tab }, extra, NOW);
 const line = (j: ReturnType<typeof judgeCoin>, key: string) => j.checks!.find((c) => c.key === key)!;
@@ -124,10 +124,10 @@ describe("the test sale", () => {
     let seen = "";
     const f = (async (url: string) => {
       seen = url;
-      return new Response(JSON.stringify({ outAmount: "4912345" }), { status: 200 });
+      return new Response(JSON.stringify({ outAmount: "4912345", priceImpactPct: "0.0123" }), { status: 200 });
     }) as unknown as typeof fetch;
     const r = await sellTest(MINT, 0.0038, 9, f);
-    expect(r).toEqual({ state: "ok", usdOut: 4.912345 });
+    expect(r).toEqual({ state: "ok", usdOut: 4.912345, impact: 0.0123 });
     // 5 / 0.0038 = 1315 whole coins, 9 decimals
     expect(seen).toContain("amount=1315000000000");
     expect(seen).toContain(`inputMint=${MINT}`);
@@ -237,7 +237,7 @@ describe("what the extra checks change", () => {
     expect(j.checks!.map((c) => c.key)).toEqual(expect.arrayContaining(["pool", "trades", "volume", "move", "pressure", "sell", "authority", "holders", "memory"]));
     expect(j.checks!.every((c) => c.state === "ok")).toBe(true);
     expect(j.lines[1]).toContain("passes the");
-    expect(line(j, "sell").text).toBe("A $5 sale brings in $4.90 now");
+    expect(line(j, "sell").text).toBe("A $5 sale finds a route (price impact 0.2%)");
     expect(line(j, "memory").text).toContain("first seen 2 days ago");
   });
 
@@ -246,15 +246,15 @@ describe("what the extra checks change", () => {
     const noRoute = verdict({ ...solid, sell: { state: "no-route", code: "TOKEN_NOT_TRADABLE" } });
     expect(noRoute.lines[1]).toContain("You are right: it cannot be sold (no route)");
     expect(line(noRoute, "sell").state).toBe("bad");
-    expect(line(verdict({ ...solid, sell: { state: "ok", usdOut: 1.2 } }), "sell")).toMatchObject({ state: "bad", flag: "a $5 sale would lose 76%" });
+    expect(line(verdict({ ...solid, sell: { state: "ok", usdOut: 1.2, impact: 0.12 } }), "sell")).toMatchObject({ state: "bad", flag: "a $5 sale would move the price 12%" });
     expect(verdict({ ...solid, rug: rug({ mintOff: false }) }).flags).toContain("the creator can still mint more coins");
     expect(verdict({ ...solid, rug: rug({ freezeOff: false }) }).verdict).toBe("agree");
     expect(verdict({ ...solid, rug: rug({ rugged: true }) }).flags).toContain("RugCheck marks it as rugged");
   });
 
   it("a sale that loses a part of its money is one warning sign, not a verdict", () => {
-    const j = verdict({ ...solid, sell: { state: "ok", usdOut: 3.9 } });
-    expect(line(j, "sell")).toMatchObject({ state: "warn", flag: "a $5 sale would lose 22%" });
+    const j = verdict({ ...solid, sell: { state: "ok", usdOut: 3.9, impact: 0.05 } });
+    expect(line(j, "sell")).toMatchObject({ state: "warn", flag: "a $5 sale would move the price 5%" });
     expect(j.verdict).toBe("unclear");
   });
 
@@ -321,5 +321,30 @@ describe("a launch tool's wallet is not a warning sign", () => {
     const withOne = verdict({ ...solid, jup, rug: rug({ top1: 0.4 }) });
     expect(withOne.verdict).toBe("unclear"); // one real warning sign, the note adds nothing
     expect(withOne.flags).toEqual(["one wallet holds 40%"]);
+  });
+});
+
+describe("the test sale judges the price impact, not the dollars", () => {
+  it("a quote far below DexScreener's price is not a loss when the router reports almost no impact (DexScreener lags on young pools)", () => {
+    const j = verdict({ ...solid, sell: { state: "ok", usdOut: 3.55, impact: 0.0021 } });
+    expect(line(j, "sell")).toMatchObject({ state: "ok" });
+    expect(line(j, "sell").text).toBe("A $5 sale finds a route (price impact 0.2%)");
+    expect(j.verdict).toBe("disagree");
+  });
+  it("an answer without an impact figure is still a route that exists", () => {
+    const j = verdict({ ...solid, sell: { state: "ok", usdOut: 4.8 } });
+    expect(line(j, "sell")).toMatchObject({ state: "ok", text: "A $5 sale finds a route" });
+  });
+  it("an impact of 3% or more is a warning sign, 10% or more is serious, and tiny impacts are written as such", () => {
+    expect(line(verdict({ ...solid, sell: { state: "ok", impact: 0.03 } }), "sell").state).toBe("warn");
+    expect(line(verdict({ ...solid, sell: { state: "ok", impact: 0.029 } }), "sell").state).toBe("ok");
+    expect(line(verdict({ ...solid, sell: { state: "ok", impact: 0.1 } }), "sell").state).toBe("bad");
+    expect(line(verdict({ ...solid, sell: { state: "ok", impact: 0.0004 } }), "sell").text).toContain("under 0.1%");
+  });
+  it("reads the router's impact as a fraction, and ignores a figure that is not a number", async () => {
+    const quote = (body: unknown) => (async () => new Response(JSON.stringify(body), { status: 200 })) as unknown as typeof fetch;
+    expect(await sellTest(MINT, 1, 6, quote({ outAmount: "4000000", priceImpactPct: "0.0014" }))).toMatchObject({ state: "ok", impact: 0.0014 });
+    expect(await sellTest(MINT, 1, 6, quote({ outAmount: "4000000", priceImpactPct: "n/a" }))).toEqual({ state: "ok", usdOut: 4 });
+    expect(await sellTest(MINT, 1, 6, quote({ outAmount: "0" }))).toEqual({ state: "error" });
   });
 });

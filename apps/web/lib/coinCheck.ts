@@ -114,11 +114,17 @@ export async function fetchRug(mint: string, fetchImpl: typeof fetch = fetch, no
   return r.ok && r.json ? rugSnapshot(r.json, nowS) : null;
 }
 
-/** What a sale of this size brings in now, according to Jupiter's own router (selling into USDC, so the answer is dollars). */
+/**
+ * Is there a way out, and how deep is it: Jupiter's own router quotes the sale of about $5 of the coin into USDC. What is judged is whether a route exists and the price impact the router
+ * reports for the sale; the dollars it brings in are NOT compared with DexScreener's price: the two prices differ by 10 to 30% on fast-moving coins (DexScreener lags on young pools),
+ * which looked like a "loss" of that size at every sale size until this was checked on 2026-10-12.
+ */
 export const SELL_TEST_USD = 5;
 export interface SellResult {
   state: "ok" | "no-route" | "error";
   usdOut?: number;
+  /** the router's estimate of how far the sale moves the price, as a fraction (0.01 = 1%); absent when the answer did not carry one */
+  impact?: number;
   code?: string;
 }
 export async function sellTest(mint: string, priceUsd: number | null, decimals: number | null, fetchImpl: typeof fetch = fetch): Promise<SellResult> {
@@ -129,7 +135,9 @@ export async function sellTest(mint: string, priceUsd: number | null, decimals: 
   const r = await getJson(`https://lite-api.jup.ag/swap/v1/quote?inputMint=${mint}&outputMint=${USDC}&amount=${raw.toString()}&slippageBps=500`, 10_000, fetchImpl);
   if (r.ok && r.json?.outAmount != null) {
     const out = Number(r.json.outAmount) / 1e6;
-    return Number.isFinite(out) ? { state: "ok", usdOut: out } : { state: "error" };
+    if (!Number.isFinite(out) || out <= 0) return { state: "error" };
+    const impact = r.json.priceImpactPct == null ? NaN : Math.abs(Number(r.json.priceImpactPct));
+    return { state: "ok", usdOut: out, ...(Number.isFinite(impact) ? { impact } : {}) };
   }
   const code = typeof r.json?.errorCode === "string" ? r.json.errorCode : undefined;
   if (code && /NOT_TRADABLE|NO_ROUTE|COULD_NOT_FIND/i.test(code)) return { state: "no-route", code };
@@ -203,9 +211,12 @@ const WEAK_TRADES_H1 = 10;
 const WEAK_VOL24_USD = 3_000;
 const CRASH_24H_PCT = -70;
 const SELL_PRESSURE = 3;
-/** A sale that loses more than this share of its money to price impact and fees is a warning sign; more than the second is a serious one. */
-const SELL_LOSS_WARN = 0.15;
-const SELL_LOSS_BAD = 0.4;
+/**
+ * The price impact the router reports for a $5 sale. A pool of $1,000 moves about 1%, so 3% or more means the depth Jupiter can use is thinner than the pool's size suggests (a warning sign), and
+ * 10% or more that most of that liquidity cannot be sold into (serious).
+ */
+const SELL_IMPACT_WARN = 0.03;
+const SELL_IMPACT_BAD = 0.1;
 const ONE_WALLET = 0.25;
 /** Linked insider wallets: 13% was common among the Radar's coins on 2026-10-12 (calibration over 42 listed coins), so the line is where it becomes unusual. */
 const INSIDERS = 0.2;
@@ -305,11 +316,12 @@ export function judgeCoin(fresh: Fresh | null | "error", ctx: { tab: string }, e
   if (!dead) {
     const { jup, sell, rug, memory, skipped } = extra;
     // can the money be got out
-    if (sell?.state === "ok" && sell.usdOut != null) {
-      const loss = 1 - sell.usdOut / SELL_TEST_USD;
-      if (loss > SELL_LOSS_BAD) add("sell", "bad", `A $${SELL_TEST_USD} sale would bring in only $${sell.usdOut.toFixed(2)}: most of it is lost`, `a $${SELL_TEST_USD} sale would lose ${pct(loss)}`);
-      else if (loss > SELL_LOSS_WARN) add("sell", "warn", `A $${SELL_TEST_USD} sale would bring in $${sell.usdOut.toFixed(2)} (loses ${pct(loss)} to price impact and fees)`, `a $${SELL_TEST_USD} sale would lose ${pct(loss)}`);
-      else add("sell", "ok", `A $${SELL_TEST_USD} sale brings in $${sell.usdOut.toFixed(2)} now`);
+    if (sell?.state === "ok") {
+      const imp = sell.impact;
+      const shown = imp == null ? null : imp >= 0.01 ? `${Math.round(imp * 100)}%` : imp < 0.001 ? "under 0.1%" : `${(imp * 100).toFixed(1)}%`;
+      if (imp != null && imp >= SELL_IMPACT_BAD) add("sell", "bad", `A $${SELL_TEST_USD} sale would move the price ${shown}: almost none of the pool can be sold into`, `a $${SELL_TEST_USD} sale would move the price ${shown}`);
+      else if (imp != null && imp >= SELL_IMPACT_WARN) add("sell", "warn", `A $${SELL_TEST_USD} sale would move the price ${shown}: thinner than the pool's size suggests`, `a $${SELL_TEST_USD} sale would move the price ${shown}`);
+      else add("sell", "ok", `A $${SELL_TEST_USD} sale finds a route${shown ? ` (price impact ${shown})` : ""}`);
     } else if (sell?.state === "no-route") add("sell", "bad", `It cannot be sold: Jupiter finds no route (${sell.code ?? "no route"})`, "it cannot be sold (no route)");
     else add("sell", "skip", `Test sale not run: ${skipped?.sell ?? "not available"}`, undefined, "the test sale");
 

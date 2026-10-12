@@ -52,9 +52,9 @@ on the stream.
 
 ## What it costs (free plans)
 
-Measured on the first live ticks: the first tick after deployment (23 graduations to catch up) took 7.0 s and 360 ms of CPU; a steady tick (a few new graduations and about ten re-read coins)
-**1.5 s and 75 ms of CPU**. Every 3 minutes that is 480 calls a day: about 36 s of CPU a day (about 0.3 hours a month of Vercel's 4), about 12 minutes of function time a day (a few GB-hours a month
-of the 360), 14,400 invocations a month of the 1,000,000. The feed adds its CPU to the day's budget (`addUsage`). It asks the free public Solana RPC for one list and a few transactions per tick, Jupiter
+Measured live: the first tick after deployment (23 graduations to catch up) took 7.0 s and 360 ms of CPU; the next 14 ticks (the clock keeps the answers for 6 hours; 1.4 new graduations a tick on average,
+about a dozen coins re-read) averaged **0.6 s of running time and 71 ms of CPU** (at most 0.9 s and 182 ms). Every 3 minutes that is 480 calls a day: about 34 s of CPU a day (about 0.3 hours a month of
+Vercel's 4), about 5 minutes of function time a day (a few GB-hours a month of the 360), 14,400 invocations a month of the 1,000,000. The feed adds its CPU to the day's budget (`addUsage`). It asks the free public Solana RPC for one list and a few transactions per tick, Jupiter
 once per 50 coins and DexScreener once per 30 coins. Database reads are small: the due list is a few dozen rows of a handful of numbers (see docs/LIMITS.md for the measured size).
 Stopping it: `select cron.unschedule('aureus-graduates')` in the hosted database (or `scripts/cron-setup.ts remove`, docs/RESTORE.md); the tab then goes back to the laptop's snapshots.
 

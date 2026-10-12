@@ -16,7 +16,7 @@ Every coin card has a small **🔍 Check** button (next to Enter and DexScreener
    | 24 h volume | DexScreener | ⚠ under $3K |
    | 24 h move | DexScreener | ⚠ down 70% or more |
    | buying against selling | DexScreener (20+ trades) | ⚠ selling outweighs buying 3 to 1 |
-   | **test sale** | Jupiter's quote for selling **$5** of the coin into USDC, now | ⚠ loses more than 15% of the money, ✗ loses more than 40% or **no route at all** |
+   | **test sale** | Jupiter's quote for selling about **$5** of the coin into USDC, now: does a route exist, and what price impact does the router report | ⚠ the sale would move the price 3% or more, ✗ 10% or more, or **no route at all** |
    | **mint and freeze authority** | RugCheck, Jupiter's audit as the second opinion | ✗ the creator can still mint more coins or freeze wallets |
    | **rugged** | RugCheck | ✗ marked as rugged |
    | **holders** | RugCheck (largest wallet, linked "insider" wallets); Jupiter's top-10 share when RugCheck has no report | ⚠ one wallet holds 25% or more, ⚠ insiders hold 20% or more, ⚠ top 10 hold 60% or more |
@@ -61,6 +61,12 @@ Run read-only over the 42 coins the hosted Radar listed that morning (`elite`, `
 launcher) and "insiders hold 10%+" on 8; together they supplied the second warning sign for most of the 15. Changes: the mint count is **shown but not counted** (state `note`), and the insider line moved
 from 10% to 20%. Second run: **agree 8 (19%), not sure 10, disagree 24**; the 8 agreements are coins with a pool under $1,000, mint and freeze authority still open, no trades with one wallet holding 60%, or a
 pool under $5K that fell 91%. These lines are hypotheses: the Learning page grades the verdicts against how the coins end, and the numbers should be re-run when it has enough checks to say.
+Re-run it (read-only, writes nothing, about two minutes): `corepack pnpm exec tsx scripts/check-calibration.ts` (add `LAB_SYNC_URL=<hosted connection string>` to include this system's own record of each coin).
+
+The test sale was first judged by the dollars the quote brings in against $5. That was wrong, found by looking at the three fresh graduations it flagged ("a $5 sale would lose 19-28%"): the loss was the
+same at $0.50, $1, $5 and $20 and the router's price impact was 0.1-0.2%, so it was not depth or a tax but DexScreener's price differing from Jupiter's by 10 to 30% on fast-moving young pools (DexScreener
+lags). The test now judges only whether a route exists and the price impact the router reports (the quote's own figure, so no second price is involved). A sale-tax token is not caught by it: a quote does not
+include a tax a token charges on transfer.
 
 ## Limits, honestly
 
