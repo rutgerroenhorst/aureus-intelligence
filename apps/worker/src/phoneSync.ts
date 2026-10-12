@@ -31,7 +31,7 @@ export function startPhoneSync(local: Client, log: Log): () => void {
     try {
       hosted ??= new pg.Pool({ connectionString: url, max: 1, statement_timeout: 30_000, idleTimeoutMillis: 20_000, connectionTimeoutMillis: 15_000 });
       const r = await pushGraduates(local, hosted as unknown as Client);
-      if (failures > 0 || r == null) log("phone sync", r ?? { skipped: "no graduations yet" });
+      if (failures > 0 || r == null) log("phone sync", r ?? { skipped: "no graduations yet, or the lab's readings could not be read this time (the snapshot already there stays)" });
       failures = 0;
     } catch (e) {
       failures++;

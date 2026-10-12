@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { buildGraduates, currentGraduates, resetGraduatesMemo } from "./graduates";
+import { buildGraduates, currentGraduates, pushGraduates, resetGraduatesMemo } from "./graduates";
 import type { FeedLog } from "./graduateFeed";
 
 const NOW_S = Math.floor(Date.now() / 1000);
@@ -23,7 +23,7 @@ interface Row {
 }
 const row = (o: Partial<Row> & { mint: string }): Row => ({ symbol: o.mint.slice(0, 3).toUpperCase(), name: "Coin", migrated_s: NOW_S - 3600, create_to_migrate_min: 200, initial_buy_sol: null, mayhem: false, creator_launches_72h: null, note: null, via: "chain", facts: null, ...o });
 
-function fakeDb(rows: Row[], extra: { pushed?: { payload: unknown; computed_at: string } | null; finished?: string | null; readings?: any[]; seen?: unknown[][] } = {}) {
+function fakeDb(rows: Row[], extra: { pushed?: { payload: unknown; computed_at: string } | null; finished?: string | null; readings?: any[]; seen?: unknown[][]; readingsFail?: boolean } = {}) {
   return {
     query: async (text: string, params?: unknown[]) => {
       if (/FROM pump_graduates g/.test(text)) {
@@ -31,7 +31,10 @@ function fakeDb(rows: Row[], extra: { pushed?: { payload: unknown; computed_at: 
         return { rows };
       }
       if (/kind = 'lanes'/.test(text)) return { rows: [] };
-      if (/source = 'watch'/.test(text)) return { rows: extra.readings ?? [] };
+      if (/source = 'watch'/.test(text)) {
+        if (extra.readingsFail) throw new Error("canceling statement due to statement timeout");
+        return { rows: extra.readings ?? [] };
+      }
       if (/source = 'rugcheck'/.test(text)) return { rows: [] };
       if (/FROM scan_lease WHERE name = 'grad-feed'/.test(text)) return { rows: extra.finished ? [{ last_finished: extra.finished }] : [] };
       if (/kind = 'gradlist'/.test(text)) return { rows: extra.pushed ? [extra.pushed] : [] };
@@ -127,9 +130,43 @@ describe("which list the hosted site shows", () => {
     const g = await currentGraduates(fakeDb([], { pushed: pushedAt(600) }));
     expect(g.source).toBe("laptop");
   });
+  it("does not trust a fresh snapshot that nobody read (nothing worth a look, ten or more coins waiting for a reading) when the chain feed has coins worth a look", async () => {
+    const unread = (min: number) => ({
+      payload: { at: "x", candidates: Array.from({ length: 12 }, (_, i) => ({ mint: `W${i}`, symbol: `W${i}`, ageMin: 5 + i, healthy: false, hiddenWhy: "waiting", flags: [] })), summary: [], lab: null, source: "laptop" },
+      computed_at: new Date(Date.now() - min * 60_000).toISOString(),
+    });
+    const calm = row({ mint: mint("E"), create_to_migrate_min: 240, facts: { f: rd(1, 1, 22_000), k: rd(1, 1, 22_000), l: last(10, 1.3, 25_000, [6, 6, 6, 6], 120, 90) } });
+    const seen: unknown[][] = [];
+    const g = await currentGraduates(fakeDb([calm], { finished, pushed: unread(3), seen }));
+    expect(seen.at(-1)![1]).toBe(true);
+    expect(g.source).toBe("chain");
+    expect(g.candidates.some((c) => c.healthy)).toBe(true);
+    // ... but when the chain feed has nothing worth a look either, the snapshot stays (no change from before)
+    resetGraduatesMemo();
+    const drained = row({ mint: mint("C"), facts: { f: rd(1, 1, 40_000), k: rd(1, 1, 40_000), l: last(20, 0.05, 1_500, [-95, -95, -95, -95], 10, 400) } });
+    expect((await currentGraduates(fakeDb([drained], { finished, pushed: unread(3) }))).source).toBe("laptop");
+  });
   it("on the laptop the stream's own rows win over everything", async () => {
     const stream = [row({ mint: mint("S"), via: "stream", create_to_migrate_min: 100 })];
     const g = await currentGraduates(fakeDb(stream, { pushed: pushedAt(1) }));
     expect(g.source).toBe("local");
+  });
+});
+
+describe("the laptop's push", () => {
+  const fast = row({ mint: mint("B"), via: "stream", create_to_migrate_min: 100, facts: null });
+  it("does not replace the hosted snapshot when the lab's readings could not be read (a timeout turned every coin into 'waiting')", async () => {
+    const writes: string[] = [];
+    const hosted = { query: async (text: string) => (writes.push(text), { rows: [] }) };
+    expect(await pushGraduates(fakeDb([fast], { readingsFail: true }), hosted)).toBeNull();
+    expect(writes).toHaveLength(0);
+    expect((await buildGraduates(fakeDb([fast], { readingsFail: true }))).degraded).toBe(true);
+  });
+  it("pushes as before when the readings were read", async () => {
+    const writes: string[] = [];
+    const hosted = { query: async (text: string) => (writes.push(text), { rows: [] }) };
+    expect(await pushGraduates(fakeDb([fast]), hosted)).toEqual({ coins: 1 });
+    expect(writes).toHaveLength(1);
+    expect((await buildGraduates(fakeDb([fast]))).degraded).toBeUndefined();
   });
 });

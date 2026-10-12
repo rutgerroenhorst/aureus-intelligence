@@ -63,6 +63,8 @@ export interface GraduatesReport {
   source?: "local" | "laptop" | "chain";
   /** when the snapshot was taken (laptop source) or the chain feed last finished (chain source) */
   asOf?: string;
+  /** the lab's readings could not be read this time (the query timed out): every coin then looks unread, so this list must not replace a good snapshot */
+  degraded?: boolean;
 }
 
 const num = (x: unknown): number | null => {
@@ -99,6 +101,9 @@ export async function buildGraduates(db: Queryable, opts: { chain?: boolean } = 
   const lab = lane && lane.basis >= 8 ? { followed3d: lane.basis, held2: lane.held2 } : null;
   if (!grads.length) return { at: new Date().toISOString(), candidates: [], summary: [], lab, source: "local" };
 
+  // A failed read must not look like "no readings": the laptop's pool cancels a statement after 5 s and this one takes about 4 s when the machine is idle, so under load it does fail.
+  // Without the flag every coin turned "waiting for a reading" and that list was pushed over the good one (the Graduations tab showed 0 for six minutes on 2026-10-13).
+  let readsFailed = false;
   const reads = await db
     .query(
       `SELECT s.mint, EXTRACT(EPOCH FROM s.taken_at)::float8 AS t, (s.payload->>'p')::float8 AS p, (s.payload->>'liq')::float8 AS liq,
@@ -107,7 +112,10 @@ export async function buildGraduates(db: Queryable, opts: { chain?: boolean } = 
       [grads.map((g) => g.mint)],
     )
     .then((r) => r.rows)
-    .catch(() => [] as any[]);
+    .catch(() => {
+      readsFailed = true;
+      return [] as any[];
+    });
   const rcRows = await db
     .query(`SELECT DISTINCT ON (mint) mint, payload FROM lab_signals_ts WHERE source = 'rugcheck' AND mint = ANY($1::text[]) ORDER BY mint, taken_at DESC`, [grads.map((g) => g.mint)])
     .then((r) => r.rows)
@@ -166,7 +174,7 @@ export async function buildGraduates(db: Queryable, opts: { chain?: boolean } = 
     const r = await db.query(`SELECT last_finished FROM scan_lease WHERE name = 'grad-feed'`).then((x) => x.rows[0]).catch(() => undefined);
     asOf = r?.last_finished ? new Date(r.last_finished).toISOString() : undefined;
   }
-  return { at: new Date().toISOString(), candidates: rows, summary: summarizeFates(fates), lab, source: fromChain ? "chain" : "local", ...(asOf ? { asOf } : {}) };
+  return { at: new Date().toISOString(), candidates: rows, summary: summarizeFates(fates), lab, source: fromChain ? "chain" : "local", ...(asOf ? { asOf } : {}), ...(readsFailed ? { degraded: true } : {}) };
 }
 
 /**
@@ -176,6 +184,8 @@ export async function buildGraduates(db: Queryable, opts: { chain?: boolean } = 
 export async function pushGraduates(local: Queryable, hosted: Queryable): Promise<{ coins: number } | null> {
   const g = await buildGraduates(local);
   if (!g.candidates.length) return null;
+  // readings that could not be read: keep the snapshot already there (the next round tries again; if it gets older than the freshness limit the site's own list takes over)
+  if (g.degraded) return null;
   // everything that is worth a look, plus the newest of the rest so the phone can still say what was hidden
   const keep = [...g.candidates.filter((c) => c.healthy).slice(0, 60), ...g.candidates.filter((c) => !c.healthy).slice(0, 40)].sort((a, b) => a.ageMin - b.ageMin);
   const slim: GraduatesReport = { ...g, candidates: keep, source: "laptop", asOf: g.at };
@@ -211,6 +221,8 @@ export const resetGraduatesMemo = () => {
  * after the laptop was closed.
  */
 const PUSHED_FRESH_MIN = 8;
+/** A fresh snapshot with no coin worth a look and at least this many "waiting" coins counts as unread (see currentGraduates). */
+const UNREAD_WAITING = 10;
 
 /**
  * What to show right now:
@@ -224,10 +236,13 @@ export async function currentGraduates(db: Queryable): Promise<GraduatesReport> 
   if (memo && Date.now() - memo.at < 60_000) return memo.body;
   const pushed = await loadPushedGraduates(db);
   const pushedFresh = pushed?.asOf != null && Date.now() - new Date(pushed.asOf).getTime() <= PUSHED_FRESH_MIN * 60_000;
-  // while the laptop's snapshot is fresh it wins anyway: do not read the chain rows at all
-  const local = await buildGraduates(db, { chain: !pushedFresh });
+  // A fresh snapshot in which nothing is worth a look and ten or more coins are still "waiting for a reading" was not read (the laptop's query timed out): the site's own list may know better.
+  const pushedUnread = pushedFresh && !pushed!.candidates.some((c) => c.healthy) && pushed!.candidates.filter((c) => c.hiddenWhy === "waiting").length >= UNREAD_WAITING;
+  // while the laptop's snapshot is fresh and read it wins anyway: do not read the chain rows at all
+  const local = await buildGraduates(db, { chain: !pushedFresh || pushedUnread });
+  const chainBetter = pushedUnread && local.source === "chain" && local.candidates.some((c) => c.healthy);
   const body =
-    local.candidates.length > 0 && local.source !== "chain" ? local : pushed && pushedFresh ? pushed : local.candidates.length > 0 ? local : pushed ?? local;
+    local.candidates.length > 0 && local.source !== "chain" ? local : pushed && pushedFresh && !chainBetter ? pushed : local.candidates.length > 0 ? local : pushed ?? local;
   memo = { at: Date.now(), body };
   return body;
 }
