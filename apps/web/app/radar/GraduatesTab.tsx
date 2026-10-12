@@ -2,6 +2,7 @@
 import { useMemo, useState } from "react";
 import { gradSnapshot, gradAgeText } from "@/lib/gradStale";
 import { CheckBadge, CheckButton, CheckPanel, useCoinCheck, type CheckNote } from "./CoinCheck";
+import { brand } from "@/lib/brand";
 
 export interface Graduate {
   mint: string;
@@ -66,7 +67,7 @@ const age = (m: number) => (m < 90 ? `${Math.round(m)} min` : m < 2880 ? `${(m /
 
 type SortKey = "new" | "big" | "up";
 
-const btn: React.CSSProperties = { padding: "6px 12px", background: "#1a1a1f", color: "#34c759", border: "1px solid #34c759", borderRadius: 4, fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap", textDecoration: "none" };
+const btn: React.CSSProperties = { padding: "6px 12px", background: "#1a1a1f", color: brand.blueText, border: `1px solid ${brand.blue}`, borderRadius: 4, fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap", textDecoration: "none" };
 const chip = (on: boolean): React.CSSProperties => ({ padding: "5px 10px", fontSize: 12, borderRadius: 6, cursor: "pointer", background: on ? "#2a2a3e" : "#1a1a1f", color: on ? "#fff" : "#8a8a8e", border: `1px solid ${on ? "#4a4a66" : "#2a2a2f"}` });
 
 /** The warnings worth a place on the card: a pool that is gone or never was, the kinds measured to end in a drain, and heavy concentration. */
@@ -95,10 +96,10 @@ function GraduateCard({ c, entered, failed, onEnter, note }: { c: Graduate; ente
           </div>
         </div>
         <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-          <button onClick={() => onEnter(c)} disabled={entered} style={{ ...btn, background: entered ? "#34c759" : "#1a1a1f", color: entered ? "#000" : failed ? "#ff9f0a" : "#34c759", borderColor: failed ? "#ff9f0a" : "#34c759" }}>
+          <button onClick={() => onEnter(c)} disabled={entered} style={{ ...btn, background: entered ? brand.blue : "#1a1a1f", color: entered ? brand.fg : failed ? "#ff9f0a" : brand.blueText, borderColor: failed ? "#ff9f0a" : brand.blue }}>
             {entered ? "✅ Entered" : failed ? "⚠ Not saved" : "✔ Enter"}
           </button>
-          <a href={`https://dexscreener.com/solana/${c.mint}`} target="_blank" rel="noreferrer" style={btn}>
+          <a href={`https://dexscreener.com/solana/${c.mint}`} target="_blank" rel="noreferrer" style={{ ...btn, border: `1px solid ${brand.blueLine}` }}>
             DexScreener
           </a>
           <CheckButton state={check} fontSize={12} />
