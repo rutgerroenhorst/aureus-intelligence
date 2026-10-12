@@ -19,9 +19,9 @@ Every coin card has a small **🔍 Check** button (next to Enter and DexScreener
    | **test sale** | Jupiter's quote for selling **$5** of the coin into USDC, now | ⚠ loses more than 15% of the money, ✗ loses more than 40% or **no route at all** |
    | **mint and freeze authority** | RugCheck, Jupiter's audit as the second opinion | ✗ the creator can still mint more coins or freeze wallets |
    | **rugged** | RugCheck | ✗ marked as rugged |
-   | **holders** | RugCheck (largest wallet, linked "insider" wallets); Jupiter's top-10 share when RugCheck has no report | ⚠ one wallet holds 25% or more, ⚠ insiders hold 10% or more, ⚠ top 10 hold 60% or more |
+   | **holders** | RugCheck (largest wallet, linked "insider" wallets); Jupiter's top-10 share when RugCheck has no report | ⚠ one wallet holds 25% or more, ⚠ insiders hold 20% or more, ⚠ top 10 hold 60% or more |
    | liquidity lock | RugCheck | ⚠ less than 50% of the liquidity locked or burned |
-   | the creator | Jupiter's audit, RugCheck | ⚠ still holds 20% or more, ⚠ its wallet has minted 50+ tokens, ⚠ has rugged before |
+   | the creator | Jupiter's audit, RugCheck | ⚠ still holds 20% or more, ⚠ has rugged before; **ℹ its wallet has minted 50+ tokens: shown, not counted** (see below) |
    | **this system's own record** | our database (`prices`, `liquidity_snapshots`) | ⚠ price 80% or more below the highest this system recorded, ✗ 95% or more; ⚠ liquidity under 20% of its recorded peak |
    | the Hot tab's own rule | the tab's simple "new and small" rule | ⚠ no longer fits |
 
@@ -53,6 +53,14 @@ Every coin card has a small **🔍 Check** button (next to Enter and DexScreener
 - The cards are components of their own (`CoinRow.tsx`, `UltraCard`, `HotCard`, `Row`, `GraduateCard`) and the tab buttons too, with keys by coin address: a component defined *inside* the page is a new
   component on every render, so the 30-second refresh threw away what a card remembered (the answer of a Check, a half-finished Enter) and lost clicks that landed during a render.
 - The Hot tab stays on the network the user is looking at when the ranking changes (it used to switch to whichever network became hottest, under the click).
+
+## Calibration (2026-10-12)
+
+Run read-only over the 42 coins the hosted Radar listed that morning (`elite`, `cate`, `buy_signals`, `runners`, `graduates`, `ultra_momentum`), with the real sources. First version: **agree 15 (36%), not sure 14, disagree 13**:
+"the creator's wallet has minted 50+ tokens" fired on 17 of the 42 coins (up to 191,441 tokens: launch tools mint thousands of tokens from one wallet, and Jupiter's count cannot tell a launch tool from a serial
+launcher) and "insiders hold 10%+" on 8; together they supplied the second warning sign for most of the 15. Changes: the mint count is **shown but not counted** (state `note`), and the insider line moved
+from 10% to 20%. Second run: **agree 8 (19%), not sure 10, disagree 24**; the 8 agreements are coins with a pool under $1,000, mint and freeze authority still open, no trades with one wallet holding 60%, or a
+pool under $5K that fell 91%. These lines are hypotheses: the Learning page grades the verdicts against how the coins end, and the numbers should be re-run when it has enough checks to say.
 
 ## Limits, honestly
 

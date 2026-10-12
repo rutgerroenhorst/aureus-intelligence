@@ -79,7 +79,7 @@ export type CoinCheckState = ReturnType<typeof useCoinCheck>;
 
 const TONE = { agree: "#ff9f0a", disagree: "#34c759", unclear: "#8a8a8e" } as const;
 const HEAD = { agree: "you are right", disagree: "I do not agree", unclear: "not sure" } as const;
-const MARK = { ok: { sign: "✓", color: "#34c759" }, warn: { sign: "⚠", color: "#ff9f0a" }, bad: { sign: "✗", color: "#ff453a" }, skip: { sign: "–", color: "#6a6a72" } } as const;
+const MARK = { ok: { sign: "✓", color: "#34c759" }, warn: { sign: "⚠", color: "#ff9f0a" }, bad: { sign: "✗", color: "#ff453a" }, skip: { sign: "–", color: "#6a6a72" }, note: { sign: "ℹ", color: "#8a8a8e" } } as const;
 
 /** A small quiet button next to Enter and DexScreener. */
 export function CheckButton({ state, fontSize = 10 }: { state: CoinCheckState; fontSize?: number }) {
@@ -118,7 +118,7 @@ export function CheckPanel({ state }: { state: CoinCheckState }) {
                 {a.checks.map((c) => (
                   <div key={c.key} style={{ display: "flex", gap: 6 }}>
                     <span style={{ color: MARK[c.state].color, width: 12, flexShrink: 0, textAlign: "center", fontWeight: 700 }}>{MARK[c.state].sign}</span>
-                    <span style={{ color: c.state === "skip" ? "#8a8a8e" : "#d4d4de" }}>{c.text}</span>
+                    <span style={{ color: c.state === "skip" || c.state === "note" ? "#8a8a8e" : "#d4d4de" }}>{c.text}</span>
                   </div>
                 ))}
               </div>

@@ -261,17 +261,23 @@ describe("what the extra checks change", () => {
   it("concentration: one big wallet is a warning sign, linked insider wallets too, both together a point", () => {
     expect(verdict({ ...solid, rug: rug({ top1: 0.4 }) }).verdict).toBe("unclear");
     expect(verdict({ ...solid, rug: rug({ top1: 0.4 }) }).flags).toEqual(["one wallet holds 40%"]);
-    const both = verdict({ ...solid, rug: rug({ top1: 0.4, insPct: 0.15 }) });
+    const both = verdict({ ...solid, rug: rug({ top1: 0.4, insPct: 0.25 }) });
     expect(both.verdict).toBe("agree");
     expect(both.lines[1]).toContain("You have a point");
-    expect(both.flags).toEqual(["one wallet holds 40%", "insider networks hold 15%"]);
+    expect(both.flags).toEqual(["one wallet holds 40%", "insider networks hold 25%"]);
+    // insiders at 13% were common among the Radar's coins: not a warning by itself
+    expect(verdict({ ...solid, rug: rug({ insPct: 0.13 }) }).verdict).toBe("disagree");
   });
 
   it("falls back to Jupiter's audit when RugCheck has no report: authorities and the 10 largest holders", () => {
     const jup = { id: MINT, audit: { mintAuthorityDisabled: true, freezeAuthorityDisabled: false, topHoldersPercentage: 78, devBalancePercentage: 24, devMints: 2219 } };
     const j = verdict({ jup, sell: sellOk, skipped: { rug: "RugCheck has no report for it (yet)" } });
-    expect(j.flags).toEqual(expect.arrayContaining(["the creator can freeze wallets", "top 10 hold 78%", "the creator still holds 24%", "serial creator (2219 tokens minted)"]));
+    expect(j.flags).toEqual(["the creator can freeze wallets", "top 10 hold 78%", "the creator still holds 24%"]);
     expect(j.verdict).toBe("agree");
+    // the number of tokens the creator's wallet minted is shown, but counts as neither a warning nor a passed check
+    expect(line(j, "creator-mints")).toMatchObject({ state: "note" });
+    expect(line(j, "creator-mints").text).toContain("2219 tokens");
+    expect(j.flags.join(" ")).not.toContain("serial");
   });
 
   it("this system's own record: far below the highest price it saw is a warning, nearly all gone is serious; liquidity against its peak too", () => {
@@ -302,5 +308,18 @@ describe("what the extra checks change", () => {
     expect(j.checks!.at(-1)).toMatchObject({ key: "hot-rule", state: "warn" });
     expect(j.flags.at(-1)).toContain("no longer fits the Hot tab");
     expect(verdict({}, { ...alive, liq: 4_000, ch24: -82 }).flags).toEqual(["pool under $5K", "down 82% in 24 hours"]);
+  });
+});
+
+describe("a launch tool's wallet is not a warning sign", () => {
+  it("a creator wallet that minted thousands of tokens is noted but does not count, alone or with one other mild sign", () => {
+    const jup = { id: MINT, audit: { mintAuthorityDisabled: true, freezeAuthorityDisabled: true, devMints: 11_579 } };
+    const alone = verdict({ ...solid, jup });
+    expect(alone.verdict).toBe("disagree");
+    expect(line(alone, "creator-mints").state).toBe("note");
+    expect(alone.lines[1]).toContain("passes the");
+    const withOne = verdict({ ...solid, jup, rug: rug({ top1: 0.4 }) });
+    expect(withOne.verdict).toBe("unclear"); // one real warning sign, the note adds nothing
+    expect(withOne.flags).toEqual(["one wallet holds 40%"]);
   });
 });

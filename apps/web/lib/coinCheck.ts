@@ -207,7 +207,8 @@ const SELL_PRESSURE = 3;
 const SELL_LOSS_WARN = 0.15;
 const SELL_LOSS_BAD = 0.4;
 const ONE_WALLET = 0.25;
-const INSIDERS = 0.1;
+/** Linked insider wallets: 13% was common among the Radar's coins on 2026-10-12 (calibration over 42 listed coins), so the line is where it becomes unusual. */
+const INSIDERS = 0.2;
 const TOP10_PCT = 60;
 const LP_LOCKED_MIN = 50;
 const CREATOR_HOLDS_PCT = 20;
@@ -219,7 +220,8 @@ const LIQ_OF_PEAK = 0.2;
 /** A coin that is dead on DexScreener's own numbers needs no further proof (no test sale, no RugCheck). */
 export const looksDead = (f: Fresh): boolean => (f.liq ?? 0) < DEAD_LIQ_USD || ((f.buys1 ?? 0) + (f.sells1 ?? 0) === 0 && (f.vol24 ?? 0) < 1_000);
 
-export type CheckState = "ok" | "warn" | "bad" | "skip";
+/** ok: fine; warn: a warning sign; bad: serious; skip: could not be checked; note: shown, but counted as neither (a figure that cannot tell a bad sign from a harmless one). */
+export type CheckState = "ok" | "warn" | "bad" | "skip" | "note";
 /** One line of the check: what was looked at and what it showed. `flag` is the short wording kept in the record (when different from the text). */
 export interface CheckLine {
   key: string;
@@ -342,7 +344,9 @@ export function judgeCoin(fresh: Fresh | null | "error", ctx: { tab: string }, e
     const holds = jup?.audit?.devBalancePercentage;
     if (holds != null && holds >= CREATOR_HOLDS_PCT) add("creator-holds", "warn", `The creator still holds ${Math.round(holds)}%`, `the creator still holds ${Math.round(holds)}%`);
     const minted = jup?.audit?.devMints;
-    if (minted != null && minted >= SERIAL_MINTS) add("creator-mints", "warn", `The creator's wallet has minted ${minted} tokens`, `serial creator (${minted} tokens minted)`);
+    // 17 of the 42 coins on the Radar on 2026-10-12 had a creator wallet with 50 or more tokens, up to 191,441: launch tools mint thousands of tokens from one wallet, and this count cannot tell them from
+    // a serial launcher, so it is shown but not counted (counting it made the check agree with 36% of the Radar's coins, mostly on the strength of this and one other mild sign)
+    if (minted != null && minted >= SERIAL_MINTS) add("creator-mints", "note", `The creator's wallet has minted ${minted} tokens (noted, not counted: a launch tool and a serial launcher look the same here)`);
     if (rug?.risks.some((x) => /creator history of rugged/i.test(x))) add("creator-rugs", "warn", "The creator has rugged coins before (RugCheck)", "the creator has rugged before");
     // this system's memory of the coin
     if (memory && memory.maxP != null && memory.maxP > 0 && fresh.priceUsd != null) {
@@ -360,7 +364,7 @@ export function judgeCoin(fresh: Fresh | null | "error", ctx: { tab: string }, e
   const bad = checks.filter((c) => c.state === "bad");
   const warn = checks.filter((c) => c.state === "warn");
   const flags = [...bad, ...warn].map((c) => c.flag ?? c.text);
-  const ran = checks.filter((c) => c.state !== "skip").length;
+  const ran = checks.filter((c) => c.state !== "skip" && c.state !== "note").length;
   const notRun = checks.filter((c) => c.state === "skip").map((c) => c.label ?? c.key);
   const facts = `Pool ${usd(fresh.liq)} · 24 h volume ${usd(fresh.vol24)} · ${trades1} trade${trades1 === 1 ? "" : "s"} in the last hour${fresh.ch24 != null ? ` · ${signed(fresh.ch24)} in 24 h` : ""}.`;
   const base = { checks };
