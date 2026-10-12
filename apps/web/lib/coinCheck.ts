@@ -403,7 +403,8 @@ interface Db {
 }
 
 /** The tab names the learning system and the trade journal use (the page's JOURNAL_TAB values). */
-export const CHECK_TABS = new Set(["cate", "buy_signals", "ultra_momentum", "elite", "incubation", "runners", "graduates", "hot"]);
+/** The tabs a Check can come from; "pasted" is a coin pasted into the box at the top of the Radar and Home (on no tab at all). */
+export const CHECK_TABS = new Set(["cate", "buy_signals", "ultra_momentum", "elite", "incubation", "runners", "graduates", "hot", "pasted"]);
 
 /** At most this many checks a minute for the whole site (it is public, and every check asks DexScreener, Jupiter twice, RugCheck and the database; Jupiter's free API allows about 60 requests a minute). */
 export const CHECKS_PER_MINUTE = 15;

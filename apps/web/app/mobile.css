@@ -156,9 +156,20 @@ html {
     overflow-x: auto;
     margin-left: -12px !important;
     margin-right: -12px !important;
-    padding: 0 12px 6px;
+    margin-bottom: 8px !important;
+    padding: 8px 12px;
     scrollbar-width: none;
     -webkit-overflow-scrolling: touch;
+    /* the tabs stay on screen while the list scrolls under them */
+    position: sticky;
+    top: -14px; /* the page's own top padding (14px) would otherwise leave a gap above the pinned row */
+    z-index: 20;
+    background: var(--brand-bg);
+    border-bottom: 1px solid #1a1a1f;
+  }
+  /* the top bar already says where you are; the title only costs a coin's height */
+  .radar-h1 {
+    display: none !important;
   }
   .radar-tabs::-webkit-scrollbar {
     display: none;

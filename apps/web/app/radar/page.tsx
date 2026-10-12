@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import ElitePageWrapper from "@/components/ElitePageWrapper";
 import { usePolling, useOnScanDone } from "@/lib/usePolling";
 import { RunnersTab, type Runner, type RunnersLab, type RunnersPrior } from "./RunnersTab";
@@ -9,6 +9,7 @@ import { AwayLine, CheckHubContext, type CheckAnswer, type CheckHub, type CheckN
 import { CoinRow, UltraCard } from "./CoinRow";
 import { leaveOut, mergeNotes, noteKey } from "@/lib/checkAway";
 import { brand } from "@/lib/brand";
+import { PasteCheck } from "./PasteCheck";
 
 interface Candidate {
   id: string;
@@ -20,6 +21,10 @@ interface Candidate {
 }
 
 type Tab = "hot" | "cate" | "signals" | "positions" | "trends" | "momentum" | "performance" | "elite-s" | "early" | "entry" | "qualified" | "stats" | "runners" | "graduates";
+
+/** The tabs in the order they are shown: the youngest coins first (the order the user asked for), then the rest. The tab used last is remembered on this device. */
+const TAB_ORDER = ["graduates", "qualified", "early", "signals", "cate", "runners", "hot", "elite-s", "stats"] as const;
+const TAB_STORE = "auriga:radarTab";
 
 // The name the learning system and the trade journal use for each Radar tab.
 const JOURNAL_TAB: Partial<Record<Tab, string>> = {
@@ -77,7 +82,7 @@ export default function RadarPageElite() {
   const [networks, setNetworks] = useState<any[]>([]);
   const [safety, setSafety] = useState<{ total: number; safe: number; rejected: number; unverified: number; noData: number } | null>(null);
   const [selectedChain, setSelectedChain] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<Tab>("hot");
+  const [activeTab, setActiveTab] = useState<Tab>("graduates");
   const [hot, setHot] = useState<HotClient | null>(null);
   const [hotChain, setHotChain] = useState<string | null>(null);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
@@ -94,6 +99,16 @@ export default function RadarPageElite() {
   const [checkLocal, setCheckLocal] = useState<Map<string, CheckNote>>(new Map());
   const [checkOpen, setCheckOpen] = useState<Set<string>>(new Set());
   const [showAway, setShowAway] = useState(false);
+
+  // open on the tab used last (the first tab, Graduations, the first time)
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(TAB_STORE);
+      if (saved && (TAB_ORDER as readonly string[]).includes(saved)) setActiveTab(saved as Tab);
+    } catch {
+      /* storage blocked: the first tab it is */
+    }
+  }, []);
 
   // One request for everything (/api/radar-bundle), and only while the screen is visible.
   // A source that failed comes back as null: keep showing its previous data instead of blanking it.
@@ -205,6 +220,11 @@ export default function RadarPageElite() {
       setScrollPositions(prev => ({ ...prev, [activeTab]: contentDiv.scrollTop }));
     }
     setActiveTab(tab);
+    try {
+      window.localStorage.setItem(TAB_STORE, tab);
+    } catch {
+      /* storage blocked: nothing is remembered */
+    }
     setTimeout(() => {
       const newContentDiv = document.querySelector('[data-tab-content]');
       if (newContentDiv) {
@@ -275,47 +295,47 @@ export default function RadarPageElite() {
           }}>
             <div style={{ background: "#1a1a1f", padding: "12px", borderRadius: "6px", textAlign: "center" }}>
               <div style={{ color: "#34c759", fontWeight: 700, fontSize: "16px" }}>{tiles.elite || 0}</div>
-              <div style={{ color: "#8a8a8e", marginTop: "4px" }}>🚀 Elite</div>
+              <div style={{ color: "#8a8a8e", marginTop: "4px" }}>Elite</div>
             </div>
             <div style={{ background: "#1a1a1f", padding: "12px", borderRadius: "6px", textAlign: "center" }}>
               <div style={{ color: "#ff9500", fontWeight: 700, fontSize: "16px" }}>{tiles.hot || 0}</div>
-              <div style={{ color: "#8a8a8e", marginTop: "4px" }}>🔥 Hot</div>
+              <div style={{ color: "#8a8a8e", marginTop: "4px" }}>Hot</div>
             </div>
             <div style={{ background: "#1a1a1f", padding: "12px", borderRadius: "6px", textAlign: "center" }}>
               <div style={{ color: brand.blueText, fontWeight: 700, fontSize: "16px" }}>{tiles.rising || 0}</div>
-              <div style={{ color: "#8a8a8e", marginTop: "4px" }}>⚡ Rising</div>
+              <div style={{ color: "#8a8a8e", marginTop: "4px" }}>Rising</div>
             </div>
             <div style={{ background: "#1a1a1f", padding: "12px", borderRadius: "6px", textAlign: "center" }}>
               <div style={{ color: "#8a8a8e", fontWeight: 700, fontSize: "16px" }}>{tiles.watch || 0}</div>
-              <div style={{ color: "#8a8a8e", marginTop: "4px" }}>📊 Watch</div>
+              <div style={{ color: "#8a8a8e", marginTop: "4px" }}>Watch</div>
             </div>
           </div>
         )}
 
         {elite.length > 0 && (
           <>
-            <h3 style={{ color: "#34c759", marginBottom: "12px" }}>🚀 ELITE ({elite.length})</h3>
+            <h3 style={{ color: "#34c759", marginBottom: "12px" }}>ELITE ({elite.length})</h3>
             {elite.map((c, i) => <CoinRow key={`elite-${c.mint ?? i}`} c={c} color="#34c759" score={c.cateScore} {...rowProps(c)} />)}
           </>
         )}
 
         {hot.length > 0 && (
           <>
-            <h3 style={{ color: "#ff9500", marginBottom: "12px", marginTop: "16px" }}>🔥 HOT ({hot.length})</h3>
+            <h3 style={{ color: "#ff9500", marginBottom: "12px", marginTop: "16px" }}>HOT ({hot.length})</h3>
             {hot.map((c, i) => <CoinRow key={`hot-${c.mint ?? i}`} c={c} color="#ff9500" score={c.cateScore} {...rowProps(c)} />)}
           </>
         )}
 
         {rising.length > 0 && (
           <>
-            <h3 style={{ color: brand.blueText, marginBottom: "12px", marginTop: "16px" }}>⚡ RISING ({rising.length})</h3>
+            <h3 style={{ color: brand.blueText, marginBottom: "12px", marginTop: "16px" }}>RISING ({rising.length})</h3>
             {rising.map((c, i) => <CoinRow key={`rising-${c.mint ?? i}`} c={c} color={brand.blueText} score={c.cateScore} {...rowProps(c)} />)}
           </>
         )}
 
         {watch.length > 0 && (
           <>
-            <h3 style={{ color: "#8a8a8e", marginBottom: "12px", marginTop: "16px" }}>📊 WATCH ({watch.length})</h3>
+            <h3 style={{ color: "#8a8a8e", marginBottom: "12px", marginTop: "16px" }}>WATCH ({watch.length})</h3>
             {watch.map((c, i) => <CoinRow key={`watch-${c.mint ?? i}`} c={c} color="#8a8a8e" score={c.cateScore} {...rowProps(c)} />)}
           </>
         )}
@@ -338,12 +358,12 @@ export default function RadarPageElite() {
       case "signals":
         return (
           <div style={{ padding: "16px" }}>
-            <h3 style={{ color: "#34c759", marginBottom: "16px" }}>🎯 Buy Signals - Entry Opportunities ({lists.signals.list.length})</h3>
+            <h3 style={{ color: "#34c759", marginBottom: "16px" }}>Buy Signals: entry opportunities ({lists.signals.list.length})</h3>
             {lists.signals.list.length > 0 ? (
               lists.signals.list.map((c, i) => <CoinRow key={`buy-${c.mint ?? i}`} c={c} color="#34c759" isBuySignal={true} {...rowProps(c)} />)
             ) : (
               <div style={{ textAlign: "center", color: "#8a8a8e", padding: "32px" }}>
-                No viable buy signals right now. Check back soon! 🔄
+                No viable buy signals right now. Check back soon.
               </div>
             )}
           </div>
@@ -365,12 +385,12 @@ export default function RadarPageElite() {
       case "early":
         return (
           <div style={{ padding: "16px" }}>
-            <h3 style={{ color: "#ff9500", marginBottom: "16px" }}>🚀 Ultra Early Momentum ({lists.early.list.length})</h3>
+            <h3 style={{ color: "#ff9500", marginBottom: "16px" }}>Ultra Early Momentum ({lists.early.list.length})</h3>
             {lists.early.list.length > 0 ? (
               lists.early.list.map((c, i) => <UltraCard key={c.mint ?? i} c={c} entered={enteredCoins.has(c.mint)} onEnter={() => void enterUltra(c)} tab={JOURNAL_TAB.early} note={notes.get(noteKey("ultra_momentum", c.mint))} />)
             ) : (
               <div style={{ textAlign: "center", color: "#8a8a8e", padding: "32px" }}>
-                No ultra-early momentum signals yet. Waiting for net launches... 🚀
+                No ultra-early momentum signals yet. Waiting for new launches.
               </div>
             )}
           </div>
@@ -421,33 +441,36 @@ export default function RadarPageElite() {
     <CheckHubContext.Provider value={hub}>
     <ElitePageWrapper>
       <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
-        <div style={{ marginBottom: "24px" }}>
-          <h1 style={{ fontSize: "24px", fontWeight: 700, marginBottom: "16px", color: "#fff" }}>
-            📊 Auriga Radar
-          </h1>
+        <h1 className="radar-h1" style={{ fontSize: "24px", fontWeight: 700, margin: "0 0 14px", color: "#fff" }}>
+          Radar
+        </h1>
+
+        <PasteCheck />
           
+
+          <div className="radar-tabs" style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "12px" }}>
+            <TabButton label="Graduations" count={lists.graduates.list.filter((g) => g.healthy !== false).length} active={activeTab === "graduates"} onSelect={() => selectTab("graduates")} />
+            <TabButton label="Incubation" count={lists.incubation.list.length} active={activeTab === "qualified"} onSelect={() => selectTab("qualified")} />
+            <TabButton label="Ultra Momentum" count={lists.early.list.length} active={activeTab === "early"} onSelect={() => selectTab("early")} />
+            <TabButton label="Buy Signals" count={lists.signals.list.length} active={activeTab === "signals"} onSelect={() => selectTab("signals")} />
+            <TabButton label="CATE" count={lists.cate.list.length} active={activeTab === "cate"} onSelect={() => selectTab("cate")} />
+            <TabButton label="Runners" count={lists.runners.list.length} active={activeTab === "runners"} onSelect={() => selectTab("runners")} />
+            <TabButton label="Hot" count={hotShown ? (hotShown.pools[(hotShown.chains.find((c) => c.id === hotChain) ?? hotShown.chains[0])?.id ?? ""] ?? []).filter(isNewSmall).length : undefined} active={activeTab === "hot"} onSelect={() => selectTab("hot")} />
+            <TabButton label="Elite" count={lists.elite.list.length} active={activeTab === "elite-s"} onSelect={() => selectTab("elite-s")} />
+            <TabButton label="Stats" active={activeTab === "stats"} onSelect={() => selectTab("stats")} />
+          </div>
+
           {/* the networks only change the Hot tab: every other tab is Solana, so the bar would suggest a choice that does nothing there */}
           {activeTab === "hot" && <HotChainsBar hot={hot} selected={hotChain} onSelect={(id) => { setHotChain(id); setActiveTab("hot"); }} />}
 
-          <div className="radar-tabs" style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "16px" }}>
-            <TabButton label="🔥 Hot" count={hotShown ? (hotShown.pools[(hotShown.chains.find((c) => c.id === hotChain) ?? hotShown.chains[0])?.id ?? ""] ?? []).filter(isNewSmall).length : undefined} active={activeTab === "hot"} onSelect={() => selectTab("hot")} />
-            <TabButton label="🎯 CATE" count={lists.cate.list.length} active={activeTab === "cate"} onSelect={() => selectTab("cate")} />
-            <TabButton label="💰 Buy Signals" count={lists.signals.list.length} active={activeTab === "signals"} onSelect={() => selectTab("signals")} />
-            <TabButton label="🚀 Ultra Momentum" count={lists.early.list.length} active={activeTab === "early"} onSelect={() => selectTab("early")} />
-            <TabButton label="⭐ Elite" count={lists.elite.list.length} active={activeTab === "elite-s"} onSelect={() => selectTab("elite-s")} />
-            <TabButton label="💼 Incubation" count={lists.incubation.list.length} active={activeTab === "qualified"} onSelect={() => selectTab("qualified")} />
-            <TabButton label="🏃 Runners" count={lists.runners.list.length} active={activeTab === "runners"} onSelect={() => selectTab("runners")} />
-            <TabButton label="🎓 Graduations" count={lists.graduates.list.filter((g) => g.healthy !== false).length} active={activeTab === "graduates"} onSelect={() => selectTab("graduates")} />
-            <TabButton label="📋 Stats" active={activeTab === "stats"} onSelect={() => selectTab("stats")} />
-          </div>
 
-          <div style={{ fontSize: "12px", color: "#8a8a8e", display: "flex", alignItems: "center", gap: "10px" }}>
+          <div className="radar-status" style={{ fontSize: "12px", color: "#8a8a8e", display: "flex", alignItems: "center", gap: "10px", marginBottom: "10px" }}>
             <span>
               {isRefreshing
-                ? "🔄 Refreshing..."
+                ? "Refreshing…"
                 : lastUpdate
-                  ? `${failedSources.length ? "⚠ Partly refreshed" : "✓ Screen refreshed"} ${lastUpdate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`
-                  : "Loading..."}
+                  ? `${failedSources.length ? "⚠ Partly refreshed" : "Updated"} ${lastUpdate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`
+                  : "Loading…"}
             </span>
             <button
               onClick={() => void fetchAll()}
@@ -455,7 +478,7 @@ export default function RadarPageElite() {
               aria-label="Refresh now"
               style={{ background: "#1a1a1f", color: "#8a8a8e", border: "1px solid #2a2a2f", borderRadius: "6px", padding: "4px 10px", fontSize: "12px", cursor: "pointer" }}
             >
-              ↻ Refresh
+              ↻
             </button>
           </div>
           {failedSources.length > 0 && (
@@ -468,9 +491,8 @@ export default function RadarPageElite() {
               ⚠ {safety.unverified} of {safety.total} coins could not be live-checked right now (DexScreener busy) — they are NOT confirmed safe.
             </div>
           )}
-        </div>
 
-        <div data-tab-content className="radar-tab-content" style={{ maxHeight: "calc(100vh - 300px)", overflowY: "auto" }}>
+        <div data-tab-content className="radar-tab-content" style={{ maxHeight: "calc(100vh - 320px)", overflowY: "auto" }}>
           <AwayLine count={awayHere[activeTab] ?? 0} shown={showAway} onToggle={() => setShowAway((v) => !v)} />
           {renderContent()}
         </div>

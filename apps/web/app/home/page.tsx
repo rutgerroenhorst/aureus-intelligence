@@ -5,6 +5,7 @@ import { MarketStrip } from "@/components/MarketStrip";
 import { planCheck } from "@/lib/exitPlan";
 import { dexUrl } from "@/lib/chains";
 import { brand } from "@/lib/brand";
+import { PasteCheck } from "../radar/PasteCheck";
 
 interface Trade { id?: string; symbol: string; mint?: string; chain?: string; status: "active" | "exited"; multiplier: number; peakMultiple: number; lowMultiple: number; sizeUsd?: number | null; soldUsd?: number | null; soldFraction?: number | null; peakKnown?: boolean }
 interface Runner { mint: string; symbol: string | null; mcap: number | null; change24h: number | null; via: string; organic: number | null; holders: number | null; seenHoursAgo: number; flags: string[] }
@@ -76,6 +77,7 @@ export default function HomePage() {
     <div style={{ padding: "18px 16px 90px", color: "#ececf4", maxWidth: 1100, margin: "0 auto" }}>
       <h1 style={{ margin: "0 0 4px", fontSize: 24, fontWeight: 700 }}>Home</h1>
       <p style={{ ...dim, margin: "0 0 14px" }}>The few things worth a look today. Everything here is information, nothing is advice.</p>
+      <PasteCheck />
       <MarketStrip />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 12 }}>
         <div style={card}>

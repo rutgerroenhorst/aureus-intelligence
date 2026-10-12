@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { CheckBadge, CheckButton, CheckPanel, useCoinCheck, type CheckNote } from "./CoinCheck";
 import { brand } from "@/lib/brand";
+import { CoinName } from "./parts";
 
 /**
  * One coin on the CATE, Buy Signals, Elite and Incubation tabs. A component of its own (not one defined inside the page): a component defined inside another
@@ -19,8 +20,6 @@ export function CoinRow({ c, color, score, isBuySignal, tab, note }: { c: any; c
   const momentum = c.momentum || "";
   const actionWindow = c.actionWindow || "";
   const slippage = c.slippage || "";
-
-  const timeLabel = minutesOld < 1 ? "🔥 <1m" : minutesOld < 5 ? "⚡ <5m" : minutesOld < 30 ? "🟠 <30m" : `📊 ${minutesOld}m`;
 
   const markEntered = async () => {
     try {
@@ -57,13 +56,12 @@ export function CoinRow({ c, color, score, isBuySignal, tab, note }: { c: any; c
       >
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: "13px", fontWeight: 700, color: "#fff", display: "flex", alignItems: "center", gap: "8px" }}>
-            {c.symbol}
+            <CoinName mint={c.mint} chain={c.chain} size={13}>{c.symbol}</CoinName>
             <span style={{ fontSize: "11px", opacity: 0.7 }}>
               {riskBadge} {riskLevel} {momentum && `• ${momentum}`}
             </span>
           </div>
           <div style={{ fontSize: "10px", color, marginTop: "4px", display: "flex", gap: "12px", flexWrap: "wrap" }}>
-            <span>{timeLabel}</span>
             <span>{(c.minutesOld || 0).toFixed(0)}m •</span>
             <span>
               {conf.toFixed(0)}% {c.tier || c.strength || c.phase || c.strength || ""}
@@ -98,7 +96,7 @@ export function CoinRow({ c, color, score, isBuySignal, tab, note }: { c: any; c
                 whiteSpace: "nowrap",
               }}
             >
-              {entered ? "✅ Entered" : saveFailed ? "⚠ Not saved" : "✔ Enter"}
+              {entered ? "✓ Entered" : saveFailed ? "⚠ Not saved" : "Enter"}
             </button>
             <button
               onClick={(e) => {
@@ -142,7 +140,7 @@ export function CoinRow({ c, color, score, isBuySignal, tab, note }: { c: any; c
                 textOverflow: "ellipsis",
               }}
             >
-              📋 Copy Mint
+              Copy mint
             </button>
           </div>
         </div>
@@ -167,11 +165,11 @@ export function UltraCard({ c, entered, onEnter, tab, note }: { c: any; entered:
         }}
       >
         <div style={{ fontSize: "13px", fontWeight: 700, color: "#fff", display: "flex", alignItems: "center", gap: "8px" }}>
-          {c.symbol}
+          <CoinName mint={c.mint} chain={c.chain} size={13}>{c.symbol}</CoinName>
           <span style={{ fontSize: "11px", opacity: 0.7 }}>• {c.signal}</span>
         </div>
         <div style={{ fontSize: "10px", color: "#ff9500", marginTop: "4px", display: "flex", gap: "12px", flexWrap: "wrap" }}>
-          <span>🔥 {c.secondsOld}s old</span>
+          <span>{c.secondsOld}s old</span>
           <span>${Math.round(c.mcap).toLocaleString()}</span>
           <span>Score: {c.score}</span>
         </div>
@@ -199,7 +197,7 @@ export function UltraCard({ c, entered, onEnter, tab, note }: { c: any; entered:
               whiteSpace: "nowrap",
             }}
           >
-            {entered ? "✅ Entered" : "✔ Enter"}
+            {entered ? "✓ Entered" : "Enter"}
           </button>
           <button
             onClick={(e) => {
@@ -218,7 +216,7 @@ export function UltraCard({ c, entered, onEnter, tab, note }: { c: any; entered:
               whiteSpace: "nowrap",
             }}
           >
-            🔍 DexScreener
+            DexScreener
           </button>
           <CheckButton state={check} />
         </div>

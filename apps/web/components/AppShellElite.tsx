@@ -82,28 +82,30 @@ function describeHealth(t: Telemetry, scanning: boolean): Health {
   return { level: "down", label: `Last scan ${formatAge(min)} ago` };
 }
 
+// The phone's bottom bar: the four pages that have something in them. Everything else is under "More" (on the sidebar too).
 const primaryNav = [
+  { label: "Home", href: "/home", type: "home" },
   { label: "Radar", href: "/radar", type: "radar" },
-  { label: "Elite", href: "/elite", type: "elite" },
   { label: "Results", href: "/results", type: "results" },
-  { label: "Signals", href: "/signals", type: "signals" },
+  { label: "Learning", href: "/learning", type: "learning" },
 ];
 
 const moreNav = [
-  { label: "Home", href: "/home", type: "home" },
-  { label: "Stream", href: "/stream", type: "stream" },
-  { label: "Learning", href: "/learning", type: "learning" },
-  { label: "Forensics", href: "/forensics", type: "forensics" },
-  { label: "Wallets", href: "/wallets", type: "wallets" },
-  { label: "Watchlist", href: "/watchlist", type: "watchlist" },
   { label: "Telegram", href: "/telegram", type: "telegram" },
   { label: "Ops", href: "/ops", type: "ops" },
+  { label: "Stream", href: "/stream", type: "stream" },
+  { label: "Signals", href: "/signals", type: "signals" },
+  { label: "Elite", href: "/elite", type: "elite" },
+  { label: "Wallets", href: "/wallets", type: "wallets" },
+  { label: "Forensics", href: "/forensics", type: "forensics" },
+  { label: "Watchlist", href: "/watchlist", type: "watchlist" },
 ];
 
 export default function AppShellElite({ children }: AppShellEliteProps) {
   const pathname = usePathname();
   const [health, setHealth] = useState<Health>({ level: "unknown", label: "" });
   const [moreOpen, setMoreOpen] = useState(false);
+  const [sideMore, setSideMore] = useState(false);
   const [scanning, setScanning] = useState(false);
   const wasScanning = useRef(false);
   const askedAt = useRef(0);
@@ -151,22 +153,25 @@ export default function AppShellElite({ children }: AppShellEliteProps) {
   const mainNav = [
     { label: "Home", href: "/home", type: "home", group: "Core" },
     { label: "Radar", href: "/radar", type: "radar", group: "Core" },
-    { label: "Elite", href: "/elite", type: "elite", group: "Core" },
     { label: "Results", href: "/results", type: "results", group: "Core" },
-    { label: "Stream", href: "/stream", type: "stream", group: "Data" },
-    { label: "Signals", href: "/signals", type: "signals", group: "Data" },
-    { label: "Learning", href: "/learning", type: "learning", group: "Data" },
-    { label: "Forensics", href: "/forensics", type: "forensics", group: "Analysis" },
-    { label: "Wallets", href: "/wallets", type: "wallets", group: "Analysis" },
-    { label: "Watchlist", href: "/watchlist", type: "watchlist", group: "Tracking" },
-    { label: "Telegram", href: "/telegram", type: "telegram", group: "Tracking" },
-    { label: "Ops", href: "/ops", type: "ops", group: "Tracking" },
+    { label: "Learning", href: "/learning", type: "learning", group: "Core" },
+    { label: "Telegram", href: "/telegram", type: "telegram", group: "System" },
+    { label: "Ops", href: "/ops", type: "ops", group: "System" },
+    { label: "Stream", href: "/stream", type: "stream", group: "More" },
+    { label: "Signals", href: "/signals", type: "signals", group: "More" },
+    { label: "Elite", href: "/elite", type: "elite", group: "More" },
+    { label: "Wallets", href: "/wallets", type: "wallets", group: "More" },
+    { label: "Forensics", href: "/forensics", type: "forensics", group: "More" },
+    { label: "Watchlist", href: "/watchlist", type: "watchlist", group: "More" },
   ];
 
   const isActive = (href: string) => pathname === href;
   const groups = Array.from(new Set(mainNav.map(n => n.group)));
   const healthColor = HEALTH_COLOR[health.level];
   const moreActive = moreNav.some((n) => isActive(n.href));
+  // the sidebar's "More" stays folded away until the page you are on is one of its pages
+  const sideMoreOpen = sideMore || mainNav.some((n) => n.group === "More" && isActive(n.href));
+  const labelStyle: React.CSSProperties = { fontSize: "10px", fontWeight: 700, color: "#6f6f73", textTransform: "uppercase", letterSpacing: "0.6px", paddingLeft: "16px", paddingRight: "16px", marginBottom: "8px" };
 
   return (
     <div className="ae-root" style={{ display: "flex", height: "100vh", background: brand.bg, fontFamily: "'Inter', -apple-system, sans-serif" }}>
@@ -198,19 +203,20 @@ export default function AppShellElite({ children }: AppShellEliteProps) {
             const items = mainNav.filter(n => n.group === group);
             return (
               <div key={group} style={{ marginBottom: "20px" }}>
-                <div style={{
-                  fontSize: "10px",
-                  fontWeight: 700,
-                  color: "#6f6f73",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.6px",
-                  paddingLeft: "16px",
-                  paddingRight: "16px",
-                  marginBottom: "8px",
-                }}>
-                  {group}
-                </div>
-                {items.map((item) => {
+                {group === "More" ? (
+                  <button
+                    type="button"
+                    onClick={() => setSideMore((v) => !v)}
+                    aria-expanded={sideMoreOpen}
+                    style={{ ...labelStyle, display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%", boxSizing: "border-box", background: "none", border: "none", cursor: "pointer", textAlign: "left" }}
+                  >
+                    <span>More</span>
+                    <span aria-hidden="true">{sideMoreOpen ? "−" : "+"}</span>
+                  </button>
+                ) : (
+                  <div style={labelStyle}>{group}</div>
+                )}
+                {(group !== "More" || sideMoreOpen) && items.map((item) => {
                   const active = isActive(item.href);
                   return (
                     <Link
@@ -312,7 +318,7 @@ export default function AppShellElite({ children }: AppShellEliteProps) {
             fontSize: "12px",
             color: "#8a8a8e",
           }}>
-            <span className="ae-top-solana">🌐 Solana</span>
+            <span className="ae-top-solana">Solana</span>
             <span className="ae-top-sep" style={{ width: "1px", height: "16px", background: "#1a1a1f" }} />
             {health.level !== "unknown" && (
               <span style={{ color: healthColor }}>● {health.label}</span>

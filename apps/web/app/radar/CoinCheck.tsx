@@ -3,6 +3,7 @@ import { createContext, useContext, useEffect, useState } from "react";
 import type { CheckLine } from "@/lib/coinCheck";
 import { AWAY_HOURS } from "@/lib/checkAway";
 import { brand } from "@/lib/brand";
+import { IconSearch } from "./parts";
 
 /** What the site answered when a coin was checked (lib/coinCheck.ts judgeCoin, plus when). */
 export interface CheckAnswer {
@@ -93,9 +94,9 @@ export function CheckButton({ state, fontSize = 10 }: { state: CoinCheckState; f
       }}
       disabled={state.busy}
       title="Dead, or not where it belongs? The site looks at the coin again right now (the market, a test sale, the holders, the creator, its own history) and tells you what it finds. It does not just agree."
-      style={{ padding: "4px 8px", background: "#1a1a1f", color: state.answer ? TONE[state.answer.verdict] : "#b4b4c6", border: "1px solid #3a3a46", borderRadius: "4px", fontSize, fontWeight: 600, cursor: state.busy ? "default" : "pointer", whiteSpace: "nowrap" }}
+      style={{ padding: "4px 8px", background: "#1a1a1f", color: state.answer ? TONE[state.answer.verdict] : "#b4b4c6", border: "1px solid #3a3a46", borderRadius: "4px", fontSize, fontWeight: 600, cursor: state.busy ? "default" : "pointer", whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", gap: 4 }}
     >
-      {state.busy ? "Checking…" : state.answer ? "🔍 Checked" : "🔍 Check"}
+      {state.busy ? "Checking…" : (<><IconSearch /> {state.answer ? "Checked" : "Check"}</>)}
     </button>
   );
 }
@@ -157,7 +158,7 @@ export function CheckBadge({ note }: { note: CheckNote | undefined }) {
   const said = note.verdict === "agree" ? "you doubted it, the site agreed" : note.verdict === "disagree" ? "you doubted it, the site did not agree" : "you doubted it, the site was unsure";
   return (
     <div style={{ marginTop: 5, fontSize: 11, lineHeight: 1.4, color: note.returned ? brand.blueText : "#8a8a8e" }} title="From your earlier Check of this coin on this tab">
-      {note.returned ? "↩ Back on this tab" : "🔍 Checked"} · {ago(note.at)} ({said}){note.returned ? ": the tab listed it again" : ""}
+      {note.returned ? "↩ Back on this tab" : "Checked"} · {ago(note.at)} ({said}){note.returned ? ": the tab listed it again" : ""}
     </div>
   );
 }
@@ -167,7 +168,7 @@ export function AwayLine({ count, shown, onToggle }: { count: number; shown: boo
   if (!count) return null;
   return (
     <div style={{ padding: "10px 16px 0", fontSize: 12, lineHeight: 1.5, color: "#8a8a8e" }}>
-      🔍 {count} coin{count === 1 ? "" : "s"} left out because you checked {count === 1 ? "it" : "them"} and the site agreed (dead, or a serious problem). They come back after {AWAY_HOURS} hours, or when the tab lists them again.{" "}
+      {count} coin{count === 1 ? "" : "s"} left out because you checked {count === 1 ? "it" : "them"} and the site agreed (dead, or a serious problem). They come back after {AWAY_HOURS} hours, or when the tab lists them again.{" "}
       <button onClick={onToggle} style={{ background: "none", border: "none", color: brand.blueText, cursor: "pointer", padding: 0, fontSize: 12, textDecoration: "underline" }}>
         {shown ? "Leave them out again" : "Show them"}
       </button>

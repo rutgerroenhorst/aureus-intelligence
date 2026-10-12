@@ -2,6 +2,7 @@
 import { useMemo, useState } from "react";
 import { CheckBadge, CheckButton, CheckPanel, useCoinCheck, type CheckNote } from "./CoinCheck";
 import { brand } from "@/lib/brand";
+import { CoinName, TabIntro } from "./parts";
 
 export interface Runner {
   mint: string;
@@ -62,7 +63,7 @@ function Row({ c, onEnter, entered, failed, note }: { c: Runner; onEnter: (c: Ru
     <div style={{ background: "#141418", border: "1px solid #2a2a2f", borderRadius: 8, padding: 12, marginBottom: 8 }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
         <div style={{ minWidth: 0 }}>
-          <b style={{ color: "#fff", fontSize: 15 }}>{c.symbol ?? "?"}</b> <span style={{ color: "#8a8a8e", fontSize: 12 }}>{c.name}</span>
+          <CoinName mint={c.mint}>{c.symbol ?? "?"}</CoinName> <span style={{ color: "#8a8a8e", fontSize: 12 }}>{c.name}</span>
           <div style={{ fontSize: 12, color: "#b4b4c6", marginTop: 3 }}>
             {age ? `${age} old · ` : ""}24 h <span style={{ color: col(c.change24h) }}>{pct(c.change24h)}</span> · last hour <span style={{ color: col(c.change1h) }}>{pct(c.change1h)}</span>
           </div>
@@ -76,7 +77,7 @@ function Row({ c, onEnter, entered, failed, note }: { c: Runner; onEnter: (c: Ru
       </div>
       <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
         <button onClick={() => onEnter(c)} disabled={entered} style={{ ...btn, background: entered ? brand.blue : "#1a1a1f", color: entered ? brand.fg : failed ? "#ff9f0a" : brand.blueText, borderColor: failed ? "#ff9f0a" : brand.blue }}>
-          {entered ? "✅ Entered" : failed ? "⚠ Not saved" : "✔ Enter"}
+          {entered ? "✓ Entered" : failed ? "⚠ Not saved" : "Enter"}
         </button>
         <a href={`https://dexscreener.com/solana/${c.mint}`} target="_blank" rel="noreferrer" style={{ ...btn, border: `1px solid ${brand.blueLine}` }}>
           DexScreener
@@ -104,10 +105,9 @@ export function RunnersTab({ runners, lab, prior, entered, failedMints, onEnter,
   }, [runners, sort, kind]);
   return (
     <div style={{ padding: 16 }}>
-      <h3 style={{ color: brand.blueText, marginBottom: 6 }}>🏃 Runners ({runners.length})</h3>
-      <div style={{ fontSize: 12, color: "#b4b4c6", marginBottom: 8, lineHeight: 1.5 }}>
+      <TabIntro title={<>Runners ({runners.length})</>} color={brand.blueText}>
         Healthy coins that are already up and too big or too old for the other tabs (the kind HOTBOT was). Late entries: most of them give a lot back.
-      </div>
+      </TabIntro>
       <details style={{ marginBottom: 10, fontSize: 12, color: "#8a8a8e", lineHeight: 1.5 }}>
         <summary style={{ cursor: "pointer", color: brand.blueText }}>More about this tab</summary>
         <div style={{ marginTop: 6 }}>

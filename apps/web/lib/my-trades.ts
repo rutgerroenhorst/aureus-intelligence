@@ -7,8 +7,8 @@ import { CHAIN_BY_ID, isTokenAddress } from "./chains";
  * snapshot at entry, and what happened afterwards (highest and lowest market cap seen). See migration 0027.
  */
 
-/** The learning tabs an entry can come from; anything else is stored as "unknown". */
-export const TRADE_TABS = ["cate", "buy_signals", "ultra_momentum", "elite", "incubation", "runners", "graduates", "hot"] as const;
+/** The tabs an entry can come from, and "pasted" (a coin pasted into the box at the top of the Radar and Home); anything else is stored as "unknown". */
+export const TRADE_TABS = ["cate", "buy_signals", "ultra_momentum", "elite", "incubation", "runners", "graduates", "hot", "pasted"] as const;
 const MINT_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 /** The site's address is public, so the journal is bounded: no more open trades than this, and a repeat click is idempotent. */
 const MAX_ACTIVE = 300;

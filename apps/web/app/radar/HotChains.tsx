@@ -4,6 +4,7 @@ import { dexUrl } from "@/lib/chains";
 import { CheckBadge, CheckButton, CheckPanel, useCoinCheck, type CheckNote } from "./CoinCheck";
 import type { HotChain, HotPool } from "@/lib/hotChains";
 import { brand } from "@/lib/brand";
+import { CoinName, TabIntro } from "./parts";
 
 export interface HotClient {
   at: string;
@@ -68,7 +69,7 @@ function HotCard({ p, entered, failed, onEnter, note }: { p: HotPool; entered: b
       <div style={{ background: "#141418", border: "1px solid #2a2a2f", borderRadius: 8, padding: 12, marginBottom: 8 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
           <div style={{ minWidth: 0 }}>
-            <b style={{ color: "#fff", fontSize: 15 }}>{p.symbol}</b> <span style={{ color: "#8a8a8e", fontSize: 12 }}>{p.name}</span>
+            <CoinName mint={p.address} chain={p.chain}>{p.symbol}</CoinName> <span style={{ color: "#8a8a8e", fontSize: 12 }}>{p.name}</span>
             <div style={{ fontSize: 12, color: "#b4b4c6", marginTop: 3 }}>
               {age(p.ageH) ? `${age(p.ageH)} old · ` : ""}1 h <span style={{ color: col(p.ch1) }}>{pct(p.ch1)}</span> · 6 h <span style={{ color: col(p.ch6) }}>{pct(p.ch6)}</span> · 24 h <span style={{ color: col(p.ch24) }}>{pct(p.ch24)}</span>
             </div>
@@ -81,7 +82,7 @@ function HotCard({ p, entered, failed, onEnter, note }: { p: HotPool; entered: b
         </div>
         <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
           <button onClick={() => onEnter(p)} disabled={entered} style={{ ...btn, background: entered ? brand.blue : "#1a1a1f", color: entered ? brand.fg : failed ? "#ff9f0a" : brand.blueText, borderColor: failed ? "#ff9f0a" : brand.blue }}>
-            {entered ? "✅ Entered" : failed ? "⚠ Not saved" : "✔ Enter"}
+            {entered ? "✓ Entered" : failed ? "⚠ Not saved" : "Enter"}
           </button>
           <a href={dexUrl(p.chain, p.pair)} target="_blank" rel="noreferrer" style={{ ...btn, border: `1px solid ${brand.blueLine}` }}>
             DexScreener
@@ -103,10 +104,9 @@ export function HotTab({ hot, chain, entered, failedMints, onEnter, notes }: { h
   if (!hot || !c) return <div style={{ padding: 16, color: "#8a8a8e" }}>Ranking the networks…</div>;
   return (
     <div style={{ padding: 16 }}>
-      <h3 style={{ color: "#ff9f0a", marginBottom: 6 }}>🔥 Hot on {c.label} ({shown.length})</h3>
-      <div style={{ fontSize: 12, color: "#b4b4c6", marginBottom: 8, lineHeight: 1.5 }}>
+      <TabIntro title={<>Hot on {c.label} ({shown.length})</>} color="#ff9f0a">
         What is trending on {c.label} right now, most trending first. Networks are ranked above, hottest first; the other tabs are Solana only.
-      </div>
+      </TabIntro>
       <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
         <button onClick={() => setAll(false)} style={chip(!all)}>New and small ({pools.filter(isNewSmall).length})</button>
         <button onClick={() => setAll(true)} style={chip(all)}>All trending ({pools.length})</button>

@@ -54,6 +54,20 @@ Every coin card has a small **🔍 Check** button (next to Enter and DexScreener
   component on every render, so the 30-second refresh threw away what a card remembered (the answer of a Check, a half-finished Enter) and lost clicks that landed during a render.
 - The Hot tab stays on the network the user is looking at when the ranking changes (it used to switch to whichever network became hottest, under the click).
 
+## Paste a coin (2026-10-13)
+
+The Check also works for a coin that is on no tab. The box at the top of the Radar and of Home takes an address or a link (DexScreener, pump.fun, Birdeye, Solscan ...): `lib/pasteCoin.ts` pulls the
+address-shaped pieces out of the text (a Solana address, an EVM address, or the one a DexScreener link holds), `/api/resolve-coin` asks DexScreener what it is (the token itself, or a pool: a pool
+resolves to the coin on its base side) and answers with the coin on one of the networks the Radar knows, and the card that appears runs the same Check by itself, with Enter, DexScreener and
+(on Solana) a link to the coin's dossier. The Check is recorded with the tab name `pasted` (`CHECK_TABS`), and Enter journals the coin with the same name (`TRADE_TABS`).
+
+Why it exists: the user buys most coins outside the Radar (92 of 109 entries in the last 14 days were never pressed Enter on a card) and the 20 coins this system never saw all lost at least half
+([`docs/WALLET_REVIEW.md`](WALLET_REVIEW.md)). The Check was the system's strongest function and only reachable for coins already on a tab.
+
+Limits: a coin without a pool on DexScreener (very new, or a wallet address) is not found; the lookup answers at most 30 pastes a minute for the whole site (per server instance); Learning's "Your checks"
+cannot match a pasted coin to the lab's snapshots unless the Radar admitted it too, so with few of those it says "too few coins to say". Test presses count as doubts in Learning like any other:
+delete them from `coin_checks` (`tab = 'pasted'`) after trying it.
+
 ## Calibration (2026-10-12)
 
 Run read-only over the 42 coins the hosted Radar listed that morning (`elite`, `cate`, `buy_signals`, `runners`, `graduates`, `ultra_momentum`), with the real sources. First version: **agree 15 (36%), not sure 14, disagree 13**:

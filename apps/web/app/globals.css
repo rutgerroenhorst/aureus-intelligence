@@ -1248,3 +1248,27 @@ table.grid tr:hover td { background: var(--bg-2); }
   color: var(--muted);
   padding: 40px;
 }
+
+/* Auriga UX layer: a coin's name is a link to its dossier, and a tab's explanation sits behind an "i" */
+.coin-name:hover {
+  text-decoration: underline !important;
+  text-decoration-color: var(--brand-text);
+  text-underline-offset: 3px;
+}
+.info-btn {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid #3a3a46;
+  background: none;
+  color: #8a8a8e;
+  font: italic 700 12px Georgia, serif;
+  line-height: 1;
+  cursor: pointer;
+}
+.info-btn:hover,
+.info-btn[aria-expanded="true"] {
+  color: var(--brand-text);
+  border-color: var(--brand);
+}

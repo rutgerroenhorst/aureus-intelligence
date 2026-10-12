@@ -98,7 +98,7 @@ export default function ResultsPage() {
             fontWeight: 700,
           }}
         >
-          🤖 System Performance
+          System Performance
         </button>
         <button
           onClick={() => setActiveTab('trades')}
@@ -112,7 +112,7 @@ export default function ResultsPage() {
             fontWeight: 700,
           }}
         >
-          💰 My Trades
+          My Trades
         </button>
       </div>
 
@@ -412,7 +412,7 @@ export default function ResultsPage() {
                           )}
                         </td>
                         <td style={{ padding: '12px', color: '#8a8a8e' }}>
-                          {trade.status === 'active' ? '🔵 Active' : '⚪ Exited'}
+                          {trade.status === 'active' ? 'Active' : 'Exited'}
                         </td>
                       </tr>
                     );
