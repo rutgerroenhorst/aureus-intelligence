@@ -1,4 +1,4 @@
-/* Learning Lab. Dark panels on the app's near-black background; green = good, red = bad, teal = information, orange = caution. */
+/* Learning Lab. Dark panels on the app's near-black background; green = good, red = bad, blue (the brand's light blue; the variable is still called --teal) = information, orange = caution. */
 .page {
   --panel: rgba(255, 255, 255, 0.035);
   --panel-2: rgba(255, 255, 255, 0.06);
@@ -8,7 +8,7 @@
   --muted: #8a8a9e;
   --green: #34c759;
   --red: #ff453a;
-  --teal: #30b0c0;
+  --teal: #7f97ff;
   --orange: #ff9f0a;
   --violet: #9a8cff;
   color: var(--text);
@@ -197,8 +197,8 @@
 .bOpen,
 .bCollecting {
   color: var(--teal);
-  background: rgba(48, 176, 192, 0.12);
-  border-color: rgba(48, 176, 192, 0.35);
+  background: rgba(127, 151, 255, 0.12);
+  border-color: rgba(127, 151, 255, 0.35);
 }
 .bWeak,
 .bNeutral,
@@ -409,8 +409,8 @@
 }
 
 .note {
-  border: 1px solid rgba(48, 176, 192, 0.3);
-  background: rgba(48, 176, 192, 0.07);
+  border: 1px solid rgba(127, 151, 255, 0.3);
+  background: rgba(127, 151, 255, 0.07);
   border-radius: 10px;
   padding: 10px 14px;
   color: var(--soft);

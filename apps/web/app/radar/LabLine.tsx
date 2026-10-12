@@ -1,5 +1,7 @@
 "use client";
 
+import { brand } from "@/lib/brand";
+
 export interface LabOdds {
   ageH: number;
   go2: { p: number; k: number; n: number } | null;
@@ -20,7 +22,7 @@ export function LabLine({ odds }: { odds: LabOdds | undefined }) {
   const pct = (x: number) => `${Math.round(x * 100)}%`;
   return (
     <div style={{ fontSize: "10px", marginTop: "6px", color: "#8a8a9e", lineHeight: 1.5 }} title="From the Learning Lab: what happened to coins that looked like this one at this age, on coins its checked models had not seen. Frequencies, not promises.">
-      <span style={{ color: "#30b0c0", fontWeight: 700 }}>🧪 Lab</span>
+      <span style={{ color: brand.blueText, fontWeight: 700 }}>🧪 Lab</span>
       {odds.collapse24 && (
         <span> · lost half within a day: <b style={{ color: "#ff453a" }}>{pct(odds.collapse24.p)}</b> ({odds.collapse24.k} of {odds.collapse24.n}){odds.collapse24.p >= 0.7 && <b style={{ color: "#ff453a" }}> · top risk group</b>}</span>
       )}

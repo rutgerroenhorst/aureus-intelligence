@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useFetch } from "@/hooks/useFetch";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { brand } from "@/lib/brand";
 
 type Tab = "stealth-moons" | "elite" | "cate" | "quick-flips";
 
@@ -24,7 +25,7 @@ const TABS: Record<Tab, { label: string; color: string; description: string }> =
   },
   "quick-flips": {
     label: "⚡ QUICK FLIPS",
-    color: "#30b0c0",
+    color: brand.blueText,
     description: "Under 24h old, high momentum"
   }
 };

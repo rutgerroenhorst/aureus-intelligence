@@ -155,7 +155,7 @@ export function GraduatesTab({ coins, lab, meta, entered, failedMints, onEnter, 
         )}
       </div>
       <details style={{ marginBottom: 10, fontSize: 12, color: "#8a8a8e", lineHeight: 1.5 }}>
-        <summary style={{ cursor: "pointer", color: "#30b0c0" }}>Why are some coins hidden, and how graduations end</summary>
+        <summary style={{ cursor: "pointer", color: brand.blueText }}>Why are some coins hidden, and how graduations end</summary>
         <div style={{ marginTop: 6 }}>
           The Radar's door waits an hour on purpose (the first hour has ten times the downside); this tab shows that hour. {lab ? `The lab has followed ${lab.followed3d} graduations for 3 days: ${Math.round(lab.held2.p * 100)}% held 2x from the moment it first saw them.` : "The lab is following every graduation for days; its first numbers appear after three days."}
           {meta && meta.summary.length > 0 && (

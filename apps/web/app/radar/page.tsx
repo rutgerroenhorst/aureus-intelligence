@@ -385,8 +385,8 @@ export default function RadarPageElite() {
       case "qualified":
         return (
           <div style={{ padding: "16px" }}>
-            <h3 style={{ color: "#5ac8fa", marginBottom: "16px" }}>Incubation ({lists.incubation.list.length})</h3>
-            {lists.incubation.list.map((c, i) => <CoinRow key={c.mint ?? i} c={c} color="#5ac8fa" {...rowProps(c)} />)}
+            <h3 style={{ color: brand.blueText, marginBottom: "16px" }}>Incubation ({lists.incubation.list.length})</h3>
+            {lists.incubation.list.map((c, i) => <CoinRow key={c.mint ?? i} c={c} color={brand.blueText} {...rowProps(c)} />)}
           </div>
         );
       case "stats":

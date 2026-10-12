@@ -60,7 +60,7 @@ export default function ElitePage() {
                 <div style={{ fontSize: "10px", color: "#8a8a9e", marginTop: "4px" }}>coins</div>
               </div>
 
-              <div style={{ padding: "16px", background: "rgba(48, 176, 192, 0.1)", border: "1px solid rgba(48, 176, 192, 0.3)", borderRadius: "8px" }}>
+              <div style={{ padding: "16px", background: "rgba(127, 151, 255, 0.1)", border: "1px solid rgba(127, 151, 255, 0.3)", borderRadius: "8px" }}>
                 <div style={{ fontSize: "11px", fontWeight: 700, color: "#8a8a9e", marginBottom: "8px", textTransform: "uppercase" }}>Whales</div>
                 <div style={{ fontSize: "24px", fontWeight: 700, color: brand.blueText }}>{dashboard.system_stats.tracked_whales}</div>
                 <div style={{ fontSize: "10px", color: "#8a8a9e", marginTop: "4px" }}>proven</div>

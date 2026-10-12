@@ -1229,7 +1229,7 @@ table.grid tr:hover td { background: var(--bg-2); }
 }
 
 .signals-panel-btn.primary:hover {
-  background: #6fadff;
+  background: var(--blue-bright);
 }
 
 .signals-panel-btn.secondary {

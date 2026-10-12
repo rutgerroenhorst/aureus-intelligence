@@ -52,7 +52,7 @@ function Body({ text }: { text: string }) {
           <div key={li} style={{ whiteSpace: "pre-wrap", ...(mono ? { fontFamily: MONO, fontSize: 12.5, color: "#c9c9d6", background: "#101014", padding: "0 8px" } : {}) }}>
             {line === "" ? "\u00a0" : parts.map((p, i) =>
               /^https?:\/\//.test(p) ? (
-                <a key={i} href={p} target="_blank" rel="noreferrer" style={{ color: "#35DCFF" }}>
+                <a key={i} href={p} target="_blank" rel="noreferrer" style={{ color: brand.blueText }}>
                   {p.replace(/^https?:\/\//, "")}
                 </a>
               ) : (
