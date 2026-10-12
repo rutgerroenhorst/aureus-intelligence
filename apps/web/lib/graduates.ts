@@ -5,6 +5,7 @@
  */
 
 import { gradFate, gradFlags, gradKind, isHealthy, summarizeFates, type GradFate, type GradKind, type KindSummary, type Reading } from "./lab/pump";
+import { readingsOf, type FeedLog } from "./graduateFeed";
 
 interface Queryable {
   query(text: string, params?: unknown[]): Promise<{ rows: any[]; rowCount?: number | null }>;
@@ -58,9 +59,9 @@ export interface GraduatesReport {
   summary: KindSummary[];
   /** pump.fun graduations followed for the whole 72 hours so far (the lessons), when there are enough */
   lab: { followed3d: number; held2: { p: number; k: number; n: number } } | null;
-  /** "local" when read from this database, "laptop" when it is the snapshot the laptop pushed */
-  source?: "local" | "laptop";
-  /** when the snapshot was taken (laptop source) */
+  /** "local" when read from this database's own stream rows (the laptop), "laptop" when it is the snapshot the laptop pushed, "chain" when the site read the graduations from the chain itself */
+  source?: "local" | "laptop" | "chain";
+  /** when the snapshot was taken (laptop source) or the chain feed last finished (chain source) */
   asOf?: string;
 }
 
@@ -71,15 +72,21 @@ const num = (x: unknown): number | null => {
 const at = (a: unknown, i: number) => (Array.isArray(a) ? num(a[i]) : null);
 
 const KEEP_ROWS = 150;
+/** The chain feed keeps a compact record per coin and refreshes it for a day, so the hosted tab shows the last 6 hours (about 330 coins): every Radar build reads them. */
+const CHAIN_HOURS = 6;
+/** A serial creator, by Jupiter's count of the tokens that wallet has minted. */
+const SERIAL_MINTS = 10;
 
 export async function buildGraduates(db: Queryable): Promise<GraduatesReport> {
   const nowS = Date.now() / 1000;
   const grads = await db
     .query(
       `SELECT g.mint, COALESCE(g.symbol, w.symbol) AS symbol, COALESCE(g.name, w.name) AS name, EXTRACT(EPOCH FROM g.migrated_at)::float8 AS migrated_s, g.create_to_migrate_min, g.initial_buy_sol, g.mayhem,
-              g.creator_launches_72h, w.note
+              g.creator_launches_72h, w.note, g.via, g.facts
          FROM pump_graduates g LEFT JOIN lab_watch w ON w.mint = g.mint
-        WHERE g.migrated_at > now() - interval '72 hours' ORDER BY g.migrated_at DESC LIMIT 700`,
+        WHERE (g.via <> 'chain' AND g.migrated_at > now() - interval '72 hours') OR (g.via = 'chain' AND g.migrated_at > now() - make_interval(hours => $1::int))
+        ORDER BY g.migrated_at DESC LIMIT 700`,
+      [CHAIN_HOURS],
     )
     .then((r) => r.rows)
     .catch(() => [] as any[]);
@@ -117,10 +124,18 @@ export async function buildGraduates(db: Queryable): Promise<GraduatesReport> {
 
   const fates: Array<{ kind: GradKind; fate: GradFate }> = [];
   const rows: GraduateRow[] = [];
+  let fromChain = false;
   for (const g of grads) {
-    const rs = byMint.get(g.mint) ?? [];
+    // the stream's coins have readings in the lab's tables; the chain feed's coins carry a compact record of theirs (lib/graduateFeed.ts)
+    const chain = g.via === "chain";
+    if (chain) fromChain = true;
+    const log = chain ? (g.facts as FeedLog | null) : null;
+    const rs = byMint.get(g.mint) ?? (log ? readingsOf(log) : []);
     const readings: Reading[] = rs.map((r) => ({ t: r.t, p: num(r.p), liq: num(r.liq), mcap: num(r.mcap) }));
-    const kind = gradKind({ createToMigrateMin: num(g.create_to_migrate_min), devBuySol: num(g.initial_buy_sol), mayhem: g.mayhem });
+    const ctm = num(g.create_to_migrate_min);
+    // a coin from the chain that graduated within 2 minutes of its launch and whose creating transaction could not be read (yet) is treated as born: the safe way to be wrong
+    const devBuy = chain && g.initial_buy_sol == null && ctm != null && ctm < 2 ? 100 : num(g.initial_buy_sol);
+    const kind = gradKind({ createToMigrateMin: ctm, devBuySol: devBuy, mayhem: g.mayhem });
     const fate = readings.length ? gradFate(g.migrated_s, readings) : null;
     if (fate) fates.push({ kind, fate });
     if (rows.length >= KEEP_ROWS) continue;
@@ -137,11 +152,19 @@ export async function buildGraduates(db: Queryable): Promise<GraduatesReport> {
       sinceFirst: fate?.firstP && fate.lastP ? fate.lastP / fate.firstP : null, peakMultiple: fate?.peakMultiple ?? null,
       buys1h: last ? at(last.b, 1) : null, sells1h: last ? at(last.s, 1) : null,
       readingAgeMin: last ? Math.round((nowS - last.t) / 60) : null,
-      flags: gradFlags(kind, fate, { creatorLaunches72h: num(g.creator_launches_72h), devBuySol: num(g.initial_buy_sol), createToMigrateMin: num(g.create_to_migrate_min), gone, rc: rcBy.get(g.mint) ?? null }),
+      flags: [
+        ...gradFlags(kind, fate, { creatorLaunches72h: num(g.creator_launches_72h), devBuySol: num(g.initial_buy_sol), createToMigrateMin: num(g.create_to_migrate_min), gone, rc: rcBy.get(g.mint) ?? null }),
+        ...((log?.dm ?? 0) >= SERIAL_MINTS ? [`serial creator (${log!.dm} tokens minted)`] : []),
+      ],
       rc: rcBy.get(g.mint) ?? null,
     });
   }
-  return { at: new Date().toISOString(), candidates: rows, summary: summarizeFates(fates), lab, source: "local" };
+  let asOf: string | undefined;
+  if (fromChain) {
+    const r = await db.query(`SELECT last_finished FROM scan_lease WHERE name = 'grad-feed'`).then((x) => x.rows[0]).catch(() => undefined);
+    asOf = r?.last_finished ? new Date(r.last_finished).toISOString() : undefined;
+  }
+  return { at: new Date().toISOString(), candidates: rows, summary: summarizeFates(fates), lab, source: fromChain ? "chain" : "local", ...(asOf ? { asOf } : {}) };
 }
 
 /**
@@ -175,16 +198,29 @@ export async function loadPushedGraduates(db: Queryable): Promise<GraduatesRepor
 }
 
 let memo: { at: number; body: GraduatesReport } | null = null;
+/** For tests: forget the shared answer. */
+export const resetGraduatesMemo = () => {
+  memo = null;
+};
+
+/** The laptop's pushed snapshot counts as live while it is younger than this: it pushes every 3 minutes while it is awake. */
+const PUSHED_FRESH_MIN = 20;
 
 /**
- * What to show right now: this database's own graduations when the stream runs here, otherwise the laptop's last snapshot.
+ * What to show right now:
+ *   - on the laptop (its own stream rows): those;
+ *   - on the hosted site while the laptop is awake and pushing: its snapshot, which knows more (who bought what at launch, creator history, holder structure);
+ *   - otherwise the hosted site's own chain feed (lib/graduateFeed.ts), which does not depend on the laptop, and only if it has nothing the old snapshot.
  * Reading a few hundred coins' price histories is the heaviest query involved and every open Radar asks every 15 seconds,
  * so one answer is shared for a minute (also by the coin dossier).
  */
 export async function currentGraduates(db: Queryable): Promise<GraduatesReport> {
   if (memo && Date.now() - memo.at < 60_000) return memo.body;
   const local = await buildGraduates(db);
-  const body = local.candidates.length > 0 ? local : (await loadPushedGraduates(db)) ?? local;
+  const pushed = await loadPushedGraduates(db);
+  const pushedFresh = pushed?.asOf != null && Date.now() - new Date(pushed.asOf).getTime() <= PUSHED_FRESH_MIN * 60_000;
+  const body =
+    local.candidates.length > 0 && local.source !== "chain" ? local : pushed && pushedFresh ? pushed : local.candidates.length > 0 ? local : pushed ?? local;
   memo = { at: Date.now(), body };
   return body;
 }

@@ -1,8 +1,10 @@
 /**
  * The clock that makes the site run by itself, day and night, without the laptop and without a screen open.
  *
- * Five jobs live inside the hosted database (Supabase's pg_cron). The first three call the site over HTTPS with the site's secret (pg_net does the call):
+ * Six jobs live inside the hosted database (Supabase's pg_cron). Four call the site over HTTPS with the site's secret (pg_net does the call):
  *   aureus-exit-alerts   every 2 minutes   GET /api/cron/exit-alerts        the Telegram exit check (apps/web/lib/exitTick.ts)
+ *   aureus-graduates     every 3 minutes   GET /api/cron/graduates         pump.fun's graduations read from the chain (lib/graduateFeed.ts), so the Graduations tab
+ *                                                                           runs without the laptop
  *   aureus-maintenance   hourly, at :00    GET /api/scan                     the site's own round when nobody has a screen open: a market scan if one is due, then the
  *                                                                           learning round and the housekeeping (RETENTION_DAYS), exactly what a screen asks for
  *   aureus-learning      hourly, at :30    GET /api/scan?only=learning       follows and grades the coins already tracked (cheap: no market scan, little written)
@@ -37,6 +39,7 @@ const WATCHDOG_SQL = path.join(path.dirname(fileURLToPath(import.meta.url)), "..
 
 const JOBS: ReadonlyArray<{ name: string; every: string; path?: string; sql?: string }> = [
   { name: "aureus-exit-alerts", every: "*/2 * * * *", path: "/api/cron/exit-alerts" },
+  { name: "aureus-graduates", every: "*/3 * * * *", path: "/api/cron/graduates" },
   { name: "aureus-maintenance", every: "0 * * * *", path: "/api/scan" },
   { name: "aureus-learning", every: "30 * * * *", path: "/api/scan?only=learning" },
   { name: "aureus-cron-cleanup", every: "15 3 * * *", sql: "delete from cron.job_run_details where end_time < now() - interval '2 days';" },
