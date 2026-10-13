@@ -11,6 +11,8 @@
  */
 import pg from "pg";
 import { fetchExtras, fetchFresh, judgeCoin, looksDead } from "../apps/web/lib/coinCheck";
+import { hostedUrl } from "./lib/hosted.js";
+import { serviceSecret } from "./lib/hosted.js";
 
 const SITE = process.env.SITE_URL ?? "https://aureus-intelligence-nu.vercel.app";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -22,7 +24,8 @@ interface Pick {
 }
 
 async function main() {
-  const res = await fetch(`${SITE}/api/radar-bundle`, { headers: { accept: "application/json" } });
+  const secret = await serviceSecret(); // the site is locked (docs/ACCESS.md): the service secret opens it
+  const res = await fetch(`${SITE}/api/radar-bundle`, { headers: { accept: "application/json", ...(secret ? { authorization: `Bearer ${secret}` } : {}) } });
   if (!res.ok) throw new Error(`radar-bundle ${res.status}`);
   const d = (await res.json()).data;
   const picks: Pick[] = [];
@@ -36,7 +39,7 @@ async function main() {
   add("graduates", (d.graduates?.candidates ?? []).filter((g: any) => g.healthy !== false), 8);
   add("ultra_momentum", d.ultraEarlyMomentum?.candidates, 1);
 
-  const url = process.env.LAB_SYNC_URL ?? process.env.CLOUD_URL;
+  const url = hostedUrl();
   const db = url ? new pg.Pool({ connectionString: url, ssl: { rejectUnauthorized: false }, max: 1 }) : null;
   const noDb = { query: async () => ({ rows: [] as any[] }) };
   const tally: Record<string, number> = {};

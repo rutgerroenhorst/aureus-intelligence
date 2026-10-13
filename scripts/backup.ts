@@ -3,8 +3,8 @@
  *
  *   corepack pnpm exec tsx scripts/backup.ts [--tier user|essentials|all] [--label text] [--out dir] [--local] [--git] [--no-hosted]
  *
- * - hosted database (Supabase): every table as gzipped JSON lines, plus the schema, the privileges, the clock's jobs, the names of the vault entries and the roles.
- *   READ ONLY, and it costs egress from the free database, so there are three sizes:
+ * - hosted database (Supabase): every table as gzipped JSON lines, all from ONE snapshot of the database (so the tables fit together again), plus the schema, the privileges,
+ *   the clock's jobs, the names of the vault entries and the roles. READ ONLY, and it costs egress from the free database, so there are three sizes:
  *     --tier user         the journal, the Checks, the followed wallet and its reads, the alert state, the Telegram log, the lab's reports (under 3 MB: fine every day)
  *     --tier essentials   (default) everything except the big rolling history tables (about 30 MB: fine every week)
  *     --tier all          every table (about 190 MB, which is 4% of a month's free egress: before a risky change, or monthly)
@@ -61,12 +61,14 @@ async function exportHosted() {
   const wanted = tables.filter((x) => (tier === "all" ? true : tier === "user" ? USER_TABLES.has(x.t) : !HISTORY_TABLES.has(x.t)));
   const manifest: Array<{ table: string; rows: number; bytesGz: number; partitioned: boolean }> = [];
   let downloaded = 0;
+  // ONE snapshot for every table: the database keeps changing while the export runs (a scan adds a snapshot and its features), and tables read at different moments would not fit
+  // together again (a child row whose parent was read earlier). Repeatable read gives every table the same moment.
+  await c.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
   for (const { t, partitioned } of wanted) {
     const file = path.join(dir, `${t}.jsonl.gz`);
     const gz = zlib.createGzip({ level: 6 });
     const ws = fs.createWriteStream(file);
     gz.pipe(ws);
-    await c.query("BEGIN READ ONLY");
     await c.query(`DECLARE bk NO SCROLL CURSOR FOR SELECT row_to_json(x)::text AS j FROM public.${q(t)} x`);
     let rows = 0;
     for (;;) {
@@ -79,11 +81,11 @@ async function exportHosted() {
       rows += r.rows.length;
     }
     await c.query("CLOSE bk");
-    await c.query("COMMIT");
     gz.end();
     await once(ws, "finish");
     manifest.push({ table: t, rows, bytesGz: fs.statSync(file).size, partitioned });
   }
+  await c.query("COMMIT");
   const total = manifest.reduce((s, m) => s + m.rows, 0);
   fs.writeFileSync(
     path.join(dir, "_manifest.json"),

@@ -10,8 +10,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import pg from "pg";
+import { hostedUrl } from "./lib/hosted.js";
 
-const HOSTED = process.env.LAB_SYNC_URL ?? process.env.CLOUD_URL;
+const HOSTED = hostedUrl();
 const mb = (n: number) => `${(n / 1048576).toFixed(n < 10 * 1048576 ? 1 : 0)} MB`;
 const bar = (used: number, of: number) => {
   const p = Math.min(100, (100 * used) / of);

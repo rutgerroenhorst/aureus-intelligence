@@ -29,8 +29,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import { hostedUrl } from "./lib/hosted.js";
 
-const HOSTED = process.env.LAB_SYNC_URL ?? process.env.CLOUD_URL;
+const HOSTED = hostedUrl();
 const SITE = (process.env.SITE_URL ?? "https://aureus-intelligence-nu.vercel.app").replace(/\/+$/, "");
 const SECRET_NAME = "aureus_cron_secret";
 const TOKEN_NAME = "aureus_telegram_token";

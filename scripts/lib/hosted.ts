@@ -63,3 +63,17 @@ export const HISTORY_TABLES = new Set(["feature_values", "rule_evaluations", "in
 
 /** The tables that hold what a person made or the system recorded about the person's own money: the Enter-button journal, the Checks, the followed wallet and its reads, the alert state, the Telegram log, the lab's reports. */
 export const USER_TABLES = new Set(["my_trades", "coin_checks", "wallet_watch", "wallet_txs", "wallet_fills", "wallet_flows", "exit_alerts", "exit_alert_kv", "telegram_messages", "lab_reports", "lab_hypotheses"]);
+
+/** The service secret (CRON_SECRET): from the environment, else read from the hosted database's vault. Never printed. */
+export async function serviceSecret(): Promise<string | undefined> {
+  if (process.env.CRON_SECRET) return process.env.CRON_SECRET;
+  const url = hostedUrl();
+  if (!url) return undefined;
+  const c = await connectTo(url, "aureus-secret");
+  try {
+    await c.query("SET default_transaction_read_only = on");
+    return (await c.query("select decrypted_secret from vault.decrypted_secrets where name = 'aureus_cron_secret'")).rows[0]?.decrypted_secret as string | undefined;
+  } finally {
+    await c.end();
+  }
+}

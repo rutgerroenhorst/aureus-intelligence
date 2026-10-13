@@ -13,7 +13,8 @@ import { connectTo, hostedUrl, localUrl } from "./lib/hosted.js";
 const args = process.argv.slice(2);
 const write = args.includes("--write");
 const local = args.includes("--local");
-const sql = args.filter((a) => !a.startsWith("--")).join(" ").trim();
+// only the two flags are flags: an SQL text may itself start with "--" (a comment)
+const sql = args.filter((a) => a !== "--write" && a !== "--local").join(" ").trim();
 if (!sql) {
   console.error('usage: tsx scripts/hosted-sql.ts [--local] [--write] "<sql>"');
   process.exit(2);

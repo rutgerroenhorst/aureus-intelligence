@@ -1,5 +1,7 @@
 # Going back to a known state
 
+*The whole picture (backups, the database, the secrets, rebuilding from nothing) is in [`DISASTER_RECOVERY.md`](DISASTER_RECOVERY.md); this file is about putting the code back to a tagged state.*
+
 Two restore points are tagged in git (and pushed to GitHub):
 
 | tag | what it is |
