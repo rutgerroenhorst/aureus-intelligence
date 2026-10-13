@@ -5,7 +5,7 @@ export const holders: Entry[] = [
     id: "aantal-holders",
     cat: "holders",
     title: "Aantal holders: wat zegt het (en wat niet)?",
-    q: ["hoeveel holders moet een coin hebben", "wat zegt het aantal holders", "is 300 holders genoeg", "wat is een holder", "holders count"],
+    q: ["hoeveel holders moet een coin hebben", "wat zegt het aantal holders", "is 300 holders genoeg", "wat is een holder", "holders count", "wat betekent het als een coin 1000 holders heeft", "is 1000 holders veel"],
     kw: ["holders", "houders", "aantal holders", "holder count", "verspreiding", "distributie", "token accounts"],
     short: "Het aantal holders is hoeveel wallets de coin hebben. Veel holders is beter dan weinig, maar het zegt niets over wie het meeste heeft: duizend wallets met een paar cent zijn niet veilig als tien wallets alles bezitten.",
     body: [
@@ -19,8 +19,8 @@ export const holders: Entry[] = [
     id: "top-holders",
     cat: "holders",
     title: "Top-holders en concentratie",
-    q: ["wat betekent top 10 holders 47 procent", "hoeveel mag de top 10 hebben", "wat is te veel concentratie", "largest wallet holds 24 percent", "wat betekent largest wallet"],
-    kw: ["top holders", "top 10", "top10", "concentratie", "grootste wallet", "largest wallet", "whale", "verdeling", "one wallet holds"],
+    q: ["wat betekent top 10 holders 47 procent", "hoeveel mag de top 10 hebben", "wat is te veel concentratie", "largest wallet holds 24 percent", "wat betekent largest wallet", "is een coin veilig als een wallet veel heeft", "is een coin met 40 procent bij 1 wallet veilig", "hoeveel mag een wallet bezitten", "is het erg als een wallet veel heeft"],
+    kw: ["top holders", "top 10", "top10", "concentratie", "grootste wallet", "largest wallet", "whale", "verdeling", "one wallet holds", "een wallet", "veel bij een wallet"],
     short: "Als een paar wallets het grootste deel bezitten, kunnen zij de prijs in één keer breken door te verkopen. De Check waarschuwt bij één wallet met 25% of meer, of een top 10 met 60% of meer.",
     body: [
       "Concentratie is het belangrijkste on-chain risico bij memecoins. Verkoopt een wallet met 25% van de supply, dan is dat vaak genoeg om de pool leeg te trekken. Zie ook *exit-liquiditeit*.",
@@ -34,7 +34,7 @@ export const holders: Entry[] = [
     id: "insider-wallets",
     cat: "holders",
     title: "Insider-wallets en gekoppelde wallets",
-    q: ["wat zijn insider wallets", "wat betekent linked insider wallets hold 84 procent", "wat is een insider network", "insiders hold", "wat zijn gekoppelde wallets"],
+    q: ["wat zijn insider wallets", "wat betekent linked insider wallets hold 84 procent", "wat is een insider network", "insiders hold", "wat zijn gekoppelde wallets", "hoe herken ik insiders"],
     kw: ["insiders", "insider wallets", "linked wallets", "gekoppelde wallets", "insider network", "cluster", "rugcheck insiders", "funding"],
     short: "Insider-wallets zijn wallets die aan elkaar gekoppeld blijken (door elkaar te financieren of tegelijk te kopen) en dus waarschijnlijk één eigenaar hebben. De Check waarschuwt bij 20% of meer in handen van zulke wallets.",
     body: [
@@ -62,8 +62,8 @@ export const holders: Entry[] = [
     id: "dev-wallet",
     cat: "holders",
     title: "Wat de maker met zijn coins doet",
-    q: ["wat doet de dev met zijn coins", "verkoopt de maker", "creator still holds", "wat betekent creator holds 20 procent", "dev sold everything"],
-    kw: ["dev", "maker", "creator", "deployer", "dev wallet", "creator holds", "dev sold", "verkocht", "ontwikkelaar"],
+    q: ["wat doet de dev met zijn coins", "verkoopt de maker", "creator still holds", "wat betekent creator holds 20 procent", "dev sold everything", "hoe zie ik of de dev gedumpt heeft", "heeft de dev verkocht", "heeft de maker zijn coins verkocht", "wat doet de dev", "dev dump", "kan ik de dev vertrouwen", "is de maker te vertrouwen", "wat is een doxxed dev"],
+    kw: ["dev", "maker", "creator", "deployer", "dev wallet", "creator holds", "dev sold", "verkocht", "ontwikkelaar", "gedumpt", "dev dump", "doxxed", "anoniem", "vertrouwen"],
     short: "De maker is de grootste risicofactor: zolang hij een groot deel houdt kan hij verkopen, en als hij alles verkocht heeft is hij weg. De Check waarschuwt als de maker nog 20% of meer houdt, of eerder een coin heeft laten crashen.",
     body: [
       "Wat je wilt weten: heeft de maker nog coins, verkoopt hij ze, en wat deed hij met eerdere coins? Een maker die alles verkocht heeft, heeft geen belang meer bij de coin. Een maker die veel houdt en niet verkoopt kan een goed teken zijn, of een tijdbom.",
@@ -130,7 +130,7 @@ export const holders: Entry[] = [
     id: "lp-lock-burn",
     cat: "holders",
     title: "Liquidity locked of burned",
-    q: ["wat betekent lp locked", "wat is lp burn", "kan de maker de liquiditeit weghalen", "liquidity locked", "wat betekent minder dan 50 procent locked"],
+    q: ["wat betekent lp locked", "wat is lp burn", "kan de maker de liquiditeit weghalen", "liquidity locked", "wat betekent minder dan 50 procent locked", "kan ik mijn lp terugkrijgen", "wat is een lp token"],
     kw: ["lp lock", "lp burn", "liquidity locked", "liquidity burned", "liquiditeit vergrendeld", "lp tokens", "rug pull", "slot"],
     short: "Als de liquiditeit is vergrendeld of verbrand, kan de maker de pool niet meer leegtrekken. De Check waarschuwt als minder dan de helft vergrendeld of verbrand is. Het beschermt niet tegen een maker die zijn eigen coins verkoopt.",
     body: [

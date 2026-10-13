@@ -104,7 +104,7 @@ export const memecoins: Entry[] = [
     id: "snipers-bundlers",
     cat: "memecoins",
     title: "Snipers en bundlers",
-    q: ["wat is een sniper", "wat is een bundler", "wat is een bundle", "wat zijn snipers bij memecoins", "wallets die tegelijk kopen bij launch"],
+    q: ["wat is een sniper", "wat is een bundler", "wat is een bundle", "wat zijn snipers bij memecoins", "wallets die tegelijk kopen bij launch", "hoe weet ik of er bots in mijn coin zitten", "zijn er bots in deze coin", "wat betekent bundled supply", "wat is bundled supply"],
     kw: ["sniper", "snipers", "bundler", "bundle", "bundled", "insiders", "clusters", "launch bots", "same block"],
     short: "Snipers zijn bots die in de eerste seconden na een lancering kopen. Bundlers zijn groepen wallets van één eigenaar die in hetzelfde blok kopen om één grote houder in veel kleine te verstoppen.",
     body: [
@@ -118,7 +118,7 @@ export const memecoins: Entry[] = [
     id: "memecoin-levenscyclus",
     cat: "memecoins",
     title: "De levenscyclus van een memecoin",
-    q: ["hoe lang leeft een memecoin", "wat zijn de fases van een memecoin", "memecoin lifecycle", "wanneer is een coin dood", "wat gebeurt er na de piek"],
+    q: ["hoe lang leeft een memecoin", "wat zijn de fases van een memecoin", "memecoin lifecycle", "wanneer is een coin dood", "wat gebeurt er na de piek", "hoe lang duurt een pump", "hoe lang duurt een memecoin hype"],
     kw: ["levenscyclus", "lifecycle", "fases", "piek", "bloeding", "dood", "hype", "afbouw", "runner"],
     short: "De meeste memecoins doorlopen: lancering, ontdekking, hype en piek, verkoop door vroege houders, langzame bloeding en dan niets meer. Alleen een paar krijgen een tweede leven door een echte community of een goed verhaal.",
     body: [
@@ -146,7 +146,7 @@ export const memecoins: Entry[] = [
     id: "nieuws-coins",
     cat: "memecoins",
     title: "Coins op nieuws, beroemdheden en politiek",
-    q: ["coin van een beroemdheid", "politieke memecoin", "is een coin van een bekend persoon echt", "nepcoins van beroemdheden", "celebrity coin scam"],
+    q: ["coin van een beroemdheid", "politieke memecoin", "is een coin van een bekend persoon echt", "nepcoins van beroemdheden", "celebrity coin scam", "wat is een political coin", "wat is een politieke coin", "coins van politici", "waarom stijgt een coin na een tweet"],
     kw: ["beroemdheid", "celebrity", "politiek", "nieuws", "influencer coin", "tweet", "officieel", "nep"],
     short: "Zodra iemand beroemd in het nieuws komt, staan er binnen minuten tientallen coins met zijn naam, bijna allemaal zonder dat hij ervan weet. Alleen het adres dat de persoon zelf via zijn bevestigde kanaal deelt telt, en ook dan is het vaak een rugkans.",
     body: [
@@ -155,5 +155,19 @@ export const memecoins: Entry[] = [
       "Zelfs een echte, goedgekeurde celebrity-coin kan de prijs na de eerste uren verliezen: de verkopende partij is vaak degene die hem uitgaf.",
     ],
     see: ["copycat-tokens", "influencer-shilling", "rug-signalen"],
+  },
+  {
+    id: "memecoin-maken",
+    cat: "memecoins",
+    title: "Hoe maak je een memecoin (en wat levert het op)?",
+    q: ["hoe maak ik een memecoin", "hoe lanceer ik een coin op pump.fun", "wat kost het om een memecoin te maken", "kan ik zelf een coin maken", "how do i create a memecoin", "kan ik geld verdienen met een eigen coin"],
+    kw: ["maken", "lanceren", "launch", "aanmaken", "eigen coin", "creator", "deployer", "token maken", "memecoin maken"],
+    short: "Technisch kost een memecoin maken bijna niets en duurt het een minuut: een naam, een afbeelding en een paar klikken op een launchpad zoals pump.fun. Het lastige is wat erna komt: bijna alle nieuwe coins krijgen geen kopers, en wie er geld mee wil verdienen komt al snel in gedrag terecht dat bij kopers als waarschuwing geldt.",
+    body: [
+      "Op een launchpad als pump.fun vul je een naam, een ticker en een afbeelding in en bevestig je met je wallet. De coin staat direct op de bonding curve en iedereen kan hem kopen (*pumpfun-bonding-curve*). De kosten zijn de netwerkfee en eventueel een eerste aankoop door jou (*dev-buy*).",
+      "Wat je er realistisch aan overhoudt: bijna alle nieuwe coins krijgen nauwelijks kopers en verdwijnen (*memecoin-levenscyclus*). Wat de uitzonderingen onderscheidt is niet de techniek maar aandacht, een verhaal en een gemeenschap (*narratieven*).",
+      "Let op de grens: een maker die zijn eigen coins verkoopt aan de kopers die zijn verhaal aantrok, doet wat de meeste rug pulls doen (*rug-pull-soorten*, *dev-wallet*). Daarnaast kunnen er wettelijke en fiscale gevolgen zijn, voor jou als maker en voor beloftes die je aan kopers doet. Wie een coin lanceert, hoort daar eerlijk over te zijn.",
+    ],
+    see: ["pumpfun-bonding-curve", "dev-buy", "memecoin-levenscyclus", "rug-pull-soorten", "wat-is-memecoin"],
   },
 ];

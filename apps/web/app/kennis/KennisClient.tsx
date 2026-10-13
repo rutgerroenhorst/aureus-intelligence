@@ -247,6 +247,7 @@ function Results({ q }: { q: string }) {
   const terms = r.hits.filter((h) => h.kind === "term" && h.term);
   const top = r.confident ? r.hits[0] : null;
   const rest = (top ? r.hits.slice(1) : r.hits).slice(0, 5);
+  const long = q.trim().split(/\s+/).length >= 8;
   return (
     <div>
       {coin && (
@@ -271,6 +272,9 @@ function Results({ q }: { q: string }) {
           <div style={{ ...dim, margin: "14px 0 6px" }}>{top ? "Ook relevant" : "Het dichtstbijzijnde"}</div>
           {rest.map((h) => (h.kind === "entry" && h.entry ? <EntryCard key={h.id} entry={h.entry} /> : h.term ? <TermCard key={h.id} term={h.term} /> : null))}
         </>
+      )}
+      {!coin && long && r.hits.length > 0 && (
+        <div style={{ ...dim, marginTop: 14 }}>Lange vragen begrijp ik minder goed dan korte. Past dit niet bij wat je zocht? Probeer de kernwoorden, bijvoorbeeld 'coin gedaald verkopen'.</div>
       )}
       {!coin && entries.length + terms.length === 0 && r.unknown.length > 0 && <div style={dim}>Onbekende woorden: {r.unknown.join(", ")}</div>}
     </div>

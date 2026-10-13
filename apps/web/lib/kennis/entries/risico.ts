@@ -5,7 +5,7 @@ export const risico: Entry[] = [
     id: "risico-basis",
     cat: "risico",
     title: "Risicomanagement in één minuut",
-    q: ["wat is risicomanagement", "wat zijn de belangrijkste regels", "hoe voorkom ik grote verliezen", "risk management basics", "wat zijn de regels voor memecoins", "hoe beheers ik risico"],
+    q: ["wat is risicomanagement", "wat zijn de belangrijkste regels", "hoe voorkom ik grote verliezen", "risk management basics", "wat zijn de regels voor memecoins", "hoe beheers ik risico", "hoe zorg ik dat ik niet te veel geld kwijtraak", "hoe beperk ik mijn verliezen"],
     kw: ["risicomanagement", "risk management", "regels", "basis", "verliezen beperken", "kapitaal beschermen", "discipline"],
     short: "Zet alleen geld in dat je kunt missen, maak elke inzet zo klein dat een totaal verlies te dragen is, bepaal je uitstap voordat je koopt, koop nooit bij om verlies goed te maken, en hou een journaal bij.",
     body: [
@@ -20,7 +20,7 @@ export const risico: Entry[] = [
     id: "positiegrootte",
     cat: "risico",
     title: "Positiegrootte: hoeveel zet je in?",
-    q: ["hoeveel moet ik inzetten", "hoe groot moet mijn positie zijn", "hoeveel procent van mijn geld per coin", "position sizing", "hoeveel per trade", "hoeveel mag ik in een coin stoppen"],
+    q: ["hoeveel moet ik inzetten", "hoe groot moet mijn positie zijn", "hoeveel procent van mijn geld per coin", "position sizing", "hoeveel per trade", "hoeveel mag ik in een coin stoppen", "wat is een goede inzet per coin", "hoeveel is een goede inzet", "hoe groot moet mijn inleg zijn", "hoeveel dollar per coin", "hoe bereken ik mijn risico", "hoe bereken ik mijn inzet", "hoeveel kan ik verliezen per trade"],
     kw: ["positiegrootte", "position sizing", "inzet", "inleg", "hoeveel", "per trade", "procent", "bankroll procent", "risico per trade"],
     short: "Een vaste regel: risico per coin is 1 tot 2% van je bankroll. Bij memecoins is een totaal verlies realistisch, dus de inzet zelf is je maximale verlies: inzet = bankroll × 1 tot 2%.",
     body: [
@@ -37,7 +37,7 @@ export const risico: Entry[] = [
     id: "bankroll",
     cat: "risico",
     title: "Je bankroll en wat je mag verliezen",
-    q: ["wat is een bankroll", "hoeveel geld mag ik in crypto stoppen", "welk geld mag ik gebruiken", "hoeveel mag ik verliezen", "mag ik bijstorten", "mijn stortingen"],
+    q: ["wat is een bankroll", "hoeveel geld mag ik in crypto stoppen", "welk geld mag ik gebruiken", "hoeveel mag ik verliezen", "mag ik bijstorten", "mijn stortingen", "is 100 dollar genoeg om te starten", "hoeveel geld heb ik nodig om te beginnen", "met hoeveel geld moet ik beginnen"],
     kw: ["bankroll", "kapitaal", "budget", "bijstorten", "storten", "geld dat ik kan missen", "spaargeld", "maximaal verlies"],
     short: "Je bankroll is het bedrag dat je voor dit spel apart hebt gezet en volledig kunt verliezen zonder dat je leven verandert. Alles daarbuiten (huur, reserve, spaargeld) komt er niet in.",
     body: [
@@ -152,7 +152,7 @@ export const risico: Entry[] = [
     id: "drawdown-herstel",
     cat: "risico",
     title: "Verlies terugverdienen: de wiskunde",
-    q: ["hoeveel moet ik winnen om mijn verlies terug te verdienen", "min 50 procent hoeveel plus", "drawdown herstel", "verlies van 90 procent terugverdienen", "waarom is verlies terugwinnen zo moeilijk"],
+    q: ["hoeveel moet ik winnen om mijn verlies terug te verdienen", "min 50 procent hoeveel plus", "drawdown herstel", "verlies van 90 procent terugverdienen", "waarom is verlies terugwinnen zo moeilijk", "wat is break even"],
     kw: ["drawdown", "herstel", "terugverdienen", "verlies goedmaken", "break-even", "recovery", "percentage"],
     short: "Een verlies van 50% vraagt een winst van 100% om terug op nul te komen, 75% vraagt 300%, 90% vraagt 900%. Hoe dieper het verlies, hoe onmogelijker de terugweg: bescherm je kapitaal eerst.",
     body: [
@@ -180,7 +180,7 @@ export const risico: Entry[] = [
     id: "journaal",
     cat: "risico",
     title: "Een trade-journaal bijhouden",
-    q: ["moet ik een journaal bijhouden", "wat schrijf ik op bij een trade", "hoe leer ik van mijn trades", "trade journal", "waarom een journaal"],
+    q: ["moet ik een journaal bijhouden", "wat schrijf ik op bij een trade", "hoe leer ik van mijn trades", "trade journal", "waarom een journaal", "wat is een tradingjournaal", "wat is een trade journal", "hoe houd ik een journaal bij", "wat moet ik noteren bij een trade"],
     kw: ["journaal", "journal", "bijhouden", "noteren", "terugkijken", "review", "enter knop", "logboek"],
     short: "Schrijf bij elke trade op wat je kocht, waarom, hoeveel, wat je uitstap zou zijn en hoe het afliep. Een journaal is de enige manier om patronen in je eigen gedrag te zien. Auriga doet de basis voor je.",
     body: [
@@ -195,7 +195,7 @@ export const risico: Entry[] = [
     id: "trading-plan",
     cat: "risico",
     title: "Een plan voor je instapt",
-    q: ["hoe maak ik een trading plan", "wat hoort in een plan", "wat is een uitstapplan", "plan voor memecoins"],
+    q: ["hoe maak ik een trading plan", "wat hoort in een plan", "wat is een uitstapplan", "plan voor memecoins", "wat is de beste strategie voor memecoins", "welke strategie moet ik gebruiken", "heb je een strategie"],
     kw: ["plan", "trading plan", "uitstapplan", "regels", "strategie", "voorbereiding"],
     short: "Een plan beantwoordt vooraf: waarom koop ik dit, hoeveel zet ik in, waar neem ik winst, waar stap ik uit bij verlies, en wanneer is mijn reden niet meer waar. Zonder plan beslis je in het heetst van de strijd.",
     body: [
@@ -209,7 +209,7 @@ export const risico: Entry[] = [
     id: "instap-checklist",
     cat: "risico",
     title: "Instap-checklist",
-    q: ["wat moet ik checken voor ik koop", "checklist instappen", "wanneer koop ik een coin", "voor het kopen controleren", "moet ik deze coin kopen"],
+    q: ["wat moet ik checken voor ik koop", "checklist instappen", "wanneer koop ik een coin", "voor het kopen controleren", "moet ik deze coin kopen", "wat moet ik doen voordat ik een coin koop", "wat check ik voor ik koop"],
     kw: ["checklist", "instap", "voor het kopen", "controleren", "kopen", "ja of nee", "check"],
     short: "Voor je koopt: de Check is groen of begrepen, de pool is groot genoeg voor je inleg, de inleg is je vaste klein bedrag, je uitstapplan staat op papier, en je hebt geen haast. Heb je haast, wacht dan.",
     body: [
@@ -283,8 +283,8 @@ export const risico: Entry[] = [
     id: "jouw-cijfers",
     cat: "risico",
     title: "Hoe doe ik het eigenlijk? (jouw cijfers)",
-    q: ["hoe presteer ik eigenlijk", "hoe doe ik het", "hoeveel heb ik verloren", "wat zijn mijn resultaten", "mijn cijfers", "waar ga ik de mist in"],
-    kw: ["mijn cijfers", "resultaten", "hoe doe ik het", "winst en verlies", "performance", "mijn trades", "journaal", "overzicht"],
+    q: ["hoe presteer ik eigenlijk", "hoe doe ik het", "hoeveel heb ik verloren", "wat zijn mijn resultaten", "mijn cijfers", "waar ga ik de mist in", "waarom verlies ik steeds", "waarom zit ik zo vaak in de min", "ik verlies steeds wat doe ik fout", "wat doe ik fout", "waarom verlies ik zoveel", "hoe kom ik uit de min"],
+    kw: ["mijn cijfers", "resultaten", "hoe doe ik het", "winst en verlies", "performance", "mijn trades", "journaal", "overzicht", "verlies", "in de min", "fout", "wat ging er mis"],
     short: "Een eerlijk overzicht van wat je erin stopte, wat eruit kwam en hoe je coins zich gedroegen, naast wat het lab zag bij alle coins.",
     body: [
       "Hieronder staan je journaalcijfers: hoeveel coins, hoeveel erin, hoeveel eruit, wat je nog vasthoudt en hoe vaak een coin de helft of meer verloor. Daaronder wat het lab ziet bij álle gevolgde coins, zodat je kunt vergelijken.",
@@ -292,5 +292,34 @@ export const risico: Entry[] = [
     ],
     personal: "journaal",
     see: ["journaal", "winst-nemen-basis", "instap-checklist", "bankroll"],
+  },
+  {
+    id: "dca",
+    cat: "risico",
+    title: "DCA: steeds een vast bedrag kopen",
+    q: ["wat is dca", "werkt dca bij memecoins", "wat is dollar cost averaging", "moet ik gespreid kopen", "is steeds een beetje kopen verstandig", "wat is gemiddeld kopen"],
+    kw: ["dca", "dollar cost averaging", "gespreid kopen", "gemiddelde prijs", "periodiek kopen", "vast bedrag", "cost averaging"],
+    short: "DCA (dollar-cost averaging) is op vaste momenten een vast bedrag kopen, zodat je niet alles op één prijs koopt. Het past bij iets waarvan je verwacht dat het blijft bestaan, zoals Bitcoin. Bij een memecoin die daalt is het meestal gewoon bijkopen op verlies.",
+    body: [
+      "DCA haalt de druk van het goede moment kiezen weg: je koopt elke week hetzelfde bedrag, in dure en goedkope tijden. Het is een plan voor een bezit dat je jarenlang wilt aanhouden.",
+      "Bij memecoins werkt die redenering niet: de meeste coins verliezen binnen een dag een flink deel van hun waarde en komen niet terug (*wat-we-meten*). Wie elke dag bijkoopt in een dalende coin zet steeds meer in op de uitkomst die meestal verliest (*bijkopen-verlies*). Een deel nu en de rest pas als je plan nog klopt is een eigen keuze; bijkopen omdat de koers lager staat is dat niet.",
+      "Als je DCA wilt gebruiken, doe het met een klein deel van je bankroll (*bankroll*) en op iets met een langer verhaal dan een coin van een paar uur oud.",
+    ],
+    see: ["bijkopen-verlies", "bankroll", "spreiden", "positiegrootte"],
+  },
+  {
+    id: "realistisch-verdienen",
+    cat: "risico",
+    title: "Wat is realistisch? Hoeveel kun je verdienen (en verliezen)?",
+    q: ["hoeveel geld kan ik verdienen met memecoins", "kan ik rijk worden met memecoins", "hoe word ik rijk met memecoins", "is memecoins traden winstgevend", "verdient iemand echt geld met memecoins", "hoeveel procent van de traders wint", "what can i realistically earn"],
+    kw: ["verdienen", "rijk worden", "winstgevend", "realistisch", "verwachting", "miljonair", "snel rijk", "inkomen"],
+    short: "Reken er niet op: bij memecoins verliest het grootste deel van de coins het grootste deel van haar waarde, en coins die 10× of meer gaan zijn zeldzaam. Zie het als een risicovol spel met een klein budget, niet als een inkomen. Een goede dag zegt weinig over hoe je het over honderd coins doet.",
+    body: [
+      "In het lab van dit systeem hield ongeveer 16% van de gevolgde coins een 2×, ongeveer 5,6% een 5× en 2,6% een 10× (de actuele aantallen staan bij *wat-we-meten*). Het grootste deel verliest dus. De winnaars bestaan, maar je kunt ze niet vooraf aanwijzen: je ziet ze alleen achteraf (*survivorship-bias*).",
+      "Voor een eerlijke verwachting reken je niet met je beste coin maar met alle coins samen (*verwachtingswaarde*): veel kleine verliezen, een paar winnaars, en de fees en slippage ertussen. Een inkomen of vermogen eruit halen vraagt dat de winnaars de verliezen steeds weer terugbetalen, en dat is niet iets waar je op kunt bouwen.",
+      "Wat wel helpt: een klein vast bedrag per coin (*positiegrootte*), een plan om winst echt veilig te stellen (*uitbetalen*) en eerlijk bijhouden hoe het gaat (*journaal*). De cijfers hieronder zijn je eigen resultaat, niet dat van een ander.",
+    ],
+    personal: "journaal",
+    see: ["verwachtingswaarde", "survivorship-bias", "niet-op-10x-wachten", "positiegrootte", "gokken-signalen"],
   },
 ];

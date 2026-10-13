@@ -47,7 +47,7 @@ export const veiligheid: Entry[] = [
     id: "phishing",
     cat: "veiligheid",
     title: "Phishing: links, DM's en nep-support",
-    q: ["wat is phishing", "ik kreeg een dm over mijn wallet", "nep support", "is deze link veilig", "iemand vraagt mijn seed phrase", "fake support dm"],
+    q: ["wat is phishing", "ik kreeg een dm over mijn wallet", "nep support", "is deze link veilig", "iemand vraagt mijn seed phrase", "fake support dm", "een vreemde stuurt mij een dm", "ik kreeg een dm van een onbekende", "admin stuurt me een bericht in telegram", "iemand wil dat ik mijn wallet verbind"],
     kw: ["phishing", "dm", "nep support", "fake support", "link", "bericht", "support", "helpdesk", "telegram dm", "discord dm"],
     short: "Phishing is oplichting via berichten en links die je laten denken dat het van een echte dienst komt. Regel: echte support stuurt je nooit eerst een DM, en vraagt nooit om je seed phrase of een handtekening.",
     body: [
@@ -75,8 +75,8 @@ export const veiligheid: Entry[] = [
     id: "fake-airdrops",
     cat: "veiligheid",
     title: "Nep-airdrops",
-    q: ["wat is een nep airdrop", "ik kreeg zomaar tokens in mijn wallet", "claim airdrop veilig", "gratis tokens", "waarom stuurt iemand mij tokens"],
-    kw: ["airdrop", "nep airdrop", "gratis tokens", "claim", "dust", "onbekend token", "spam token"],
+    q: ["wat is een nep airdrop", "ik kreeg zomaar tokens in mijn wallet", "claim airdrop veilig", "gratis tokens", "waarom stuurt iemand mij tokens", "wat is een giveaway scam"],
+    kw: ["airdrop", "nep airdrop", "gratis tokens", "claim", "dust", "onbekend token", "spam token", "giveaway"],
     short: "Tokens die zomaar in je wallet verschijnen met een link om ze te 'claimen' zijn meestal een val. Raak ze niet aan, verkoop ze niet via de link, en verbind je wallet niet met die site.",
     body: [
       "Scammers sturen waardeloze tokens naar duizenden wallets. De naam of de beschrijving bevat een website: 'claim $5.000 op ...'. De site is een drainer.",
@@ -162,5 +162,20 @@ export const veiligheid: Entry[] = [
       "Controleer: wie heeft de sleutels, wat is de fee per trade, hoe lang bestaat de bot, en zijn er recente incidenten. Gebruik alleen links vanaf de officiële site, niet vanuit een DM.",
     ],
     see: ["degen-wallet", "fees-solana", "nep-websites"],
+  },
+  {
+    id: "wallet-hack",
+    cat: "veiligheid",
+    title: "Kan mijn wallet gehackt worden?",
+    q: ["kan iemand mijn wallet hacken", "kan mijn wallet gehackt worden", "hoe wordt een wallet gehackt", "mijn wallet is leeggehaald wat nu", "hoe bescherm ik mijn wallet", "how do wallets get hacked", "ik ben gehackt", "ik heb mijn seed phrase gedeeld met iemand wat moet ik nu doen"],
+    kw: ["hack", "hacken", "gehackt", "leeggehaald", "gestolen", "beveiligen", "beschermen", "wallet veilig", "diefstal"],
+    short: "Bijna nooit breekt iemand in op de blockchain zelf: wallets worden leeggehaald doordat de eigenaar zelf iets weggeeft. Meestal is dat de seed phrase (via nep-support of een phishing-site), een handtekening onder een drainer, of een nepversie van een app of extensie.",
+    body: [
+      "De blockchain kraken is praktisch niet haalbaar; de mens ervoor wel. De gebruikelijke wegen: je geeft je seed phrase (*seed-phrase*, *phishing*), je tekent een transactie die alles toestaat (*wallet-drainers*, *blind-signing*), je installeert een nepversie van een app of extensie (*nep-websites*), je kopieert een adres dat een aanvaller in je geschiedenis zette (*address-poisoning*), of je laat een oude toestemming staan op een EVM-netwerk (*approvals-revoke*).",
+      "**Als het al gebeurd is:** zet wat er nog staat meteen over naar een nieuwe wallet met een nieuwe seed phrase (de oude is verbrand: gebruik hem nooit meer), trek toestemmingen in, en wees voorzichtig met helpers die zich zelf melden (*recovery-scams*). Er wordt niets teruggedraaid; wat weg is, is weg.",
+      "Wat het meest helpt: zo weinig mogelijk op de wallet waarmee je handelt (*degen-wallet*), een hardware wallet voor wat je bewaart (*hardware-wallet*) en een vaste gewoonte om elke link te controleren voordat je verbindt.",
+    ],
+    todo: ["Bewaar je seed phrase offline en deel hem nooit.", "Handel met een aparte wallet met een klein bedrag.", "Open sites alleen via een bladwijzer die je zelf maakte."],
+    see: ["seed-phrase", "wallet-drainers", "phishing", "degen-wallet", "hardware-wallet"],
   },
 ];

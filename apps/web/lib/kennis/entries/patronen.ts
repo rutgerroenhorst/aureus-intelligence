@@ -19,7 +19,7 @@ export const patronen: Entry[] = [
     id: "nep-volume-patroon",
     cat: "patronen",
     title: "Nep-volume: het patroon",
-    q: ["hoe herken ik nep volume", "volume zonder prijsbeweging", "gelijke trades steeds weer", "wash trading patroon", "waarom is het volume zo regelmatig"],
+    q: ["hoe herken ik nep volume", "volume zonder prijsbeweging", "gelijke trades steeds weer", "wash trading patroon", "waarom is het volume zo regelmatig", "hoe weet ik of volume echt is", "is het volume echt", "veel volume maar weinig holders wat betekent dat"],
     kw: ["nep volume", "wash trading", "regelmatig", "dezelfde bedragen", "bot", "volume zonder holders", "makers"],
     short: "Volume dat in een vast ritme komt, in steeds dezelfde bedragen, zonder dat de prijs of het aantal holders meebeweegt, wordt vrijwel zeker door bots gemaakt.",
     body: [
@@ -32,7 +32,7 @@ export const patronen: Entry[] = [
     id: "liquiditeit-leeglopen",
     cat: "patronen",
     title: "Een pool die leegloopt",
-    q: ["pool wordt kleiner", "liquiditeit daalt", "hoe zie ik dat een pool leeggetrokken wordt", "drained pool", "liquiditeit verdwijnt"],
+    q: ["pool wordt kleiner", "liquiditeit daalt", "hoe zie ik dat een pool leeggetrokken wordt", "drained pool", "liquiditeit verdwijnt", "wat gebeurt er met mijn coin als de pool leeg wordt gehaald"],
     kw: ["pool leeg", "drained", "liquiditeit daalt", "pool krimpt", "leeglopen", "liquidity removal"],
     short: "De pool wordt kleiner terwijl de prijs zakt: liquidity providers (vaak de maker) halen hun geld eruit. Wat overblijft is te klein om nog uit te stappen.",
     body: [
@@ -46,7 +46,7 @@ export const patronen: Entry[] = [
     id: "graduation-dump",
     cat: "patronen",
     title: "De dump na graduation",
-    q: ["waarom zakt een coin na graduation", "wat gebeurt er in het eerste uur na graduation", "graduation dump", "coin keldert na migratie"],
+    q: ["waarom zakt een coin na graduation", "wat gebeurt er in het eerste uur na graduation", "graduation dump", "coin keldert na migratie", "moet ik een coin kopen die net is afgestudeerd"],
     kw: ["graduation dump", "na graduation", "migratie", "sniper dump", "eerste uur", "val na afstuderen"],
     short: "Veel afgestudeerde coins zakken in het eerste uur hard: vroege kopers en snipers verkopen aan de nieuwe mensen die de coin op de lijsten zien. De meeste geven in dat uur alles terug.",
     body: [
@@ -86,7 +86,7 @@ export const patronen: Entry[] = [
     id: "ta-basis",
     cat: "patronen",
     title: "Technische analyse: wat werkt en wat niet bij memecoins",
-    q: ["werkt technische analyse bij memecoins", "support en resistance memecoin", "wat zijn indicators", "moet ik rsi gebruiken", "ta op memecoins"],
+    q: ["werkt technische analyse bij memecoins", "support en resistance memecoin", "wat zijn indicators", "moet ik rsi gebruiken", "ta op memecoins", "wat is een bull trap", "wat is een bear trap", "wat is een breakout", "wat is een fakeout", "wat betekent oversold", "wat is vwap"],
     kw: ["technische analyse", "ta", "support", "resistance", "rsi", "macd", "indicator", "trendlijn", "patroon", "grafiek"],
     short: "Op jonge memecoins is er te weinig historie en te veel manipulatie voor klassieke indicatoren. Wat wel nuttig is: volume, liquiditeit, het verloop sinds de lancering en waar eerdere toppen en bodems lagen.",
     body: [
@@ -141,7 +141,7 @@ export const patronen: Entry[] = [
     id: "druk-vs-rustig",
     cat: "patronen",
     title: "Drukke versus rustige coins",
-    q: ["zijn drukke coins slechter", "wat zegt het lab over druk en rustig", "waarom verliezen coins met veel trades vaker", "busy coins vs quiet coins", "moet ik rustige coins kopen"],
+    q: ["zijn drukke coins slechter", "wat zegt het lab over druk en rustig", "waarom verliezen coins met veel trades vaker", "busy coins vs quiet coins", "moet ik rustige coins kopen", "moet ik een coin kopen die al 10x is gegaan", "is het te laat om te kopen", "de coin is al gestegen kan ik nog instappen"],
     kw: ["druk", "rustig", "busy", "quiet", "veel trades", "weinig trades", "volume", "laatste uur", "druk vs rustig"],
     short: "In onze eigen metingen verloren coins met heel veel trades en volume in het laatste uur veel vaker de helft binnen een dag dan rustige coins, bij ongeveer dezelfde kans op een grote winst. Wat al druk en gestegen is, is vaak al laat.",
     body: [
@@ -151,5 +151,20 @@ export const patronen: Entry[] = [
     ],
     personal: "druk",
     see: ["fomo-top", "exit-liquiditeit", "wat-we-meten"],
+  },
+  {
+    id: "waarom-daalt-snel",
+    cat: "patronen",
+    title: "Waarom daalt een memecoin zo snel?",
+    q: ["waarom daalt mijn coin zo snel", "waarom is mijn coin zo snel gedaald", "waarom zakt een memecoin altijd", "waarom verliest bijna elke coin", "waarom crasht mijn coin", "why do memecoins drop so fast"],
+    kw: ["daalt", "gedaald", "zakt", "crash", "instorten", "dump", "omlaag", "helft verloren", "snelle daling"],
+    short: "Omdat er na de eerste golf bijna geen nieuwe kopers komen terwijl de vroege kopers willen verkopen, en omdat de pool klein is: elke verkoop duwt de prijs omlaag. Daar komen bij: snipers die uitstappen, een dump na graduation, een maker die verkoopt, of een rug.",
+    body: [
+      "**Vraag en aanbod in een dunne markt.** Een memecoin leeft van aandacht. Gaat de aandacht naar de volgende coin, dan blijven er verkopers en geen kopers over, en in een kleine pool beweegt elke verkoop de prijs hard (*price-impact*, *pool-grootte*). In het lab verloor ongeveer de helft van de coins binnen een dag de helft van de waarde (*wat-we-meten*).",
+      "**Wie al binnen was, wil eruit.** Snipers en bundlers kochten bij de start voor bijna niets en verkopen aan de eerste echte kopers (*snipers-bundlers*, *exit-liquiditeit*). Na een graduation volgt vaak een dump (*graduation-dump*). Een maker die zijn coins verkoopt drukt de prijs ook (*dev-wallet*), en in het ergste geval haalt hij de pool leeg (*rug-pull-soorten*).",
+      "**Daarbovenop het patroon.** Een snelle stijging gevolgd door een scherpe daling is het gewone verloop, geen uitzondering (*pump-dump-patroon*, *memecoin-levenscyclus*). Wat je eraan kunt doen: klein inzetten, een uitstap vooraf (*uitstapplan-eerst*) en de Check lezen voor je koopt.",
+    ],
+    personal: "journaal",
+    see: ["pump-dump-patroon", "graduation-dump", "snipers-bundlers", "memecoin-levenscyclus", "uitstapplan-eerst"],
   },
 ];

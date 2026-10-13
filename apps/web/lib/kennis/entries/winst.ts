@@ -5,7 +5,7 @@ export const winst: Entry[] = [
     id: "winst-nemen-basis",
     cat: "winst",
     title: "Winst nemen: waarom en wanneer",
-    q: ["wanneer neem ik winst", "hoe neem ik winst", "wanneer moet ik verkopen", "take profit memecoin", "wanneer stap ik uit", "moet ik winst nemen"],
+    q: ["wanneer neem ik winst", "hoe neem ik winst", "wanneer moet ik verkopen", "take profit memecoin", "wanneer stap ik uit", "moet ik winst nemen", "hoeveel winst moet ik pakken", "hoeveel procent moet ik verkopen", "wanneer pak ik winst", "wat is het beste moment om uit te stappen", "wanneer moet ik uitstappen", "wat is een goede winst", "bij hoeveel procent winst moet ik verkopen", "hoe weet ik wanneer ik moet verkopen"],
     kw: ["winst nemen", "take profit", "tp", "verkopen", "uitstappen", "exit", "winst veiligstellen", "wanneer verkopen", "profit"],
     short: "Winst is pas echt als je hebt verkocht. Wie nooit verkoopt, ziet de meeste winnaars weer naar nul gaan; wie alles bij 2× verkoopt, geeft de zeldzame grote winnaar weg. De tussenweg: een deel eruit en de rest met een stop eronder laten lopen.",
     body: [
@@ -20,7 +20,7 @@ export const winst: Entry[] = [
     id: "inleg-terug",
     cat: "winst",
     title: "Eerst je inleg eruit halen",
-    q: ["moet ik mijn inleg eruit halen", "verkoop de helft bij 2x", "hoeveel verkopen om mijn inleg terug te hebben", "house money", "break even eruit halen"],
+    q: ["moet ik mijn inleg eruit halen", "verkoop de helft bij 2x", "hoeveel verkopen om mijn inleg terug te hebben", "house money", "break even eruit halen", "mag ik mijn inleg terugpakken", "hoe haal ik mijn inleg eruit", "wat moet ik doen als mijn coin 2x is", "wat doe ik bij 2x", "hoeveel procent verkopen bij 2x", "wanneer pak ik mijn inleg eruit"],
     kw: ["inleg terug", "initial", "helft verkopen", "break-even", "house money", "2x", "verkoop de helft", "gratis positie", "stake terug"],
     short: "Bij een 2× is het verkopen van de helft precies je inleg terug (min fees). De rest staat dan 'gratis' open: je kunt niet meer verliezen dan een winst die je al binnen had. Het is niet echt gratis, maar het haalt de druk eraf.",
     body: [
@@ -104,7 +104,7 @@ export const winst: Entry[] = [
     id: "uitstapplan-eerst",
     cat: "winst",
     title: "Het uitstapplan voor je instapt",
-    q: ["wat is een uitstapplan", "hoe maak ik een uitstapplan", "waar zet ik mijn uitstap", "exit plan memecoin", "wat zijn de niveaus 2x 5x"],
+    q: ["wat is een uitstapplan", "hoe maak ik een uitstapplan", "waar zet ik mijn uitstap", "exit plan memecoin", "wat zijn de niveaus 2x 5x", "ik heb te laat verkocht", "ik heb te vroeg verkocht"],
     kw: ["uitstapplan", "exit plan", "plan", "niveaus", "alerts", "2x", "5x", "voorbeeldplan", "telegram melding"],
     short: "Schrijf vooraf op: bij welke koers verkoop ik de helft (2×), waar staat mijn stop (−50% zolang er nog niets verkocht is, daarna 40% onder de hoogste koers), en wanneer is mijn reden vervallen. Je Telegram-melding bij 2× en 5× herinnert je eraan.",
     body: [
@@ -135,7 +135,7 @@ export const winst: Entry[] = [
     id: "belasting-nl",
     cat: "winst",
     title: "Belasting in Nederland (in het kort)",
-    q: ["moet ik belasting betalen over crypto", "box 3 crypto", "belasting op memecoin winst", "hoe geef ik crypto op", "moet ik mijn trades bijhouden voor de belasting", "belastingdienst crypto"],
+    q: ["moet ik belasting betalen over crypto", "box 3 crypto", "belasting op memecoin winst", "hoe geef ik crypto op", "moet ik mijn trades bijhouden voor de belasting", "belastingdienst crypto", "kan ik verlies aftrekken van mijn belasting", "mag ik verlies aftrekken"],
     kw: ["belasting", "box 3", "belastingdienst", "aangifte", "crypto belasting", "tax", "dac8", "vermogen", "1 januari", "fiscaal"],
     short: "Voor particulieren valt crypto in Nederland meestal in box 3: je geeft de waarde op 1 januari op en wordt belast over een veronderstelde opbrengst, niet over elke trade. De regels veranderen, dus check de Belastingdienst of een adviseur, en bewaar je transacties.",
     body: [
@@ -145,5 +145,20 @@ export const winst: Entry[] = [
       "Praktisch: bewaar al je transacties (datum, bedrag, in en uit), exporteer je wallet-historie en bewaar de waarde op 1 januari. Je journaal in Auriga helpt, maar is geen officiële administratie.",
     ],
     see: ["journaal", "uitbetalen", "bankroll"],
+  },
+  {
+    id: "houden-of-verkopen",
+    cat: "winst",
+    title: "Mijn coin staat in de min: houden of verkopen?",
+    q: ["mijn coin staat in de min moet ik houden of verkopen", "moet ik mijn coin houden of verkopen", "mijn coin is gedaald moet ik verkopen", "ik zit in de min wat moet ik doen", "moet ik wachten tot hij terugkomt", "ik wil niet verkopen met verlies", "wanneer verkoop ik met verlies"],
+    kw: ["houden", "verkopen met verlies", "in de min", "terugkomen", "wachten", "verlies nemen", "hopen", "vastzitten"],
+    short: "Vraag je niet af wat je betaalde, maar of je de coin nu, voor deze prijs en met wat je nu ziet, zou kopen. Zo niet, verkoop dan een deel of alles: hoop is geen plan. Koop niet bij om je gemiddelde te verlagen.",
+    body: [
+      "**Wat je betaalde doet er niet toe** (*sunk-cost*). De markt weet niet wat jij ervoor gaf. Kijk naar de coin zoals hij nu is: draai de Check (*de-check*). Is de pool nog groot genoeg, zijn er nog trades, kun je er nog uit (*test-verkoop*), heeft de maker of een grote wallet verkocht (*dev-wallet*)?",
+      "**Wat terugkomen vraagt.** Na een verlies van 50% heb je 100% winst nodig om gelijk te zijn (*drawdown-herstel*), en een verdubbeling haalde in het lab maar een klein deel van de coins (*wat-we-meten*). Wachten kan, maar met een tijdslimiet (*tijd-exit*): staat hij binnen zoveel uur niet hoger, dan ga je eruit.",
+      "**Wat je kunt doen**: alles verkopen en het verlies nemen (*verlies-accepteren*), een deel verkopen zodat er minder openstaat (*ladder-uitstap*), of houden met een vooraf bepaald punt waarop je toch uitstapt (*uitstapplan-eerst*). Wat je beter laat: bijkopen om je gemiddelde te verlagen (*bijkopen-verlies*), en rekenen op een stop-loss die precies uitvoert op een dunne markt (*stop-loss-memecoin*).",
+    ],
+    personal: "journaal",
+    see: ["sunk-cost", "de-check", "uitstapplan-eerst", "bijkopen-verlies", "verlies-accepteren", "tijd-exit"],
   },
 ];

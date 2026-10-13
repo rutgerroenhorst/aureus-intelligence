@@ -6,8 +6,9 @@ This is that: text written by hand, found by a search that runs in the browser, 
 
 ## What it is, and what it is not
 
-- **It is** a reference: 151 entries in 12 categories (basics, trading on a DEX, pump.fun and memecoins, holders and wallets, scams and rugs, security, patterns,
-  risk management, taking profit and exiting, psychology, tools, and this system itself), 93 word-list terms, and four calculators.
+- **It is** a reference: 170 entries in 12 categories (basics, trading on a DEX, pump.fun and memecoins, holders and wallets, scams and rugs, security, patterns,
+  risk management, taking profit and exiting, psychology, tools, and this system itself), 134 word-list terms (including trading slang), over a thousand sample
+  questions that the entries answer, and four calculators.
 - **It is not** a model. It does not reason, combine, or make anything up. A question is answered by *finding* the written entry that fits best; when nothing fits well
   it says so ("Daar heb ik geen goed antwoord op"), shows the closest entries, and keeps the question on the device so it can be added later.
 - It needs **no key, no account and no paid service**. Everything is in the page's own code, so it also works when the site's database is slow or down (only the
@@ -25,21 +26,28 @@ This is that: text written by hand, found by a search that runs in the browser, 
 | The user's numbers | `apps/web/lib/kennis/{summary,facts,personal}.ts` and `GET /api/kennis-facts` |
 | Calculators' sums | `apps/web/lib/kennis/calc.ts` |
 | Check line → entry map | `apps/web/lib/kennis/checkLinks.ts` |
-| Tests | `apps/web/lib/kennis/kennis.test.ts` (86) and `personal.test.ts` (19) |
+| Tests | `apps/web/lib/kennis/kennis.test.ts` (220) and `personal.test.ts` (19) |
 
 The URL is the source of truth, so every answer can be linked or bookmarked: `/kennis?q=<question>`, `?e=<entry id>`, `?c=<category>`, `?v=woordenlijst`, `?v=rekenen`.
 
 ## How a question is answered
 
-1. The question is lower-cased, accents removed, the little words dropped (Dutch and English stopwords: "de", "het", "hoe", "what", "laat" ...).
-2. Each entry is scored on the remaining words, weighted by where they hit: title 6, the entry's own questions (`q`) 5, keywords (`kw`) 5, the short answer 2.5, the body 1,
-   multiplied by how rare the word is across all entries (idf), and by a coverage factor `0.4 + 0.6 × (share of the question's words that matched anywhere)`.
-3. Bonuses for whole phrases: the exact question +30, part of a question +10, the title +10, a keyword phrase +6 or +2.
-4. Words match when they are equal, share a long prefix (endings, plurals), are one typo apart (words of 6+ letters), or sit in the same synonym group (`SAME` in
-   `search.ts`, for example "scam" / "oplichting" / "fraude", or "winst" / "profit" / "gain").
-5. The top entry counts as **the answer** only when its score is at least 7 and at least half of the question's words matched (`CONFIDENT_SCORE`, coverage 0.5). Below
-   that the page shows "Daar heb ik geen goed antwoord op" with the nearest entries, never a guess dressed up as an answer.
-6. Word-list terms are searched the same way, so asking for a single word ("slippage", "dust") gives its definition first.
+1. The question is lower-cased, accents removed, `×` read as `x`, "uit te stappen" read as "uitstappen", and the little words dropped (Dutch and English
+   stopwords: "de", "het", "hoe", "what", and frame words such as "weet", "zie", "beste", "goede"). A long word the knowledge base does not have but that is two words it
+   has ("tradingjournaal", "winstnemen") is read as those two.
+2. Each entry is scored on the remaining words, weighted by where they hit: title 6, the entry's own questions (`q`) 5, keywords (`kw`) 5, the short answer 2.5, the
+   body 1, multiplied by how rare the word is across all entries (idf), and by a coverage factor `0.4 + 0.6 × (share of the question's words that matched)`. A number that
+   matches nothing ("40%") does not count against the question.
+3. Words match when they are equal, share a long prefix (endings, plurals), share six letters and 80% of the shorter word, have the same root ("gedumpt", "dumpen" and
+   "dump"; "trading" and "traders"), are one typo apart (a swapped or missing letter in words of 6+ letters, a different letter only in words of 8+: "pending" is not
+   "lending"), or sit in the same synonym group (`SAME` in `search.ts`, for example "scam" / "oplichting" / "fraude", or "winst" / "profit" / "gain").
+4. Bonuses for whole phrases: the exact question +30, part of a question +10, the title +10, a keyword phrase +6 or +2. And a **look-alike question** bonus up to +18: an
+   entry with a sample question that shares most of your question's words (words that are rare count more, so sharing "dumpen" says more than sharing "coin").
+5. The top entry counts as **the answer** only when its score is at least 7, at least half of the question's words matched (a third when a word that few entries are
+   about matched), and the match is more than a chance word in the text: a title, question or keyword hit, and either two matching words, support from a look-alike
+   question or phrase, or one rare topic word such as "kelly" or "slippage". Below that the page shows "Daar heb ik geen goed antwoord op" with the nearest entries,
+   never a guess dressed up as an answer. A question of eight words or more also gets a hint to try the key words.
+6. Word-list terms are searched the same way, so asking for a single word ("slippage", "dust", "moonbag") gives its definition first.
 7. A coin address in the question (any chain) is not searched at all: the page runs the Check on it (`PasteCheck`), and each line of that Check has a **?** that opens
    the entry that explains the line.
 
@@ -82,8 +90,13 @@ Text markup in `body`, `short` and `todo`: `**bold**`, `*italic*`, `*entry-id*` 
 `"- "` is a bullet. Italics that are not an id must not look like one (no hyphenated words in italics).
 
 Then run `corepack pnpm test`. The tests refuse an entry with a duplicate or untidy id, a missing field, a `see` or `*id*` that points nowhere, a Check line without an
-explanation, double spaces, template leftovers or straight quotes inside a Dutch sentence (they break the page), and they check that **every entry's own first question finds that
-entry first**. Add a line to the question table in `kennis.test.ts` for a new topic, so a later change to the search cannot silently lose it.
+explanation, double spaces, template leftovers or straight quotes inside a Dutch sentence (they break the page), and they check that **every entry's own first question finds
+that entry first** and that **every one of its sample questions finds it within the first three hits** (99% first). Put the plainest question first, and write the
+others the way people really ask (short, spoken, with or without typos).
+
+**When a question did not work** (the Kennis home lists the ones the page could not answer, with a copy button): add its words as a sample question to the entry that should
+have answered, or write a new entry, and add the question with its expected entry to the `FRESH` table in `kennis.test.ts` so it keeps working. For a slang word, add a
+term to `glossary.ts` (with `aka` for spellings); that is the cheapest fix and answers "wat is X" at once.
 
 When the Check gets a new line, add it to `checkLinks.ts` and give it an entry; a test fails until it has one.
 
@@ -96,6 +109,14 @@ When the Check gets a new line, add it to `checkLinks.ts` and give it an entry; 
   is described as of the writing and named as such; the Check and the lab are the live evidence.
 - **Not advice.** The entries say what the numbers show and what usually goes wrong; they never say "buy this". Risk rules are phrased as rules of play, with the sums shown.
 - **Hand-written means it can be wrong.** If an entry is wrong or out of date, fix the entry; there is no model whose behaviour has to be tuned instead.
+
+## How well it works
+
+Measured by asking it questions nobody had tuned it for (written afterwards, in everyday and spoken Dutch, in rounds of 55 to 77 questions; each round's mistakes were then
+fixed with more phrasings, new entries and rules, which is why the tests now hold over a hundred such questions). On a fresh round, before fixing anything, roughly 6 or 7 in
+10 questions got a fitting answer at the top; very niche jargon (technical analysis, trading slang) and long,
+story-like questions did worst. The last round (77 niche questions, written after nearly all fixes) gave a fitting top answer for about two in three and a wrong but confident
+answer about ten times, nearly all because one word matched by chance; those were then fixed too. Short, direct questions work best: three to five words.
 
 ## Limits
 

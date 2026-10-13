@@ -20,7 +20,7 @@ export const handelen: Entry[] = [
     id: "price-impact",
     cat: "handelen",
     title: "Price impact: wat je eigen order de prijs doet",
-    q: ["wat is price impact", "hoeveel verlies ik door price impact", "waarom is de prijs zo slecht bij kopen", "price impact formule", "hoe groot mag mijn order zijn"],
+    q: ["wat is price impact", "hoeveel verlies ik door price impact", "waarom is de prijs zo slecht bij kopen", "price impact formule", "hoe groot mag mijn order zijn", "waarom krijg ik minder coins dan verwacht", "waarom is mijn verkoop zo laag", "waarom kreeg ik een slechtere prijs"],
     kw: ["price impact", "prijsimpact", "impact", "orderbeweging", "dunne pool", "order grootte"],
     short: "Price impact is hoeveel je eigen order de prijs verschuift omdat de pool niet oneindig diep is. Vuistregel: price impact ≈ 2 × (jouw order ÷ totale pool). Een order van 1% van de pool kost je dus ongeveer 2%.",
     body: [
@@ -49,7 +49,7 @@ export const handelen: Entry[] = [
     id: "pool-grootte",
     cat: "handelen",
     title: "Hoe groot moet de pool zijn?",
-    q: ["hoe groot moet een pool zijn", "wat betekent pool onder 5k", "wat is een goede liquiditeit", "pool 1000 dollar", "check pool waarschuwing", "wat is een dode coin"],
+    q: ["hoe groot moet een pool zijn", "wat betekent pool onder 5k", "wat is een goede liquiditeit", "pool 1000 dollar", "check pool waarschuwing", "wat is een dode coin", "waarom zegt de check dat de pool te klein is", "wat is een goede pool voor een coin van 50k mcap", "hoeveel liquiditeit voor een coin van 50k"],
     kw: ["pool", "pool grootte", "pool size", "liquiditeit", "dode coin", "dead coin", "5k", "1000", "waarschuwing pool"],
     short: "Je order moet klein zijn ten opzichte van de pool: bij 1% van de pool verlies je al ongeveer 2% aan price impact. Onder ongeveer $5.000 liquiditeit waarschuwt de Check, onder $1.000 noemt hij de coin dood.",
     body: [
@@ -162,7 +162,7 @@ export const handelen: Entry[] = [
     id: "jupiter-aggregator",
     cat: "handelen",
     title: "Jupiter: waarom je via een aggregator swapt",
-    q: ["wat is jupiter", "wat is een aggregator", "waarom jupiter gebruiken", "jupiter quote", "wat is jup ag"],
+    q: ["wat is jupiter", "wat is een aggregator", "waarom jupiter gebruiken", "jupiter quote", "wat is jup ag", "hoe werkt een swap op jupiter", "hoe swap ik een coin"],
     kw: ["jupiter", "jup", "aggregator", "swap", "route", "quote", "best price"],
     short: "Jupiter zoekt over alle Solana-pools de beste route voor je swap. Auriga gebruikt Jupiter voor de test-verkoop en voor gegevens zoals de organic score.",
     body: [
@@ -176,7 +176,7 @@ export const handelen: Entry[] = [
     id: "mislukte-transacties",
     cat: "handelen",
     title: "Waarom mislukt mijn transactie?",
-    q: ["waarom mislukt mijn transactie", "transaction failed solana", "slippage exceeded", "waarom werkt mijn swap niet", "wat is blockhash not found"],
+    q: ["waarom mislukt mijn transactie", "transaction failed solana", "slippage exceeded", "waarom werkt mijn swap niet", "wat is blockhash not found", "mijn transactie is pending", "mijn transactie blijft hangen", "mijn swap geeft een fout", "transactie mislukt"],
     kw: ["mislukt", "failed", "transactie", "slippage exceeded", "blockhash", "priority fee", "geen sol", "rent", "error"],
     short: "Meestal door te weinig slippage (de prijs bewoog), te weinig priority fee in drukte, of te weinig SOL voor fees. Controleer eerst of je trade niet al gelukt is voordat je opnieuw drukt.",
     body: [
@@ -204,7 +204,7 @@ export const handelen: Entry[] = [
     id: "limit-orders",
     cat: "handelen",
     title: "Limit orders en stops op een DEX",
-    q: ["kan ik een limit order plaatsen", "werkt een stop loss op een dex", "wat is auto sell", "limit order solana", "take profit order dex"],
+    q: ["kan ik een limit order plaatsen", "werkt een stop loss op een dex", "wat is auto sell", "limit order solana", "take profit order dex", "wat is een market order"],
     kw: ["limit order", "stop loss", "stop-loss", "take profit", "auto sell", "trailing", "terminal", "automatisch verkopen"],
     short: "Op een DEX is een limit- of stop-order meestal een bot die de prijs in de gaten houdt en dan een gewone swap verstuurt. Dat kan mislukken of te laat zijn bij snelle koersen, dus het is een hulpmiddel, geen garantie.",
     body: [

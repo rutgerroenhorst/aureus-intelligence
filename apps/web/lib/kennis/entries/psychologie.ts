@@ -33,7 +33,7 @@ export const psychologie: Entry[] = [
     id: "revenge-trading",
     cat: "psychologie",
     title: "Revenge trading: het verlies terug willen pakken",
-    q: ["wat is revenge trading", "ik wil mijn verlies goedmaken", "na een verlies grotere inzet", "waarom handel ik harder na een verlies", "tilt na een verlies"],
+    q: ["wat is revenge trading", "ik wil mijn verlies goedmaken", "na een verlies grotere inzet", "waarom handel ik harder na een verlies", "tilt na een verlies", "ik wil alles terugwinnen wat ik verloren heb", "hoe win ik mijn geld terug"],
     kw: ["revenge trading", "wraak", "verlies goedmaken", "terugpakken", "grotere inzet", "gokken om te herstellen", "tilt"],
     short: "Revenge trading is na een verlies sneller en groter inzetten om het terug te pakken. Het vergroot meestal het verlies, omdat je beslist uit emotie en je regels voor inzet loslaat.",
     body: [
@@ -60,8 +60,8 @@ export const psychologie: Entry[] = [
     id: "gokken-signalen",
     cat: "psychologie",
     title: "Wanneer het gokken wordt",
-    q: ["is dit gokken", "ik kan niet stoppen met kopen", "wanneer is het een probleem", "verslaafd aan memecoins", "ik zet steeds meer in"],
-    kw: ["gokken", "verslaving", "dwangmatig", "stoppen", "probleem", "controle verliezen", "bijstorten", "leugens"],
+    q: ["is dit gokken", "ik kan niet stoppen met kopen", "wanneer is het een probleem", "verslaafd aan memecoins", "ik zet steeds meer in", "ik kan niet stoppen met traden", "ik trade de hele dag", "ik ben verslaafd aan traden", "ik slaap slecht door traden", "ik kan niet stoppen met kijken"],
+    kw: ["gokken", "verslaving", "dwangmatig", "stoppen", "probleem", "controle verliezen", "bijstorten", "leugens", "traden", "slapen", "hele dag"],
     short: "Memecoins werken als een gokspel met een stukje vaardigheid. Het wordt een probleem als je meer inzet dan je kunt missen, het verbergt, blijft bijstorten om te herstellen, of je stemming ervan afhangt. Stop dan en praat erover.",
     body: [
       "Signalen: je zet steeds meer in, je stort bij om verlies goed te maken, je kijkt de hele dag en 's nachts, je liegt of verbergt hoeveel je verloren hebt, het gaat ten koste van slaap, werk of relaties, of je voelt je beroerd als je niet kunt handelen.",
@@ -100,7 +100,7 @@ export const psychologie: Entry[] = [
     id: "tilt-pauze",
     cat: "psychologie",
     title: "Tilt en pauzeren",
-    q: ["wat is tilt", "ik ben boos na een verlies", "wanneer moet ik pauzeren", "hoe neem ik een pauze van trading", "ik kan niet slapen door crypto"],
+    q: ["wat is tilt", "ik ben boos na een verlies", "wanneer moet ik pauzeren", "hoe neem ik een pauze van trading", "ik kan niet slapen door crypto", "wat is een pauze nemen", "waarom pauze nemen", "hoe lang moet ik pauze nemen", "wanneer pauzeer ik"],
     kw: ["tilt", "boos", "pauze", "stoppen voor vandaag", "emoties", "rust", "afkoelen", "slapen"],
     short: "Tilt is de toestand waarin boosheid, stress of opwinding je beslissingen overneemt. De remedie is eenvoudig: stoppen, weglopen, en pas weer kijken als je rustig bent. Beslis op voorhand wanneer je dat doet.",
     body: [
@@ -113,7 +113,7 @@ export const psychologie: Entry[] = [
     id: "social-media-druk",
     cat: "psychologie",
     title: "Sociale druk en social media",
-    q: ["iedereen koopt deze coin", "waarom voel ik druk door twitter", "x timeline en memecoins", "groepschat fomo", "wat is herd mentality"],
+    q: ["iedereen koopt deze coin", "waarom voel ik druk door twitter", "x timeline en memecoins", "groepschat fomo", "wat is herd mentality", "mijn vriend zegt dat ik moet kopen", "iemand zegt dat ik snel moet kopen", "ik zie overal dezelfde coin"],
     kw: ["social media", "twitter", "x", "telegram", "discord", "groepsdruk", "herd", "kudde", "timeline", "chat"],
     short: "Een timeline vol winsten en een chat vol 'to the moon' duwt je om mee te doen. Mensen posten hun winsten, niet hun verliezen, en veel berichten komen van wie eraan verdient dat jij koopt.",
     body: [
@@ -139,7 +139,7 @@ export const psychologie: Entry[] = [
     id: "verlies-accepteren",
     cat: "psychologie",
     title: "Een verlies accepteren",
-    q: ["hoe ga ik om met verlies", "ik heb veel geld verloren", "verlies accepteren", "hoe ga ik verder na een slecht jaar"],
+    q: ["hoe ga ik om met verlies", "ik heb veel geld verloren", "verlies accepteren", "hoe ga ik verder na een slecht jaar", "hoe ga ik om met een groot verlies", "hoe verwerk ik een verlies", "ik heb veel verloren", "hoe voel ik mij na een verlies", "ik voel me slecht na een verlies"],
     kw: ["verlies accepteren", "verlies", "teleurstelling", "schaamte", "verdergaan", "leergeld", "terugblik"],
     short: "Verlies hoort bij dit spel en zegt niet wie je bent. Het gaat erom dat je kunt verdragen wat je verloor (dus: dat je inzet klein genoeg was), eerlijk telt wat het was, en leert wat je kunt veranderen.",
     body: [

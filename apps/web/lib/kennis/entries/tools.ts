@@ -72,7 +72,7 @@ export const tools: Entry[] = [
     id: "terminals",
     cat: "tools",
     title: "Trading-terminals en apps (Photon, BullX, GMGN, Axiom, FOMO)",
-    q: ["welke trading terminal moet ik gebruiken", "wat is photon", "wat is gmgn", "wat is de fomo app", "welke app voor memecoins"],
+    q: ["welke trading terminal moet ik gebruiken", "wat is photon", "wat is gmgn", "wat is de fomo app", "welke app voor memecoins", "wat zijn de beste tools voor memecoins", "welke tools gebruik ik", "welke apps heb ik nodig"],
     kw: ["terminal", "photon", "bullx", "gmgn", "axiom", "fomo app", "trojan", "bonkbot", "trading app", "snelle koop"],
     short: "Terminals zijn apps die snel kopen, verkopen en volgen op een DEX gemakkelijk maken, met extra hulpmiddelen zoals auto-sell en wallet-tracking. Ze rekenen fees en bewaren soms je sleutels, dus kies bewust en gebruik een aparte wallet.",
     body: [
@@ -107,5 +107,19 @@ export const tools: Entry[] = [
       "Andermans wallet volgen om te kopiëren kost je steeds net iets te laat en je ziet alleen de succesvolle wallets (zie *smart-money*).",
     ],
     see: ["smart-money", "journaal", "dev-wallet"],
+  },
+  {
+    id: "coins-vinden",
+    cat: "tools",
+    title: "Hoe vind ik nieuwe coins?",
+    q: ["hoe vind ik nieuwe coins", "waar vind ik nieuwe memecoins", "hoe weet ik of een coin trending is", "waar kan ik nieuwe coins zien", "how do i find new memecoins", "hoe vind ik een gem", "wat is trending"],
+    kw: ["nieuwe coins", "vinden", "zoeken", "trending", "new pairs", "ontdekken", "screener", "lijst", "discovery"],
+    short: "Via de Radar (Graduations voor de allerjongste coins, Hot voor wat trending is), via de lijsten new pairs en trending op DexScreener, de live lijst van pump.fun, en via X en Telegram. Alles wat veel mensen al zien is al laat: kijk vooral naar wat je zelf kunt controleren, niet naar wat het hardst wordt aangeprezen.",
+    body: [
+      "**In Auriga**: Graduations toont coins die net van pump.fun zijn afgestudeerd, Hot wat nu trending is op het gekozen netwerk (*tabs-uitleg*). Elke kaart heeft een Check (*de-check*).",
+      "**Buiten Auriga**: DexScreener heeft lijsten voor nieuwe paren en trending coins (*dexscreener-lezen*), pump.fun laat de nieuwste en de bijna-afgestudeerde coins zien (*pumpfun-bonding-curve*), en op X en in Telegram wordt over coins gepraat (*x-onderzoek*).",
+      "**De valkuil**: waar veel mensen naar kijken is meestal al gestegen, en gepromote coins zijn vaak een uitgang voor degenen die al binnen zijn (*exit-liquiditeit*, *pump-dump-groepen*). Controleer elke coin die je vindt voor je koopt; een adres plakken kan altijd (*plak-een-coin*).",
+    ],
+    see: ["tabs-uitleg", "dexscreener-lezen", "x-onderzoek", "plak-een-coin", "geen-tips"],
   },
 ];

@@ -166,7 +166,7 @@ describe("answering a question", () => {
   });
 
   it("says it does not know, instead of guessing, when the question is about something else", () => {
-    for (const q of ["wat is de beste pizza in amsterdam", "hoe laat is het", "asdfgh jkl qwerty", "wie wint het wk voetbal", "recept voor appeltaart"]) {
+    for (const q of ["wat is de beste pizza in amsterdam", "hoe laat is het", "asdfgh jkl qwerty", "wie wint het wk voetbal", "recept voor appeltaart", "wat is het weer vandaag", "wat is de hoofdstad van frankrijk", "wie is de president"]) {
       const r = ask(q);
       expect(r.confident, q).toBe(false);
     }
@@ -178,14 +178,207 @@ describe("answering a question", () => {
       const hits = ask(e.q[0]!, 3).hits.map((h) => h.id);
       if (hits[0] !== e.id) misses.push(`${e.id} <- "${e.q[0]}" got ${hits.slice(0, 2).join(", ")}`);
     }
-    // two entries may share a question on purpose, and the word list can win a plain "what is X": allow a few, show which
-    expect(misses.length, misses.join("\n")).toBeLessThanOrEqual(Math.ceil(ENTRIES.length * 0.12));
+    expect(misses.length, misses.join("\n")).toBe(0);
   });
+
+  it("finds every entry from every one of its own sample questions within the first three hits, and first almost always", () => {
+    const lost: string[] = [];
+    let total = 0;
+    let first = 0;
+    for (const e of ENTRIES) {
+      for (const q of e.q) {
+        total++;
+        const hits = ask(q, 3).hits.map((h) => h.id);
+        if (hits[0] === e.id) first++;
+        if (!hits.includes(e.id)) lost.push(`${e.id} <- "${q}" got ${hits.join(", ")}`);
+      }
+    }
+    expect(lost.length, lost.join("\n")).toBe(0);
+    expect(first / total).toBeGreaterThanOrEqual(0.98);
+  }, 30_000);
 
   it("returns nothing for empty input and never crashes on odd input", () => {
     for (const q of ["", "   ", "?!", "a", "🙂🙂", "x".repeat(2000), "0x4200000000000000000000000000000000000006"]) {
       expect(() => ask(q)).not.toThrow();
     }
     expect(ask("").hits).toEqual([]);
+  });
+});
+
+/** Questions written after the first release, in other words than the entries' own: they found nothing or the wrong thing at first, and are the reason for the matching rules below. */
+const FRESH: Array<[string, string | string[], number?]> = [
+  ["ik heb een coin gekocht en hij daalt, wat nu", ["bijkopen-verlies", "waarom-daalt-snel", "uitstapplan-eerst", "verlies-accepteren"]],
+  ["wanneer moet ik verkopen", "winst-nemen-basis", 1],
+  ["hoe voorkom ik dat ik mijn geld kwijtraak", "risico-basis", 1],
+  ["hoeveel winst moet ik pakken", "winst-nemen-basis", 1],
+  ["wat betekent liquidity", "liquiditeit-amm", 1],
+  ["hoe weet ik of het een scam is", "rug-signalen", 1],
+  ["mag ik mijn inleg terugpakken", "inleg-terug", 1],
+  ["wat is dca", "dca", 1],
+  ["welke coin moet ik kopen", "geen-tips", 1],
+  ["wat is de beste coin om nu te kopen", "geen-tips", 1],
+  ["is dit een goed moment om te kopen", "geen-tips", 1],
+  ["gaat solana stijgen", "geen-tips", 1],
+  ["hoe herken ik een gem", "geen-tips", 1],
+  ["is een coin met 40% bij 1 wallet veilig", "top-holders", 1],
+  ["mijn transactie mislukt steeds", "mislukte-transacties", 1],
+  ["mijn transactie is pending", "mislukte-transacties", 1],
+  ["mijn swap geeft een fout", "mislukte-transacties", 1],
+  ["waarom is mijn coin zo snel gedaald", "waarom-daalt-snel", 1],
+  ["waarom daalt mijn coin na graduation", "graduation-dump", 1],
+  ["wat is een goede inzet per coin", "positiegrootte", 1],
+  ["hoe bereken ik mijn risico", "positiegrootte", 1],
+  ["ik wil alles terugwinnen wat ik verloren heb", "revenge-trading", 1],
+  ["waarom staat er geen coin in mijn lijst", "waarom-niet-op-radar", 1],
+  ["hoe vaak moet ik de radar bekijken", "dagelijks-gebruik", 1],
+  ["wat is een drainer", "wallet-drainers", 1],
+  ["wat is bitcoin", "bitcoin", 1],
+  ["wat is een blockchain", "blockchain", 1],
+  ["wat is een smart contract", "smart-contract", 1],
+  ["wat is defi", "defi", 1],
+  ["wat is een nft", "nft", 1],
+  ["wat is staking", "staking", 1],
+  ["wat is een node", "node-validator", 1],
+  ["hoe werkt solana", "chains", 1],
+  ["hoe zie ik of de dev gedumpt heeft", "dev-wallet", 1],
+  ["kan ik de dev vertrouwen", "dev-wallet", 1],
+  ["wat is een doxxed dev", "dev-wallet", 1],
+  ["hoeveel geld kan ik verdienen met memecoins", "realistisch-verdienen", 1],
+  ["hoe word ik rijk met memecoins", "realistisch-verdienen", 1],
+  ["waarom zit ik zo vaak in de min", "jouw-cijfers", 1],
+  ["hoe weet ik of ik wordt opgelicht", "scam-overzicht", 1],
+  ["wat is een crypto scam", "scam-overzicht", 1],
+  ["kan iemand mijn wallet hacken", "wallet-hack", 1],
+  ["hoe koop ik mijn eerste memecoin", "eerste-keer", 1],
+  ["is 100 dollar genoeg om te starten", ["eerste-keer", "bankroll"]],
+  ["hoe werkt een swap op jupiter", "jupiter-aggregator", 1],
+  ["hoe weet ik of de liquidity echt is", "nep-liquiditeit", 1],
+  ["wat is een tradingjournaal", "journaal", 1],
+  ["hoe houd ik een journaal bij", "journaal", 1],
+  ["ik kan niet stoppen met traden", "gokken-signalen", 1],
+  ["wat is een pauze nemen", "tilt-pauze", 1],
+  ["hoe ga ik om met een groot verlies", "verlies-accepteren", 1],
+  ["wat is het beste moment om uit te stappen", "winst-nemen-basis", 1],
+  ["hoe weet ik wanneer ik moet verkopen", "winst-nemen-basis", 1],
+  ["ik heb te laat verkocht", "uitstapplan-eerst", 1],
+  ["hoe maak ik een wallet aan", "wallet-basis", 1],
+  ["wat zijn sol fees", "fees-solana", 1],
+  ["kan ik een coin kopen zonder sol", "fees-solana", 1],
+  ["hoe herken ik een nep token", "copycat-tokens", 1],
+  ["mijn coin is een scam wat nu", "na-een-rug", 1],
+  ["wanneer pak ik mijn inleg eruit", "inleg-terug", 1],
+  ["hoe werkt het lab", "lab-leert", 1],
+  ["wat is de wallet sync", "journaal-enter", 1],
+  ["hoe maak ik een memecoin", "memecoin-maken", 1],
+  ["hoe weet ik of er bots in mijn coin zitten", "snipers-bundlers", 1],
+  ["wat is een political coin", "nieuws-coins", 1],
+  ["waarom stijgt een coin na een tweet", "nieuws-coins", 1],
+  ["hoe lang duurt een pump", "memecoin-levenscyclus", 1],
+  ["wat zijn de beste tools voor memecoins", "terminals", 1],
+  ["hoe vind ik nieuwe coins", "coins-vinden", 1],
+  ["hoe weet ik of een coin trending is", "coins-vinden", 1],
+  ["waarom krijg ik minder coins dan verwacht", "price-impact", 1],
+  ["kan ik mijn sol terugkrijgen van mijn token accounts", "token-accounts-rent", 1],
+  ["wat is rent op solana", "token-accounts-rent", 1],
+  ["een vreemde stuurt mij een dm", "phishing", 1],
+  ["admin stuurt me een bericht in telegram", "phishing", 1],
+  ["wat is een giveaway scam", "fake-airdrops", 1],
+  ["waarom staat mijn coin 24 uur weg", "de-check", 1],
+  ["hoe controleer ik een coin snel", "de-check", 1],
+  ["hoeveel kost auriga", "wat-doet-auriga", 1],
+  ["wat moet ik doen voordat ik een coin koop", "instap-checklist", 1],
+  ["wat is een goede pool voor een coin van 50k mcap", "pool-grootte", 1],
+  ["hoe weet ik of volume echt is", "nep-volume-patroon", 1],
+  ["waarom gaat een coin omhoog als iedereen koopt", "liquiditeit-amm", 1],
+  ["hoe herken ik insiders", "insider-wallets", 1],
+  ["kan ik verlies aftrekken van mijn belasting", "belasting-nl", 1],
+  ["wat is een hot network", "tabs-uitleg", 1],
+  ["wat is de beste strategie voor memecoins", ["trading-plan", "exit-onderzoek"]],
+  ["wat is de kelly criterion", "kelly", 1],
+  ["iemand in een telegramgroep zegt dat deze coin gaat verdubbelen moet ik instappen", ["pump-dump-groepen", "social-media-druk"]],
+  ["wat is het verschil tussen graduations en runners", "tabs-uitleg", 1],
+  ["ik wil elke dag traden maar ik verlies steeds meer geld wat moet ik doen", "gokken-signalen", 1],
+  ["de dev heeft 30 procent van de supply is dat erg", "dev-wallet", 1],
+  ["de pool is maar 3000 dollar kan ik dan nog kopen", "pool-grootte", 1],
+  ["kan ik mijn winst gewoon laten staan of moet ik uitbetalen", "uitbetalen", 1],
+  ["hoeveel moet ik verkopen als mijn coin 5x is", ["winst-nemen-basis", "inleg-terug"]],
+  ["hoe weet ik of de maker zijn liquiditeit heeft vergrendeld", "lp-lock-burn", 1],
+  ["waarom gaat mijn coin omlaag terwijl er veel gekocht wordt", "waarom-daalt-snel", 1],
+  ["ik heb fomo omdat alles omhoog gaat", "fomo", 1],
+  ["hoe kan ik mijn verliezen beperken", "risico-basis", 1],
+  ["wat doet auriga eigenlijk en hoe kan ik het het beste gebruiken", ["dagelijks-gebruik", "wat-doet-auriga"]],
+  // jargon, asked for as a word: the word list answers, or the entry it points at
+  ["wat is een bull trap", ["term-bull-trap", "ta-basis"], 2],
+  ["wat is een breakout", ["term-breakout", "ta-basis"], 2],
+  ["wat betekent oversold", ["term-oversold", "ta-basis"], 2],
+  ["wat is een martingale", "term-martingale", 1],
+  ["wat is een moonbag", "term-moonbag", 1],
+  ["wat betekent de-risken", "term-de-risken", 1],
+  ["wat is een cabal", "term-cabal", 1],
+  ["wat is een multisig", "term-multisig", 1],
+  ["wat is een community takeover cto", "term-cto", 1],
+  ["wat is break even", ["term-break-even", "drawdown-herstel"], 2],
+  ["hoe werkt dev vesting", "term-vesting", 1],
+  ["wat is een market order", ["term-market-order", "limit-orders"], 2],
+  ["wat is risk reward ratio", "term-risk-reward", 1],
+  ["wat is expectancy", "verwachtingswaarde", 1],
+  ["hoe herken ik een nep influencer", "influencer-shilling", 1],
+  ["wat is een alpha group", "pump-dump-groepen", 1],
+  ["wat betekent het als een coin 1000 holders heeft", "aantal-holders", 1],
+  ["kan ik mijn crypto terugkrijgen als ik word gehackt", ["wallet-hack", "na-een-rug", "recovery-scams", "accounts-2fa"]],
+  ["ik heb gisteren een coin gekocht voor 20 dollar en hij is nu nog maar 5 dollar waard moet ik hem houden of verkopen", "houden-of-verkopen", 1],
+  ["mijn coin is 90 procent gedaald maar ik wil niet verkopen", ["houden-of-verkopen", "sunk-cost", "verlies-accepteren", "drawdown-herstel"]],
+  ["mijn vriend zegt dat ik snel een coin moet kopen voordat hij gaat vliegen", ["social-media-druk", "fomo"]],
+  ["moet ik een coin kopen die al 10x is gegaan", ["druk-vs-rustig", "fomo-top", "niet-op-10x-wachten"]],
+  ["ik heb mijn seed phrase gedeeld met iemand wat moet ik nu doen", ["wallet-hack", "seed-phrase"]],
+  ["ik krijg steeds berichten van mensen die me willen helpen met mijn crypto", ["recovery-scams", "phishing"]],
+  ["wat gebeurt er met mijn coin als de pool leeg wordt gehaald", ["liquiditeit-leeglopen", "rug-pull-soorten"]],
+  ["hoe zorg ik dat ik niet te veel geld kwijtraak met memecoins", ["risico-basis", "bankroll", "positiegrootte"]],
+];
+
+describe("questions written in other words than the entries' own", () => {
+  const rank = (q: string) => ask(q, 5).hits.map((h) => h.id);
+  for (const [q, want, atRank] of FRESH) {
+    const wanted = Array.isArray(want) ? want : [want];
+    it(`"${q}" -> ${wanted.join(" / ")}${atRank ? " (first)" : ""}`, () => {
+      const hits = rank(q);
+      const top = atRank ? hits.slice(0, atRank) : hits.slice(0, 3);
+      expect(top.some((id) => wanted.includes(id)), `got ${hits.join(", ")}`).toBe(true);
+    });
+  }
+});
+
+describe("the matching rules behind them", () => {
+  it("a past participle, a verb form and a word in -ing or -er share a root", () => {
+    expect(sameWord("gedumpt", "dump")).toBe(true);
+    expect(sameWord("dumpen", "gedumpt")).toBe(true);
+    expect(sameWord("gehackt", "hacken")).toBe(true);
+    expect(sameWord("trading", "traders")).toBe(true);
+  });
+  it("but words that merely look alike stay apart: one different letter is only a typo in a long word", () => {
+    expect(sameWord("pending", "lending")).toBe(false);
+    expect(sameWord("leverage", "levert")).toBe(false);
+    expect(sameWord("liquiditeit", "liquidieit")).toBe(true);
+    expect(sameWord("slippage", "slipage")).toBe(true);
+  });
+  it("a compound the knowledge base does not have is read as the two words it has", () => {
+    expect(ask("tradingjournaal").hits[0]!.id).toBe("journaal");
+    expect(ask("winstnemen").hits.slice(0, 2).map((h) => h.id)).toContain("winst-nemen-basis");
+  });
+  it("'uit te stappen' is 'uitstappen', and '2x' is the same as '2×'", () => {
+    expect(norm("wanneer is het tijd om uit te stappen")).toContain("uitstappen");
+    expect(norm("een 2× of 5×")).toBe("een 2x of 5x");
+  });
+  it("frame words ('hoe weet ik', 'de beste') do not decide the answer", () => {
+    expect(words("hoe weet ik of een coin gaat dumpen")).toEqual(["coin", "dumpen"]);
+    expect(ask("hoe weet ik of een coin gaat dumpen").hits[0]!.id).toBe("pump-dump-patroon");
+  });
+  it("one rare topic word is enough for an answer even in a long question, but a chance word in a sample question is not", () => {
+    expect(ask("hoeveel slippage moet ik instellen bij een nieuwe coin").confident).toBe(true);
+    expect(ask("wat is de kelly criterion").confident).toBe(true);
+    expect(ask("wie wint het wk voetbal").confident).toBe(false);
+  });
+  it("a number that matches nothing does not count against the question", () => {
+    expect(ask("is een coin met 40% bij 1 wallet veilig").confident).toBe(true);
   });
 });

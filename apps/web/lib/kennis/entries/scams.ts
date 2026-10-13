@@ -51,7 +51,7 @@ export const scams: Entry[] = [
     id: "nep-liquiditeit",
     cat: "scams",
     title: "Nep-liquiditeit en lege pools",
-    q: ["wat is nep liquiditeit", "pool is leeg", "fake liquidity", "waarom is de liquiditeit zo hoog maar kan ik niet verkopen", "liquiditeit is verdwenen"],
+    q: ["wat is nep liquiditeit", "pool is leeg", "fake liquidity", "waarom is de liquiditeit zo hoog maar kan ik niet verkopen", "liquiditeit is verdwenen", "hoe weet ik of de liquidity echt is", "is de liquiditeit echt", "hoe herken ik een nep pool"],
     kw: ["nep liquiditeit", "fake liquidity", "lege pool", "pool drained", "drained", "leeggetrokken", "liquiditeit weg"],
     short: "Een pool kan er groot uitzien terwijl de waarde van één kant bijna nul is, of terwijl de maker er zo uit kan. Kijk altijd of de liquiditeit blijft staan en of hij vergrendeld is.",
     body: [
@@ -65,7 +65,7 @@ export const scams: Entry[] = [
     id: "copycat-tokens",
     cat: "scams",
     title: "Kopie-tokens: dezelfde naam, ander contract",
-    q: ["hoe weet ik welke coin de echte is", "nep versie van een coin", "copycat token", "twee coins met dezelfde naam", "hoe controleer ik het contract adres"],
+    q: ["hoe weet ik welke coin de echte is", "nep versie van een coin", "copycat token", "twee coins met dezelfde naam", "hoe controleer ik het contract adres", "hoe herken ik een nep token", "hoe herken ik een kopie van een coin", "hoe weet ik dat dit de echte coin is"],
     kw: ["copycat", "kopie", "nep token", "zelfde naam", "ticker", "contract controleren", "officieel adres", "fake token", "impersonator"],
     short: "Iedereen kan een token maken met de naam en het logo van een bestaande coin. Alleen het contractadres is uniek: controleer dat bij de officiële bron voordat je koopt.",
     body: [
@@ -79,7 +79,7 @@ export const scams: Entry[] = [
     id: "pump-dump-groepen",
     cat: "scams",
     title: "Pump-and-dump groepen en call-kanalen",
-    q: ["wat is een pump and dump groep", "telegram call groep", "signalen groepen", "is een call kanaal betrouwbaar", "waarom stijgt mijn coin na een call"],
+    q: ["wat is een pump and dump groep", "telegram call groep", "signalen groepen", "is een call kanaal betrouwbaar", "waarom stijgt mijn coin na een call", "wat is een alpha group", "wat is een call channel"],
     kw: ["pump and dump", "p&d", "call kanaal", "calls", "signalen", "telegram groep", "discord", "alpha groep", "vip groep"],
     short: "In zo'n groep koopt de organisator eerst, roept dan een coin om, en verkoopt aan de leden die als gevolg kopen. Je betaalt ervoor om de uitgang te zijn.",
     body: [
@@ -93,7 +93,7 @@ export const scams: Entry[] = [
     id: "influencer-shilling",
     cat: "scams",
     title: "Influencers en betaalde promotie",
-    q: ["moet ik influencers vertrouwen", "wat is shilling", "betaalde promotie crypto", "kol coin", "is het veilig om te kopen wat een influencer post"],
+    q: ["moet ik influencers vertrouwen", "wat is shilling", "betaalde promotie crypto", "kol coin", "is het veilig om te kopen wat een influencer post", "hoe herken ik een nep influencer", "hoe herken ik een betaalde influencer"],
     kw: ["influencer", "shill", "shilling", "kol", "promotie", "sponsored", "tweet", "youtuber", "betaald"],
     short: "Een influencer die een coin promoot is meestal vroeg ingestapt of betaald, en verkoopt aan zijn volgers. Zijn tweet is geen analyse maar reclame.",
     body: [
@@ -107,7 +107,7 @@ export const scams: Entry[] = [
     id: "rug-signalen",
     cat: "scams",
     title: "Rug-signalen: de checklist",
-    q: ["hoe herken ik een rug pull", "waar let ik op voor ik koop", "red flags memecoin", "is deze coin een scam", "checklist voordat ik een coin koop", "hoe check ik of een coin veilig is"],
+    q: ["hoe herken ik een rug pull", "waar let ik op voor ik koop", "red flags memecoin", "is deze coin een scam", "checklist voordat ik een coin koop", "hoe check ik of een coin veilig is", "hoe weet ik of het een scam is", "hoe herken ik een scam coin", "hoe zie ik of een coin een rug is", "is deze coin veilig om te kopen"],
     kw: ["rug signalen", "red flags", "checklist", "scam herkennen", "veilig", "controleren", "due diligence", "dyor", "waarschuwingen"],
     short: "Controleer in deze volgorde: kun je erin en eruit (pool en test-verkoop), kan de maker meer maken of bevriezen (authorities), wie heeft het meeste (holders en insiders), en wat deed de maker eerder. De Check doet dit voor je op één scherm.",
     body: [
@@ -124,7 +124,7 @@ export const scams: Entry[] = [
     id: "na-een-rug",
     cat: "scams",
     title: "Wat doe je na een rug of een grote misser?",
-    q: ["mijn coin is gerugd wat nu", "ik heb een scam coin gekocht", "wat doe ik na een grote verlies", "kan ik mijn geld terugkrijgen", "wat te doen na rug pull"],
+    q: ["mijn coin is gerugd wat nu", "ik heb een scam coin gekocht", "wat doe ik na een grote verlies", "kan ik mijn geld terugkrijgen", "wat te doen na rug pull", "mijn coin is een scam wat nu", "ik ben opgelicht wat nu", "mijn coin is naar nul gegaan wat nu"],
     kw: ["na een rug", "gerugd", "verlies terugkrijgen", "melden", "aangifte", "recovery", "wat nu", "tilt"],
     short: "Het geld komt bijna nooit terug. Stop, doe niets impulsiefs om het goed te maken, en leer wat je kunt van de misser. Wees extra voorzichtig voor 'recovery-diensten': dat is de volgende scam.",
     body: [
@@ -138,7 +138,7 @@ export const scams: Entry[] = [
     id: "recovery-scams",
     cat: "scams",
     title: "Recovery-scams: 'wij halen je geld terug'",
-    q: ["recovery service crypto", "iemand belooft mijn geld terug te halen", "is een recovery dienst echt", "geld terughalen na scam"],
+    q: ["recovery service crypto", "iemand belooft mijn geld terug te halen", "is een recovery dienst echt", "geld terughalen na scam", "ik krijg berichten van mensen die me willen helpen met mijn crypto", "iemand biedt aan om mijn crypto terug te halen"],
     kw: ["recovery", "geld terughalen", "terugvorderen", "hacker inhuren", "vervolgscam", "dm", "tracing"],
     short: "Iedereen die je na een scam een bericht stuurt dat hij je coins kan terughalen, is een scammer. Ze vragen een voorschot, en dan ben je nog meer kwijt.",
     body: [
@@ -173,5 +173,22 @@ export const scams: Entry[] = [
       "Wat helpt: bladwijzers voor de sites die je gebruikt, een wallet die je alleen van de officiële site downloadt, en nooit je seed phrase invoeren op een website. Geen enkele echte dienst vraagt daarom.",
     ],
     see: ["phishing", "seed-phrase", "wallet-drainers"],
+  },
+  {
+    id: "scam-overzicht",
+    cat: "scams",
+    title: "Soorten scams: het overzicht",
+    q: ["wat is een crypto scam", "welke soorten scams zijn er", "hoe word ik opgelicht", "hoe weet ik of ik wordt opgelicht", "waar moet ik op letten bij scams", "types of crypto scams", "hoe herken ik oplichting"],
+    kw: ["scam", "scams", "oplichting", "oplichters", "fraude", "overzicht", "soorten", "trucs", "valkuilen", "opgelicht"],
+    short: "De meeste verliezen komen door een van een dozijn bekende trucs: de maker haalt de pool leeg (rug pull), je kunt niet verkopen (honeypot), een kopie van een echte coin, een groep die de prijs oppompt, of iemand die om je seed phrase of een handtekening vraagt. Ze zijn te herkennen als je weet waar je op moet letten.",
+    body: [
+      "**Geld van je afhalen via de coin zelf**: *rug-pull-soorten* (de maker verkoopt of haalt de pool leeg), *honeypot* (kopen kan, verkopen niet), *sell-tax*, *nep-liquiditeit* (een pool die er maar zo uitziet), *copycat-tokens* (zelfde naam, ander contract).",
+      "**Je laten kopen**: *pump-dump-groepen* (call-kanalen die vooraf kopen), *influencer-shilling* (betaalde promotie), *wash-trading* (nep-volume), *ponzi-patronen* (gegarandeerd rendement).",
+      "**Bij je wallet of account komen**: *phishing* (links en nep-support), *wallet-drainers* (een handtekening die je wallet leegtrekt), *fake-airdrops*, *nep-websites*, *address-poisoning*, *seed-phrase* (wie erom vraagt is een oplichter).",
+      "**Achteraf**: *recovery-scams* (wij halen je geld terug) richten zich op wie al verloren heeft.",
+      "De rode draad: haast, geheimhouding, een belofte zonder risico, of iemand die iets van je wil dat alleen jij kunt geven (je sleutel, je handtekening, je storting). Een kalme tegenvraag (hoe weet ik dat dit klopt?) stopt de meeste.",
+    ],
+    todo: ["Loop de checklist door voor je koopt (*rug-signalen*).", "Geef nooit je seed phrase, ook niet aan support.", "Teken niets wat je niet begrijpt (*blind-signing*)."],
+    see: ["rug-signalen", "rug-pull-soorten", "wallet-drainers", "phishing", "recovery-scams"],
   },
 ];
