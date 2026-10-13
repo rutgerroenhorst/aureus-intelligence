@@ -25,7 +25,7 @@ Supabase (the database and the clock), with the laptop as an optional extra. **I
 | [`COIN_CHECK.md`](COIN_CHECK.md) | the Check button and the paste-a-coin box: every line, its thresholds, how the answer is graded later |
 | [`LEARNING_LAB.md`](LEARNING_LAB.md) | the lab that follows every coin for three days and grades the rules and the tabs |
 | [`EXIT_STRATEGY.md`](EXIT_STRATEGY.md) | what the data says about exits (1,123 coins): half out plus a trailing stop (with an update of 2026-10-13) |
-| [`ALERT_REDESIGN.md`](ALERT_REDESIGN.md) | research and proposal for the Telegram messages: which levels to alert at (and why not every x), what to suggest, how they should look and be shared; not built yet |
+| [`ALERT_REDESIGN.md`](ALERT_REDESIGN.md) | research and proposal for the Telegram messages: which levels to alert at (and why not every x), what to suggest, how they should look and be shared, what the FOMO app can and cannot do (no stops) and what an order costs there; not built yet |
 | [`HOT_NETWORKS.md`](HOT_NETWORKS.md) | the ranking of networks at the top of the Radar and the Hot tab |
 | [`WALLET.md`](WALLET.md), [`WALLET_REVIEW.md`](WALLET_REVIEW.md) | the followed wallet: the decoder, the journal merge, what it showed |
 | [`KENNIS.md`](KENNIS.md) | the Kennis tab: the written knowledge base, how it searches, how to add to it |

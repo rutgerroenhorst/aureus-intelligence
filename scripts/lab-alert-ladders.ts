@@ -75,7 +75,7 @@ function priceAt(obs: Obs[], i: number, t: number): number {
 }
 
 /** The stake multiple after costs, the number of sales made, and the highest multiple reached. delayS = 0: sold at the level / the price read; else sold delayS after the crossing. */
-function simulate(obs: Obs[], rule: Rule, delayS: number, cost = 0.05, horizonS = 72 * 3600): { net: number; sells: number } {
+function simulate(obs: Obs[], rule: Rule, delayS: number, cost = 0.05, horizonS = 72 * 3600): { net: number; sells: number; sales: number[] } {
   const tk = obs[0]!.t;
   const pk = obs[0]!.p;
   let rem = 1;
@@ -86,10 +86,13 @@ function simulate(obs: Obs[], rule: Rule, delayS: number, cost = 0.05, horizonS 
   const filled = rule.rungs.map(() => false);
   const stop = rule.stop ?? 0.5;
   let last = pk;
+  /** what each sale brought in, in multiples of the stake, before any cost */
+  const sales: number[] = [];
   const sell = (share: number, i: number, level: number | null) => {
     // resting sells fill at their level in the optimistic model; a delayed sale gets the price delayS after the crossing
     const price = delayS > 0 ? priceAt(obs, i, obs[i]!.t + delayS) / pk : level ?? obs[i]!.p / pk;
     proceeds += share * price;
+    sales.push(share * price);
     rem -= share;
     sells++;
   };
@@ -132,9 +135,25 @@ function simulate(obs: Obs[], rule: Rule, delayS: number, cost = 0.05, horizonS 
   }
   if (rem > 1e-9) {
     proceeds += rem * (last / pk);
+    sales.push(rem * (last / pk));
     sells++;
   }
-  return { net: proceeds * (1 - cost), sells };
+  return { net: proceeds * (1 - cost), sells, sales };
+}
+
+/**
+ * The owner's real cost per sale in the trading app, measured on their own trades (scripts/fomo-fee-probe.ts, 2026-10-13): a flat $0.10 on (almost) every order,
+ * and about 1% more on orders of roughly $8 and up (about 2% in all from $10). A leftover worth under $0.50 is not sold at all, so it costs nothing.
+ * Returns the stake multiple after those costs for a stake of `stakeUsd` dollars. Only the sales are charged; the purchase costs the same under every rule.
+ */
+function netFlat(sales: number[], stakeUsd: number): number {
+  let net = 0;
+  for (const v of sales) {
+    const usd = v * stakeUsd;
+    const fee = usd < 0.5 ? 0 : 0.1 + (usd >= 8 ? 0.01 * usd : 0);
+    net += v - fee / stakeUsd;
+  }
+  return net;
 }
 
 /** how many of the levels were crossed: two readings in a row at or above the level within the 72 hours (what an alert needs) */
@@ -268,6 +287,25 @@ async function main() {
     const big = coins.map((c, i) => (c.obs.length && crossed(c.obs, [5]) === 1 ? i : -1)).filter((i) => i >= 0);
     console.log(`   on the ${big.length} coins that reached 5x (mean result, % of stake): ${RULES.map((r, k) => `${r.name.split(":")[0]!.slice(0, 22)} ${((mean(big.map((i) => net[k]![i]!.net)) - 1) * 100).toFixed(0)}%`).join(" | ")}`);
     console.log("   * average number of sales made on a coin that reached 2x (each is something to do on a phone)\n");
+  }
+
+  // ---- 2c. the same rules with the owner's real cost per sale (a flat $0.10 and about 1% more from $8), for the stakes the owner uses
+  {
+    const STAKES = [2, 3, 5];
+    const sims = RULES.map((r) => coins.map((c) => simulate(c.obs, r, 300)));
+    console.log("== 2c. Suggested sales with the real cost per order (flat $0.10, +1% from $8 up), sold 5 minutes after the crossing, stake $2 / $3 / $5");
+    console.log("   mean result in % of the stake, and the difference against the current advice in points of the stake [90% interval]");
+    console.log("   rule".padEnd(70), STAKES.map((s) => `$${s} mean`.padStart(9) + `   vs current`.padEnd(20)).join(""));
+    RULES.forEach((r, k) => {
+      const cells = STAKES.map((s) => {
+        const nets = sims[k]!.map((x) => netFlat(x.sales, s));
+        const d = nets.map((x, i) => x - netFlat(sims[BASE]![i]!.sales, s));
+        return `${((mean(nets) - 1) * 100).toFixed(0)}%`.padStart(9) + (k === BASE ? "   (baseline)".padEnd(20) : `   ${pts(pairedBoot(d))}`.padEnd(20));
+      });
+      console.log(`   ${r.name}`.padEnd(70), cells.join(""));
+    });
+    // what one extra order costs the owner, in points of the stake
+    console.log(`   one extra order of about ${"$"}1 to ${"$"}8 costs ${STAKES.map((s) => `${((0.1 / s) * 100).toFixed(1)} points of a $${s} stake`).join(", ")}\n`);
   }
 }
 main()

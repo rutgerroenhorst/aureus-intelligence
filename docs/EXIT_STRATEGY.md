@@ -3,7 +3,8 @@
 > **Update 2026-10-13 (docs/ALERT_REDESIGN.md):** with 1,479 coins instead of 1,123 and sales five minutes after the alert instead of at the level, "half at 2x" no longer beats "all out at 2x" (-3 points with
 > instant fills, and **+7 points for all out** with the five-minute delay, which is how an alert is acted on). What still holds: selling nothing is clearly worse, protecting what is left is worth about 5 points
 > (with a stop that moves with the price: break-even and a fixed stop are worse), more rungs (5x, 10x) do not measurably help, and a stop at -30% on a fresh position is the one measured improvement (+3 to +4).
-> Read result 3 and result 4 below with that in mind.
+> Read result 3 and result 4 below with that in mind. **Costs:** the 5% on every sale used in the simulations is right for a $2 order and too much for a larger one: in the owner's app (FOMO, where no stop can be set) an order
+> costs a flat $0.10 plus about 1% from $8 up (measured on the owner's own trades, docs/ALERT_REDESIGN.md). The rules were re-run with that cost for stakes of $2, $3 and $5 and the ranking did not change.
 
 The user asked: what is a good way out of a coin, is it different per coin, narrative or meme, or simply "out at 2x your entry"? And why was 5x in the alerts too?
 This is the answer with the definitions, so it can be repeated: `corepack pnpm exec tsx scripts/lab-exit-segments.ts` (read-only, about two minutes, rebuilds every number below
