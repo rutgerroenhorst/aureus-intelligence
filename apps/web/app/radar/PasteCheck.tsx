@@ -83,8 +83,8 @@ function PastedCoin({ coin, onClose }: { coin: Resolved; onClose: () => void }) 
  * "Paste a coin": for the coins that are on no tab (found on X, in the FOMO app, from a friend). An address or a link in, and the same Check as on a card out, before the buy.
  * Of the coins this system never saw, every one of the 20 that were bought lost at least half (docs/WALLET_REVIEW.md): this is the second opinion for exactly those.
  */
-export function PasteCheck() {
-  const [text, setText] = useState("");
+export function PasteCheck({ initial, autoRun, hideForm }: { initial?: string; autoRun?: boolean; hideForm?: boolean } = {}) {
+  const [text, setText] = useState(initial ?? "");
   const [busy, setBusy] = useState(false);
   const [coin, setCoin] = useState<Resolved | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -111,6 +111,14 @@ export function PasteCheck() {
       setBusy(false);
     }
   };
+  const started = useRef(false);
+  useEffect(() => {
+    if (autoRun && initial && !started.current) {
+      started.current = true;
+      void look(initial);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const paste = async () => {
     try {
       const t = await navigator.clipboard.readText();
@@ -134,7 +142,7 @@ export function PasteCheck() {
           e.preventDefault();
           void look(text);
         }}
-        style={{ display: "flex", gap: 8 }}
+        style={{ display: hideForm ? "none" : "flex", gap: 8 }}
       >
         <input
           ref={input}

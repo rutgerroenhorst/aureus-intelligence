@@ -4,6 +4,8 @@ import type { CheckLine } from "@/lib/coinCheck";
 import { AWAY_HOURS } from "@/lib/checkAway";
 import { brand } from "@/lib/brand";
 import { IconSearch } from "./parts";
+import Link from "next/link";
+import { CHECK_LINE_ENTRY } from "@/lib/kennis/checkLinks";
 
 /** What the site answered when a coin was checked (lib/coinCheck.ts judgeCoin, plus when). */
 export interface CheckAnswer {
@@ -121,6 +123,11 @@ export function CheckPanel({ state }: { state: CoinCheckState }) {
                   <div key={c.key} style={{ display: "flex", gap: 6 }}>
                     <span style={{ color: MARK[c.state].color, width: 12, flexShrink: 0, textAlign: "center", fontWeight: 700 }}>{MARK[c.state].sign}</span>
                     <span style={{ color: c.state === "skip" || c.state === "note" ? "#8a8a8e" : "#d4d4de" }}>{c.text}</span>
+                    {CHECK_LINE_ENTRY[c.key] && (
+                      <Link href={`/kennis?e=${CHECK_LINE_ENTRY[c.key]}`} className="info-btn info-btn-sm" title="Wat betekent dit?" aria-label="Uitleg bij deze regel" style={{ flexShrink: 0 }}>
+                        ?
+                      </Link>
+                    )}
                   </div>
                 ))}
               </div>

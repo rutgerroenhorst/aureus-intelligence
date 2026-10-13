@@ -39,6 +39,8 @@ const NavIcon = ({ type }: { type: string }) => {
       return <svg {...iconProps}><circle cx="6" cy="6" r="1"/><circle cx="18" cy="6" r="1"/><circle cx="6" cy="18" r="1"/><circle cx="18" cy="18" r="1"/></svg>;
     case "telegram":
       return <svg {...iconProps}><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>;
+    case "book":
+      return <svg {...iconProps}><path d="M2 4h6a4 4 0 0 1 4 4v12a3 3 0 0 0-3-3H2z"/><path d="M22 4h-6a4 4 0 0 0-4 4v12a3 3 0 0 1 3-3h7z"/></svg>;
     case "more":
       return <svg {...iconProps}><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg>;
     default:
@@ -88,6 +90,7 @@ const primaryNav = [
   { label: "Radar", href: "/radar", type: "radar" },
   { label: "Results", href: "/results", type: "results" },
   { label: "Learning", href: "/learning", type: "learning" },
+  { label: "Kennis", href: "/kennis", type: "book" },
 ];
 
 const moreNav = [
@@ -155,6 +158,7 @@ export default function AppShellElite({ children }: AppShellEliteProps) {
     { label: "Radar", href: "/radar", type: "radar", group: "Core" },
     { label: "Results", href: "/results", type: "results", group: "Core" },
     { label: "Learning", href: "/learning", type: "learning", group: "Core" },
+    { label: "Kennis", href: "/kennis", type: "book", group: "Core" },
     { label: "Telegram", href: "/telegram", type: "telegram", group: "System" },
     { label: "Ops", href: "/ops", type: "ops", group: "System" },
     { label: "Stream", href: "/stream", type: "stream", group: "More" },

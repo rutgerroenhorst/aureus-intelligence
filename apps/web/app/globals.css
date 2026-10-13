@@ -1272,3 +1272,16 @@ table.grid tr:hover td { background: var(--bg-2); }
   color: var(--brand-text);
   border-color: var(--brand);
 }
+/* the "?" next to a line of the Check is a link to the explanation */
+a.info-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+.info-btn-sm {
+  width: 16px;
+  height: 16px;
+  font-size: 10px;
+  margin-top: 1px;
+}
