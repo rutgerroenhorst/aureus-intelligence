@@ -212,17 +212,24 @@ async function main() {
   const firstSeen = new Map<string, number>();
   for (const r of (await pool.query(`SELECT mint, EXTRACT(EPOCH FROM first_seen_at)::float8 AS seen FROM lab_coins`)).rows) firstSeen.set(r.mint, r.seen);
   const coins: Array<{ t: number; obs: Obs[] }> = [];
+  let latest = 0;
   for (let b = 0; b < cands.length; b += 40) {
     const batch = cands.slice(b, b + 40);
     const obsMap = await loadObs(pool, batch);
     for (const c of batch) {
       const { clean } = cleanObs(obsMap.get(c.pool_id) ?? []);
       if (clean.length < 3) continue;
+      latest = Math.max(latest, clean[clean.length - 1]!.t);
       const y = forwardLabels(clean, 0, { rule: "auto" });
       if (!y || y.go2 == null || y.ev == null) continue; // the whole window must have been seen
       coins.push({ t: firstSeen.get(c.mint) ?? c.discovered_at, obs: clean });
     }
   }
+  // CORRECTION 2026-10-13: a coin that died has a decided window at once, a living one only after 72 hours, so a recent cohort held only the dead ones and looked worse than it was
+  // (it favoured selling early). A coin now counts only when its 72 hours are over by the latest reading, dead or alive. MATURE=0 gives the old selection back.
+  const before = coins.length;
+  if (process.env.MATURE !== "0") for (let i = coins.length - 1; i >= 0; i--) if (coins[i]!.obs[0]!.t + 73 * 3600 > latest) coins.splice(i, 1);
+  console.log(`selection: ${before} coins with a decided window, ${coins.length} of them first looked at least 73 hours before the latest reading${process.env.MATURE === "0" ? " (maturity filter OFF)" : ""}`);
   coins.sort((a, b) => a.t - b.t);
   const n = coins.length;
   const cut = Math.floor(0.6 * n);

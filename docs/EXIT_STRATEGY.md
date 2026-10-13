@@ -1,10 +1,11 @@
 # Exit strategies: what the data says (2026-10-11)
 
-> **Update 2026-10-13 (docs/ALERT_REDESIGN.md):** with 1,479 coins instead of 1,123 and sales five minutes after the alert instead of at the level, "half at 2x" no longer beats "all out at 2x" (-3 points with
-> instant fills, and **+7 points for all out** with the five-minute delay, which is how an alert is acted on). What still holds: selling nothing is clearly worse, protecting what is left is worth about 5 points
-> (with a stop that moves with the price: break-even and a fixed stop are worse), more rungs (5x, 10x) do not measurably help, and a stop at -30% on a fresh position is the one measured improvement (+3 to +4).
-> Read result 3 and result 4 below with that in mind. **Costs:** the 5% on every sale used in the simulations is right for a $2 order and too much for a larger one: in the owner's app (FOMO, where no stop can be set) an order
-> costs a flat $0.10 plus about 1% from $8 up (measured on the owner's own trades, docs/ALERT_REDESIGN.md). The rules were re-run with that cost for stakes of $2, $3 and $5 and the ranking did not change.
+> **Update 2026-10-13 (docs/ALERT_REDESIGN.md, docs/EXIT_PRACTICE.md):** redone on 1,161 coins whose 72 hours were over by the latest reading (an earlier redo with 1,479 coins held 318 recent coins that were "decided" only because they had
+> died, which made selling early look better than it is; that version, "all out at 2x is +7 points", is withdrawn). With the correct selection and sales at the level, "half at 2x" still beats "all out at 2x" (-6 [-12, -1] for all out);
+> with the sales five minutes late (how an alert is acted on) there is **no difference** (+1 [-4, 5]), and 50%, 75% and 100% at the first alert are indistinguishable. What holds in both: selling nothing is clearly worse, protecting what is left is
+> worth about 5 points (with a stop that moves with the price: break-even and a fixed stop are worse), more rungs (5x, 10x) do not measurably help, and a stop at -30% on a fresh position is the one measured improvement (+3 to +4).
+> **Costs:** the 5% on every sale used in the simulations is right for a $2 order and too much for a larger one: in the owner's app (FOMO, where no stop can be set) an order costs a flat $0.10 plus about 1% from $8 up (measured on the
+> owner's own trades); the rules were re-run with that cost for stakes of $2, $3 and $5 and the ranking did not change. The rules that are used in practice (ladders, trailing stops, time stops) are tested in docs/EXIT_PRACTICE.md: none is measurably better.
 
 The user asked: what is a good way out of a coin, is it different per coin, narrative or meme, or simply "out at 2x your entry"? And why was 5x in the alerts too?
 This is the answer with the definitions, so it can be repeated: `corepack pnpm exec tsx scripts/lab-exit-segments.ts` (read-only, about two minutes, rebuilds every number below
