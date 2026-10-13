@@ -96,6 +96,60 @@ describe("decoding what a wallet did in one transaction", () => {
     expect(decodeFills(tx({ keys: [W, "Other"], pre: [1e9, 1e9], post: [0.9e9, 1.1e9] }), W)).toEqual({ fills: [], transfers: [], swaps: [] });
   });
 
+  it("reads a gasless $2 purchase that also leaves a crumb of a second token as a purchase of the big one (the router's leftovers must not hide the buy)", () => {
+    const CRUMB = "CrumbCrumbCrumbCrumbCrumbCrumbCrumbCrumbCrum";
+    const d = decodeFills(
+      tx({
+        keys: ["Relayer", W, "WalletUsdcAta", "WalletCoinAta", "WalletCrumbAta"], pre: [9e9, 0, 2_039_280, 0, 0], post: [9e9, 0, 2_039_280, 2_039_280, 2_039_280],
+        preTok: [bal(2, USDC, W, "5.00")], postTok: [bal(2, USDC, W, "3.00"), bal(3, COIN, W, "87426.422588"), bal(4, CRUMB, W, "0.055571")],
+      }),
+      W,
+    );
+    expect(d.fills).toHaveLength(1);
+    const f = d.fills[0]!;
+    expect(f).toMatchObject({ side: "buy", mint: COIN, quote: "USD" });
+    expect(f.tokens).toBeCloseTo(87426.422588, 3);
+    expect(f.quoteAmount).toBeCloseTo(2, 6);
+    expect(f.price).toBeCloseTo(2 / 87426.422588, 10);
+    // the crumb stays in the journal as a plain transfer
+    expect(d.transfers).toEqual([{ sig: "SIG", t: 1_800_000_000, mint: CRUMB, tokens: 0.055571 }]);
+  });
+
+  it("reads a sale of a big amount with a crumb of a second token going out as a sale of the big one", () => {
+    const CRUMB = "CrumbCrumbCrumbCrumbCrumbCrumbCrumbCrumbCrum";
+    const d = decodeFills(
+      tx({
+        keys: ["Relayer", W, "WalletUsdcAta", "WalletCoinAta", "WalletCrumbAta"], pre: [9e9, 0, 2_039_280, 2_039_280, 2_039_280], post: [9e9, 0, 2_039_280, 2_039_280, 2_039_280],
+        preTok: [bal(2, USDC, W, "1.00"), bal(3, COIN, W, "50000"), bal(4, CRUMB, W, "3")], postTok: [bal(2, USDC, W, "3.50"), bal(3, COIN, W, "10000"), bal(4, CRUMB, W, "2.9")],
+      }),
+      W,
+    );
+    expect(d.fills).toHaveLength(1);
+    expect(d.fills[0]).toMatchObject({ side: "sell", mint: COIN, quote: "USD" });
+    expect(d.fills[0]!.tokens).toBeCloseTo(40000, 3);
+    expect(d.fills[0]!.quoteAmount).toBeCloseTo(2.5, 6);
+  });
+
+  it("does not guess when two coins of similar size arrive with a payment: they stay unpriced transfers", () => {
+    const B = "OtherCoinOtherCoinOtherCoinOtherCoinOtherCo";
+    const d = decodeFills(
+      tx({
+        keys: ["Relayer", W, "WalletUsdcAta", "A", "B"], pre: [9e9, 0, 2_039_280, 0, 0], post: [9e9, 0, 2_039_280, 2_039_280, 2_039_280],
+        preTok: [bal(2, USDC, W, "5.00")], postTok: [bal(2, USDC, W, "3.00"), bal(3, COIN, W, "1000"), bal(4, B, W, "400")],
+      }),
+      W,
+    );
+    expect(d.fills).toHaveLength(0);
+    expect(d.transfers).toHaveLength(2);
+  });
+
+  it("two coins arriving with no payment at all (an airdrop) are transfers, however different their sizes", () => {
+    const B = "OtherCoinOtherCoinOtherCoinOtherCoinOtherCo";
+    const d = decodeFills(tx({ keys: ["Sender", W, "A", "B"], pre: [9e9, 0, 0, 0], post: [9e9, 0, 2_039_280, 2_039_280], postTok: [bal(2, COIN, W, "100000"), bal(3, B, W, "0.5")] }), W);
+    expect(d.fills).toHaveLength(0);
+    expect(d.transfers).toHaveLength(2);
+  });
+
   it("calls a coin-for-coin swap a swap (no price to read)", () => {
     const B = "OtherCoinOtherCoinOtherCoinOtherCoinOtherCo";
     const d = decodeFills(tx({ keys: ["Router", W, "A", "B"], pre: [9e9, 0, 1, 1], post: [9e9, 0, 1, 1], preTok: [bal(2, COIN, W, "100")], postTok: [bal(3, B, W, "50")] }), W);

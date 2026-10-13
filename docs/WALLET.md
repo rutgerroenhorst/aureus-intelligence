@@ -32,11 +32,19 @@ First reading, 2026-10-11: 24 deposits, 4.3774 SOL, $473.33 at the prices of tho
 that evening; no withdrawals. Checked against the chain: the SOL that came in was swapped for USDC within minutes each time. Transactions read before this feature existed were looked at once more by
 `corepack pnpm exec tsx scripts/wallet-flows.ts` (3 of 145 could not be read at that moment and are tried again the next time it runs; `--reprice` recomputes the dollars, `--dry-run` only prints).
 
-### The 88 USDC payments that deliver no coin (open question, 2026-10-13)
+### Purchases with a crumb of a second token (found and fixed 2026-10-13)
+
+A gasless swap of USDC into a coin can leave a crumb of a second token in the wallet (0.00001 to 6 tokens next to tens of thousands of the coin bought). `decodeFills` used to call every transaction in which two coins arrived two unpriced transfers (`side = 'in'`, no quote, no dollars), so 17 of 511 transactions
+(16 coins, $62, 13 of them in the last week) were purchases that no alert and no review could see. It now reads the coin whose amount is at least `DUST_RATIO` (1,000) times that of every other coin on the same side as the coin traded (the 17 cases were 8,000 to 4 billion times) and keeps the crumbs as transfers; two coins of
+similar size stay unpriced transfers, nothing is guessed. Found from a screenshot of the owner's trading app: its list showed a coin the wallet journal had only as "received". `scripts/wallet-redecode.ts [--hosted] [--dry-run]` re-reads the transactions that are stored only as transfers (two or more, one with a real amount) and replaces their rows,
+then updates the journal; idempotent, laptop first, then `--hosted`. Run it again whenever the review shows coins with an "in" row and no buy.
+
+### The 88 USDC payments that deliver no coin to this wallet (2026-10-13)
 
 88 transactions (24 August to 11 October, $2 to $25, $297.30 in all, mostly exactly $2, 49 of them on 3 to 7 September) pay USDC through a `DepositToken` instruction of one program into one shared USDC account (the same account receives payments from many other wallets within the same second; the fee payer is the same
-gasless relayer as for the owner's normal swaps; now and then a large sum leaves that account to one address). The owner says they are purchased coins. **No coin arrives in this wallet** after such a payment, so the coins are on another network (the trading app is multichain) or kept in the app: the wallet journal, the
-exit alerts and the wallet reviews do not see them. They are not counted as deposits or withdrawals. To cover them the owner's (public) address on that network is needed, or the app's own activity list for a few of the payments. The decoding and probes are scratch work (git-ignored); the finding is in `docs/WALLET_REVIEW_2.md`.
+gasless relayer as for the owner's normal swaps; now and then a large sum leaves that account to one address). The owner confirmed they are purchased coins and the app's activity list shows them as "+$1.90, bought at ..." (the $0.10 is the order cost). **They are purchases on other networks**: one was identified by matching the price the app shows with the pool's candles
+at two moments (a BNB Chain coin, GeckoTerminal candles); the app is multichain, the coin goes to the owner's wallet on that network, and no coin arrives in this Solana wallet. The wallet journal, the exit alerts and the wallet reviews therefore do not see them (about $297 against $651 of Solana purchases). They are not counted as deposits
+or withdrawals. To cover them the owner's (public) address on those networks is needed (the 0x address the app shows for BNB, Base and so on); reading what an address bought is then a chain read like the Solana one. The decoding and probes are scratch work (git-ignored); the review is in `docs/WALLET_REVIEW_2.md`.
 
 ## Privacy
 

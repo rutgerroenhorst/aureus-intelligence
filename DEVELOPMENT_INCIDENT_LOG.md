@@ -96,3 +96,19 @@ This incident serves as a record that:
 ### Lesson
 
 - Any statistic over "decided" outcomes needs a maturity filter on the entry time, or recent cohorts are biased towards the quick deaths. See `docs/EXIT_PRACTICE.md`, section 0.
+
+## Invisible Purchases: 2026-10-13 (the wallet decoder)
+
+### What happened
+
+- The owner said that 88 payments of mostly $2 were purchased coins and asked why the system could not see them. A screenshot of their trading app (found with it: 15 entries) was matched against the wallet journal by time, amount and price: most entries were in the journal, but two were stored only as unpriced "received" tokens.
+- Cause: `decodeFills` treated every transaction in which two coins arrived as two plain transfers. A gasless $2 swap can leave a crumb of a second token (0.00001 to 6 tokens) next to tens of thousands of the coin bought, so **17 purchases (16 coins, $62, 13 of them in the last week, one of $15) had no price paid, no position, no exit alert and no place in the wallet reviews**.
+- The 88 payments themselves are a different thing: deposit orders into a shared account for purchases on other networks (a BNB Chain coin was identified by matching the price at two moments); they deliver nothing to this wallet and stay invisible until the owner's address on those networks is known.
+
+### Corrective action
+
+- `decodeFills` reads the coin that is at least 1,000 times larger than the other (the 17 cases: 8,000 to 4 billion times) as the coin traded; similar sizes stay unpriced. Four new tests. `scripts/wallet-redecode.ts` re-read and replaced the 17 transactions in both databases and updated the journal. The wallet review was redone (216 coins, 0.58x instead of 200 coins, 0.61x) and the numbers given to the owner earlier the same day were corrected in `docs/WALLET_REVIEW_2.md`.
+
+### Lesson
+
+- Everything built on "the wallet's buys" (alerts, reviews, journal) inherits the decoder's blind spots; a screenshot of the owner's own app is the cheapest independent check. A silent fall-through to "unpriced transfer" is a data hole: count what falls through (82 transactions had an "in" row; 17 of them were real purchases).

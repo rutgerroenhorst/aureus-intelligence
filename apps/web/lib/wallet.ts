@@ -128,27 +128,64 @@ export function decodeFills(tx: any, wallet: string): Decoded {
   const quoteSol = Math.abs(sol) > 1e-5 ? sol : 0; // dust from rounding is not a trade
   const quoteUsd = Math.abs(usd) > 0.01 ? usd : 0;
 
+  const buy = (mint: string, d: number) => {
+    const useUsd = quoteUsd < 0 && (quoteSol >= 0 || Math.abs(quoteUsd) > 0);
+    const amount = useUsd ? -quoteUsd : -quoteSol;
+    out.fills.push({ sig, t, mint, side: "buy", tokens: d, quote: useUsd ? "USD" : "SOL", quoteAmount: amount, price: amount / d });
+  };
+  const sell = (mint: string, d: number) => {
+    const useUsd = quoteUsd > 0;
+    const amount = useUsd ? quoteUsd : quoteSol;
+    out.fills.push({ sig, t, mint, side: "sell", tokens: -d, quote: useUsd ? "USD" : "SOL", quoteAmount: amount, price: amount / -d });
+  };
+
   if (coins.length === 1) {
     const [mint, d] = coins[0]!;
-    if (d > 0 && (quoteSol < 0 || quoteUsd < 0)) {
-      const useUsd = quoteUsd < 0 && (quoteSol >= 0 || Math.abs(quoteUsd) > 0);
-      const amount = useUsd ? -quoteUsd : -quoteSol;
-      out.fills.push({ sig, t, mint, side: "buy", tokens: d, quote: useUsd ? "USD" : "SOL", quoteAmount: amount, price: amount / d });
-    } else if (d < 0 && (quoteSol > 0 || quoteUsd > 0)) {
-      const useUsd = quoteUsd > 0;
-      const amount = useUsd ? quoteUsd : quoteSol;
-      out.fills.push({ sig, t, mint, side: "sell", tokens: -d, quote: useUsd ? "USD" : "SOL", quoteAmount: amount, price: amount / -d });
-    } else if (Math.abs(d) > tiny) {
-      out.transfers.push({ sig, t, mint, tokens: d });
-    }
+    if (d > 0 && (quoteSol < 0 || quoteUsd < 0)) buy(mint, d);
+    else if (d < 0 && (quoteSol > 0 || quoteUsd > 0)) sell(mint, d);
+    else if (Math.abs(d) > tiny) out.transfers.push({ sig, t, mint, tokens: d });
     return out;
   }
   // several coins moved at once
   const gained = coins.filter(([, d]) => d > 0);
   const lost = coins.filter(([, d]) => d < 0);
-  if (gained.length === 1 && lost.length === 1 && !quoteSol && !quoteUsd) out.swaps.push({ sig, t, out: lost[0]![0], into: gained[0]![0] });
-  else for (const [mint, d] of coins) out.transfers.push({ sig, t, mint, tokens: d });
+  if (gained.length === 1 && lost.length === 1 && !quoteSol && !quoteUsd) {
+    out.swaps.push({ sig, t, out: lost[0]![0], into: gained[0]![0] });
+    return out;
+  }
+  // A purchase (or a sale) with crumbs: the router can leave a second token behind in the wallet (found 2026-10-13: 17 of the owner's gasless $2 purchases came with 0.00001 to 6 tokens of a second coin
+  // next to tens of thousands of the coin bought, and were stored as plain "received" with no price, so no alert and no review ever saw them). The coin whose amount is at least DUST_RATIO times
+  // that of every other coin on the same side is the coin traded; the crumbs stay in the journal as transfers. Two coins of similar size stay unpriced transfers: nothing is guessed.
+  if (!lost.length && gained.length >= 2 && (quoteSol < 0 || quoteUsd < 0)) {
+    const main = dominant(gained);
+    if (main) {
+      buy(main[0], main[1]);
+      for (const [mint, d] of gained) if (mint !== main[0]) out.transfers.push({ sig, t, mint, tokens: d });
+      return out;
+    }
+  }
+  if (!gained.length && lost.length >= 2 && (quoteSol > 0 || quoteUsd > 0)) {
+    const main = dominant(lost);
+    if (main) {
+      sell(main[0], main[1]);
+      for (const [mint, d] of lost) if (mint !== main[0]) out.transfers.push({ sig, t, mint, tokens: d });
+      return out;
+    }
+  }
+  for (const [mint, d] of coins) out.transfers.push({ sig, t, mint, tokens: d });
   return out;
+}
+
+/** How many times larger (in tokens) the traded coin has to be than every other coin that moved on the same side of the transaction. The 17 cases seen were 8,000 to 4 billion times. */
+export const DUST_RATIO = 1000;
+
+/** The one coin of a group whose amount is at least DUST_RATIO times that of every other, or null. */
+function dominant(group: Array<[string, number]>): [string, number] | null {
+  const sorted = [...group].sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
+  const [first, second] = sorted;
+  if (!first) return null;
+  if (!second) return first;
+  return Math.abs(first[1]) >= DUST_RATIO * Math.abs(second[1]) ? first : null;
 }
 
 /**

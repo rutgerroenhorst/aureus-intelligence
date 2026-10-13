@@ -1,7 +1,7 @@
 /**
  * What would the exit alerts send right now? A dry run on the real data: nothing is written and nothing is sent.
  *
- *   corepack pnpm exec tsx scripts/exit-alerts-dryrun.ts [--local] [--passes 4]
+ *   corepack pnpm exec tsx scripts/exit-alerts-dryrun.ts [--local] [--overlay-local] [--passes 4]
  *
  * Reads the followed wallet's fills, the alerts that were recorded and the small state next to them from the HOSTED database (read-only session; `--local` reads the laptop's), prices the held coins
  * from DexScreener (read-only calls), and runs the real pass (apps/worker/src/exitLoop.ts runPass) several times, two minutes apart on a made-up clock, against an in-memory copy of that state with
@@ -17,6 +17,8 @@ const arg = (k: string, d: string) => {
   return i >= 0 && process.argv[i + 1] ? process.argv[i + 1]! : d;
 };
 const PASSES = Number(arg("passes", "4"));
+// --overlay-local: add the buys and sells the laptop's database has that the hosted one does not (what the hosted database would hold after scripts/wallet-redecode.ts --hosted), in memory only
+const OVERLAY = process.argv.includes("--overlay-local");
 const url = process.argv.includes("--local") ? localUrl() : hostedUrl();
 if (!url) {
   console.error("no database url");
@@ -31,6 +33,20 @@ for (const r of (await db.query(`SELECT mint, EXTRACT(EPOCH FROM t)::float8 AS t
   const a = fills.get(r.mint) ?? [];
   a.push({ t: r.t, side: r.side, tokens: r.tokens, usd: r.usd });
   fills.set(r.mint, a);
+}
+if (OVERLAY) {
+  const have = new Set((await db.query(`SELECT signature FROM wallet_fills WHERE side IN ('buy','sell')`)).rows.map((r) => r.signature as string));
+  const local = await connectTo(localUrl(), "exit-alerts-dryrun-local");
+  await local.query("SET default_transaction_read_only = on");
+  const extra = (await local.query(`SELECT signature, mint, EXTRACT(EPOCH FROM t)::float8 AS t, side, tokens::float8 AS tokens, usd::float8 AS usd FROM wallet_fills WHERE side IN ('buy','sell')`)).rows.filter((r) => !have.has(r.signature as string));
+  await local.end();
+  for (const r of extra) {
+    const a = fills.get(r.mint) ?? [];
+    a.push({ t: r.t, side: r.side, tokens: r.tokens, usd: r.usd });
+    a.sort((x, y) => x.t - y.t);
+    fills.set(r.mint, a);
+  }
+  console.log(`overlay: ${extra.length} buy/sell row(s) from the laptop's database that the hosted one does not have yet (${new Set(extra.map((r) => r.mint)).size} coins)`);
 }
 const rows = new Map<string, { state: string }>();
 const key = (m: string, s: number, l: number) => `${m}|${s}|${l}`;
