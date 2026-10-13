@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { alertButtons, alertText, fmtMultiple, fmtPrice, fmtUsd, loggedText, MIN_POOL_USD, openPosition, readPosition, testButtons, testText, welcomeText, type Fill, type Position } from "./exitAlerts";
+import { alertMessage, dexLink, fmtMultiple, fmtPrice, fmtUsd, fomoLink, LEVELS_DEFAULT, lineFor, LOSS_AT, LOSS_KEY, loggedText, MIN_POOL_USD, MIN_SLICE_USD, MIN_VALUE_USD, openPosition, orderFeeUsd, readPosition, testButtons, testText, welcomeText, type AlertFacts, type Fill, type Position } from "./exitAlerts";
 
 const buy = (t: number, tokens: number, usd: number | null): Fill => ({ t, side: "buy", tokens, usd });
 const sell = (t: number, tokens: number, usd: number | null): Fill => ({ t, side: "sell", tokens, usd });
@@ -59,7 +59,9 @@ describe("reading a position against its price", () => {
   it("is at a level when the price is at or above that many times the price paid", () => {
     expect(readPosition(pos, { price: 0.0039, liq: 20_000 }).reached).toEqual([]);
     expect(readPosition(pos, { price: 0.004, liq: 20_000 }).reached).toEqual([2]);
-    expect(readPosition(pos, { price: 0.011, liq: 20_000 }).reached).toEqual([2, 5]);
+    // the default ladder is 2, 3, 5, 10, 20, 50, 100
+    expect(LEVELS_DEFAULT).toEqual([2, 3, 5, 10, 20, 50, 100]);
+    expect(readPosition(pos, { price: 0.011, liq: 20_000 }).reached).toEqual([2, 3, 5]);
     expect(readPosition(pos, { price: 0.011, liq: 20_000 }, [3]).reached).toEqual([3]);
   });
 
@@ -72,14 +74,18 @@ describe("reading a position against its price", () => {
     // a pool worth less than five times the position is not a place to sell it (a $500 position in a $2,100 pool)
     expect(readPosition({ ...pos, held: 100_000 }, { price: 0.005, liq: 2_100 }).alertable).toBe(false);
     expect(readPosition({ ...pos, held: 100_000 }, { price: 0.005, liq: 3_000 }).alertable).toBe(true);
-    // dust
+    // dust, and anything a sale of which would cost 5% or more (the owner's order costs at least $0.10)
     expect(readPosition({ ...pos, held: 10 }, { price: 0.005, liq: 20_000 }).alertable).toBe(false);
+    expect(MIN_VALUE_USD).toBe(2);
+    expect(readPosition({ ...pos, held: 390 }, { price: 0.005, liq: 20_000 }).alertable).toBe(false); // $1.95
+    expect(readPosition({ ...pos, held: 410 }, { price: 0.005, liq: 20_000 }).alertable).toBe(true); // $2.05
     expect(readPosition(pos, { price: 0, liq: 20_000 }).alertable).toBe(false);
   });
 });
 
 describe("the messages (Dutch, short)", () => {
-  const facts = { symbol: "HYDRA", level: 2, multiple: 2.04, value: 4.2, bought: 4, sold: 0, price: 0.0000484, basis: 0.0000237, liq: 38_000, link: "https://dexscreener.com/solana/PAIR" };
+  const MINT = "HgTGdc29D5bDMrDvsCLnorxz899VyDj7ZN7FPa6vpump";
+  const facts: AlertFacts = { kind: "first", symbol: "HYDRA", mint: MINT, level: 2, multiple: 2.1, value: 4.2, bought: 2, sold: 0, price: 0.0000484, basis: 0.0000231, liq: 38_000, pair: "PAIR" };
 
   it("formats money and prices the Dutch way, with enough digits for a tiny price", () => {
     expect(fmtUsd(4.2)).toBe("$4,20");
@@ -90,66 +96,131 @@ describe("the messages (Dutch, short)", () => {
     expect(fmtMultiple(14.2)).toBe("14×");
   });
 
-  it("an alert names the coin and how far it has run, shows the money in one aligned block, gives one idea, and links to the pool with a button", () => {
-    const t = alertText(facts);
-    expect(t).toContain("🟢 <b>HYDRA</b> · <b>2,0×</b> je instap");
-    expect(t).toContain("<i>2×-drempel gehaald</i>");
-    expect(t).toContain("Haal de helft eruit");
-    expect(t).not.toMatch(/undefined|NaN/);
-    // the numbers line up: every row of the block is as wide as the others, and what the position has made on paper is value + sold - bought
-    const block = /<pre>([\s\S]*?)<\/pre>/.exec(t)![1]!;
-    const rows = block.split("\n").filter(Boolean);
-    expect(rows.filter((r) => /^(Waarde nu|Inleg|Al eruit|Op papier)/.test(r))).toHaveLength(4);
-    // every value starts in the same column
-    expect(rows.every((r) => /^.{9}  \S/.test(r))).toBe(true);
-    expect(block).toMatch(/Waarde nu {2}\$4,20/);
-    expect(block).toMatch(/Op papier {2}\+\$0,20 \(\+5%\)/);
-    expect(block).toMatch(/Koers {6}\$0,0000484/);
-    expect(block).toMatch(/Pool {7}\$38K/);
-    // the link is a button, not a line of text
-    expect(t).not.toContain("https://");
-    expect(alertButtons(facts)).toEqual([{ text: "📊 Open in DexScreener", url: "https://dexscreener.com/solana/PAIR" }]);
+  it("an order costs a flat $0.10 and about 1% more from $8 up (measured on the owner's own trades)", () => {
+    expect(orderFeeUsd(2)).toBeCloseTo(0.1, 12);
+    expect(orderFeeUsd(7.99)).toBeCloseTo(0.1, 12);
+    expect(orderFeeUsd(10)).toBeCloseTo(0.2, 12);
+    expect(orderFeeUsd(40)).toBeCloseTo(0.5, 12);
+    expect(orderFeeUsd(0)).toBe(0);
   });
 
-  it("the icon follows the level and a loss on paper is shown with a minus", () => {
-    expect(alertText({ ...facts, level: 2 })).toMatch(/^🟢/);
-    expect(alertText({ ...facts, level: 5, multiple: 5.1 })).toMatch(/^🚀/);
-    expect(alertText({ ...facts, level: 10, multiple: 10.4 })).toMatch(/^🔥/);
-    // bought $10, $3 already out, $4.20 left: $2.80 below what was put in
-    expect(alertText({ ...facts, bought: 10, sold: 3 })).toMatch(/Op papier {2}−\$2,80 \(−28%\)/);
+  it("the line sits at 75% of the highest level reported: 2x gives 1.5x, 5x gives 3.75x, 10x gives 7.5x", () => {
+    expect(lineFor(2)).toBeCloseTo(1.5, 12);
+    expect(lineFor(5)).toBeCloseTo(3.75, 12);
+    expect(lineFor(10)).toBeCloseTo(7.5, 12);
   });
 
-  it("the Telegram page gets the text plus the button's link as plain text", () => {
-    const t = loggedText("tekst", alertButtons(facts));
-    expect(t).toBe("tekst\n\n📊 Open in DexScreener: https://dexscreener.com/solana/PAIR");
+  it("the first profit: the coin and how far it ran, the owner's own result, one action as a percentage of what is held with its dollars and its cost, the line, the pool", () => {
+    const m = alertMessage(facts);
+    const t = m.text;
+    expect(t).toMatch(/^🟢 <b>HYDRA<\/b> · koers <b>2,1×<\/b>/);
+    expect(t).toContain("Jouw resultaat: <b>+$2,20</b> (+110%) op papier");
+    expect(t).toContain("<blockquote>Verkoop <b>50%</b> van wat je nu hebt (≈ $2,10). Kosten ≈ $0,10.");
+    expect(t).toContain("Dan heb je je inleg terug en loopt de rest gratis mee.");
+    expect(t).toContain("Ik waarschuw je als de koers onder <b>1,5×</b> ($0,0000347) zakt.");
+    expect(t).toContain("<i>Pool $38K</i>");
+    expect(t).not.toMatch(/undefined|NaN|https:\/\//);
+    expect(m.silent).toBe(false);
+  });
+
+  it("the buttons: Open in FOMO (green on a first profit), DexScreener, and a copy button with the coin's address", () => {
+    const b = alertMessage(facts).buttons;
+    expect(b).toEqual([
+      { text: "Open in FOMO", url: `https://fomo.family/coin?address=${MINT}&chainId=1399811149`, style: "success" },
+      { text: "DexScreener", url: "https://dexscreener.com/solana/PAIR" },
+      { text: "Kopieer adres", copy: MINT },
+    ]);
+    expect(fomoLink(MINT)).toBe(b[0]!.url);
+    // without a pair address DexScreener is asked for the coin itself
+    expect(dexLink(null, MINT)).toBe(`https://dexscreener.com/solana/${MINT}`);
+    expect(alertMessage({ ...facts, kind: "step" }).buttons[0]!.style).toBe("primary");
+    expect(alertMessage({ ...facts, kind: "line" }).buttons[0]!.style).toBe("danger");
+  });
+
+  it("the percentage is of what is held now and the money back shows only when it is true", () => {
+    // $10 in, $3 already out, $4.20 left: half of it is $2.10, which does not bring the stake back
+    const m = alertMessage({ ...facts, bought: 10, sold: 3 }).text;
+    expect(m).toContain("Verkoop <b>50%</b> van wat je nu hebt (≈ $2,10)");
+    expect(m).not.toContain("inleg terug");
+    expect(m).toMatch(/Jouw resultaat: <b>−\$2,80<\/b> \(−28%\) op papier/);
+  });
+
+  it("when the money is already back there is nothing to sell, only the line", () => {
+    const m = alertMessage({ ...facts, sold: 2 }).text;
+    expect(m).toContain("Je inleg is er al uit. Laat de rest lopen.");
+    expect(m).not.toContain("Verkoop");
+    expect(m).toContain("Ik waarschuw je als de koers onder");
+    // $1.85 of $2 is back: nothing left to recover
+    expect(alertMessage({ ...facts, sold: 1.85 }).text).toContain("Je inleg is er al uit");
+    expect(alertMessage({ ...facts, sold: 1.5 }).text).toContain("Verkoop <b>50%</b>");
+  });
+
+  it("a next step is quiet, moves the line up with a price, and says what happens at the line", () => {
+    const m = alertMessage({ ...facts, kind: "step", level: 5, multiple: 5.2, value: 10.4, sold: 2 });
+    expect(m.silent).toBe(true);
+    expect(m.text).toMatch(/^🔵 <b>HYDRA<\/b> · koers <b>5,2×<\/b>/);
+    expect(m.text).toContain("De lijn gaat omhoog naar <b>3,8×</b> ($0,0000866).");
+    expect(m.text).toContain("dan krijg je een melding om de rest te verkopen");
+    expect(m.text).not.toContain("Verkoop <b>");
+  });
+
+  it("at 10x the owner's own idea is offered, once, and only when the slice is worth its fee", () => {
+    const at10 = (value: number, level = 10) => alertMessage({ ...facts, kind: "step", level, multiple: level + 0.3, value, sold: 2 }).text;
+    expect(at10(20)).toContain("verkoop <b>25%</b> van wat je nu hebt (≈ $5,00). Kosten ≈ $0,10.");
+    expect(at10(9)).not.toContain("25%"); // a quarter of $9 is $2.25, under the floor of $" + MIN_SLICE_USD
+    expect(at10(20, 20)).not.toContain("25%");
+    expect(at10(20, 5)).not.toContain("25%");
+    expect(MIN_SLICE_USD).toBe(2.5);
+  });
+
+  it("the line message: sound, red, the last level and the line, sell the rest with its dollars and its cost", () => {
+    const m = alertMessage({ ...facts, kind: "line", level: 2, multiple: 1.4, value: 2.8, bought: 2, sold: 2 });
+    expect(m.silent).toBe(false);
+    expect(m.text).toMatch(/^🔴 <b>HYDRA<\/b> · koers <b>1,4×<\/b>/);
+    expect(m.text).toContain("Laatste niveau: <b>2,0×</b>, de lijn lag op <b>1,5×</b>.");
+    expect(m.text).toContain("<blockquote>Verkoop de rest (<b>100%</b>) nu: ≈ $2,80. Kosten ≈ $0,10.</blockquote>");
+  });
+
+  it("a rest too small to be worth an order is said to be small, with what the order would cost", () => {
+    const m = alertMessage({ ...facts, kind: "line", level: 2, multiple: 1.4, value: 1.8, sold: 2 }).text;
+    expect(m).toContain("De rest is klein (≈ $1,80); verkopen kost ≈ $0,10 (6%). Verkoop alles of laat staan.");
+    expect(m).not.toContain("Verkoop de rest");
+  });
+
+  it("the loss message: quiet, orange, the owner's result, sell everything with its dollars and cost, and what the lab measured for coins that fell 30% in their first days", () => {
+    const m = alertMessage({ ...facts, kind: "loss", level: 0.7, multiple: 0.69, value: 1.38, bought: 2, sold: 0 });
+    expect(m.silent).toBe(true);
+    expect(m.text).toMatch(/^🟠 <b>HYDRA<\/b> · koers <b>0,7×<\/b>/);
+    expect(m.text).toContain("Jouw resultaat: <b>−$0,62</b> (−31%) op papier");
+    expect(m.text).toContain("<blockquote>Verkoop alles (<b>100%</b>): ≈ $1,38. Kosten ≈ $0,10.</blockquote>");
+    expect(m.text).toContain("79% op de helft of lager en kwam 10% terug op 1× of hoger. Een idee, geen opdracht.");
+    expect(m.text).not.toContain("lijn");
+    expect(m.buttons[0]).toMatchObject({ text: "Open in FOMO", style: "danger" });
+    expect(LOSS_AT).toBe(0.7);
+    expect(LOSS_KEY).toBe(-0.7);
+  });
+
+  it("the Telegram page gets the text plus every button as a plain line (a copy button shows what it copies)", () => {
+    const b = alertMessage(facts).buttons;
+    const t = loggedText("tekst", b);
+    expect(t).toContain("tekst\n\nOpen in FOMO: https://fomo.family/coin?address=");
+    expect(t).toContain("DexScreener: https://dexscreener.com/solana/PAIR");
+    expect(t).toContain(`Kopieer adres: ${MINT}`);
     expect(loggedText("tekst")).toBe("tekst");
   });
 
-  it("the idea changes when the money is already back, and at 5x", () => {
-    expect(alertText({ ...facts, sold: 4 })).toContain("Je inleg is er (bijna) al uit");
-    // $1.85 of $2 is back: nothing left to recover (the real Pepper alert read "half out, then your money is back")
-    expect(alertText({ ...facts, bought: 2, sold: 1.85 })).toContain("Je inleg is er (bijna) al uit");
-    expect(alertText({ ...facts, bought: 2, sold: 1.5 })).toContain("Haal de helft eruit");
-    expect(alertText({ ...facts, level: 5, multiple: 5.2, sold: 4 })).toContain("Het is een winnaar");
-    expect(alertText({ ...facts, level: 5, multiple: 5.2, sold: 0 })).toContain("Haal de helft eruit");
-    // every idea ends in the stop under the rest (what makes taking half out work in the lab's data), and none asks for another sale at 5x
-    for (const f of [facts, { ...facts, sold: 4 }, { ...facts, level: 5, multiple: 5.2, sold: 4 }, { ...facts, level: 5, multiple: 5.2, sold: 0 }]) {
-      expect(alertText(f)).toContain("een stop 40% onder de hoogste koers op de rest");
-      expect(alertText(f)).not.toContain("derde");
-    }
-  });
-
   it("escapes anything in a coin's name that Telegram would read as markup", () => {
-    const t = alertText({ ...facts, symbol: "<b>&evil" });
+    const t = alertMessage({ ...facts, symbol: "<b>&evil" }).text;
     expect(t).toContain("&lt;b&gt;&amp;evil");
     expect(t).not.toContain("<b>&evil");
   });
 
   it("the welcome message lists what is already above the first level, biggest first, or says there is none", () => {
-    const w = welcomeText([2, 5], [{ symbol: "QT", multiple: 5.2, value: 4.05 }, { symbol: "HOTBOT", multiple: 9.3, value: 9.52 }]);
+    const w = welcomeText([2, 3, 5], [{ symbol: "QT", multiple: 5.2, value: 4.05 }, { symbol: "HOTBOT", multiple: 9.3, value: 9.52 }]);
     expect(w.indexOf("HOTBOT")).toBeLessThan(w.indexOf("QT"));
-    expect(w).toContain("<b>2×</b> of <b>5×</b>");
+    expect(w).toContain("<b>2×</b>, <b>3×</b>, <b>5×</b>");
     expect(w).toContain("niet nog eens gemeld");
+    expect(w).toContain("FOMO kan zelf geen stop zetten");
     expect(w).toContain("<pre>");
     expect(w).not.toContain("laptop");
     expect(welcomeText([2, 5], [])).toContain("geen coin");
@@ -162,9 +233,8 @@ describe("the test message", () => {
     expect(t).toContain("Testbericht");
     expect(t).toContain("VOORBEELD");
     expect(t).toContain("verzonnen");
-    expect(t).toContain("2× of 5×");
     expect(t).toContain("🟢 <b>VOORBEELD</b>");
     expect(t).not.toMatch(/undefined|NaN/);
-    expect(testButtons()).toHaveLength(1);
+    expect(testButtons()).toHaveLength(3);
   });
 });

@@ -1,50 +1,75 @@
-# Exit alerts: a Telegram message when a coin you hold reaches 2x or 5x
+# Exit alerts: Telegram messages for the coins you hold (a ladder of levels, a line under the price, a loss message)
 
 Added 2026-10-11, after the wallet review (docs/WALLET_REVIEW.md): simple exits would have beaten how the exits really went (+0.10 to +0.31 per
 coin), and the leak was coins that spiked for a few hours and were not sold. A phone cannot watch every coin all day; a message at the right
-moment can. The message is an idea ("take half out, the money is back"), not an order, and nothing is sold by the system.
+moment can. **Rebuilt 2026-10-13** after the research in docs/ALERT_REDESIGN.md, docs/EXIT_PRACTICE.md and docs/WALLET_REVIEW_2.md, for the way the owner really trades: in the FOMO app,
+which has **no stop, take-profit or limit order on a memecoin** (only buy and sell, by percentage). So the site is the stop: it watches the price and says, once, with sound, when it is time to sell
+the rest. A message is an idea ("sell half, the stake is back"), not an order, and nothing is sold by the system.
 
 ## What it does
 
 Every two minutes the site itself (a clock in the hosted database calls it, see "Around the clock" below; the laptop daemon runs the same check as a second
 runner) reads what the followed wallet still holds (`wallet_fills`, first in first out), asks DexScreener for the price of each coin (30 a call) and compares it
-with what was paid **for what is still held**:
+with what was paid **for what is still held**. It sends four kinds of message:
 
-- **Level**: 2x and 5x (`EXIT_ALERT_LEVELS=2,5` in the private file changes it). A level is reported once per position.
+| kind | when | sound | what it says |
+| --- | --- | --- | --- |
+| **first profit** | the first level of the ladder (2×) is reached, two checks in a row | yes | "Sell **50%** of what you hold now (≈ $x). Cost ≈ $0.10. Then your stake is back and the rest runs free." And the line: "I warn you when the price falls under 1.5×." |
+| **next step** | each further level of the ladder: 3×, 5×, 10×, 20×, 50×, 100× | no | the line moves up (75% of the level: 3× → 2.3×, 5× → 3.8×, 10× → 7.5×); at 10× an optional "sell 25% more" when that slice is worth at least $2.50 |
+| **line reached** | the price has fallen to the line (75% of the highest level reported) and is still there 25 seconds later | yes | "Sell the rest (**100%**) now: ≈ $x. Cost ≈ $y." |
+| **loss** | a position under 72 hours old that has fallen to 0.7× of what was paid without ever having passed 2×, two checks in a row | no | "Sell everything (100%) ≈ $x" with the lab's number: of the lab coins that fell 30% below the first look in their first days, 79% ended at half or lower, 10% came back to 1× or more |
+
+Every message has the same shape: a dot of colour and `TICKER · koers 3,0×` (green first profit, blue next step, red line, orange loss); one line with **the owner's result** (`Jouw resultaat: +$3,76 (+188%) op papier`: what
+is held at today's price plus what was already taken out, against what was put in; lower than the coin's multiple once part was sold early); one quote with the action as a percentage of what is held *now* (that is what the app sells)
+with the dollars it brings in and what the order costs; the line; the pool in small print. Buttons: **Open in FOMO** (the app's own share link without the owner's handle and the time, `https://fomo.family/coin?address=<mint>&chainId=1399811149`, Solana is 1399811149; it opens
+as a universal link), **DexScreener**, and **Kopieer adres** (a copy button, Bot API 7.11, so the address can be pasted into the app's search). Button colours (Bot API 9.4): green for first profit, blue for the steps, red for the line and the loss.
+
+```
+🟢 Normie · koers 2,1×
+Jouw resultaat: +$2,20 (+110%) op papier
+
+Verkoop 50% van wat je nu hebt (≈ $2,10). Kosten ≈ $0,10.
+Dan heb je je inleg terug en loopt de rest gratis mee.
+
+Ik waarschuw je als de koers onder 1,6× ($0,0000363) zakt.
+
+Pool $38K
+[ Open in FOMO ]  [ DexScreener ]
+[ Kopieer adres ]
+```
+
+(The sample is the test message's invented coin; the real text is `alertMessage` in `apps/web/lib/exitAlerts.ts`, with a test for every kind.)
+
+### The rules behind it
+
+- **Ladder**: 2, 3, 5, 10, 20, 50, 100 (`EXIT_ALERT_LEVELS=…` in the private file or the Vercel variables changes it). A level is reported once per position. A coin that jumps over several levels in one go gets one message, for the highest. A log ladder
+  sends about 1.6 times the messages of "2× and 5×" (0.42 per coin followed against 0.26); every whole x would have sent four times as many (docs/ALERT_REDESIGN.md).
 - **Position**: a coin plus the time of its oldest lot still held. A sale uses up the oldest tokens first, so a coin sold in full and bought again later is a
-  new position at the new price (with the old average a re-buy that is down 90% would have read "8x").
+  new position at the new price (with the old average a re-buy that is down 90% would have read "8×"). The multiple is the coin's price over the price paid per token **for the tokens still held**; selling part does not change it.
 - **Two checks in a row** must show the level (one glitchy print is not a crossing), the pool must be at least $2,000 and at least five times the position,
-  and the position must be worth more than $0.30.
-- **Already above a level when switched on**: marked as seen, not reported. The welcome message lists them once.
-- A coin that jumps over both levels at once gets one message, for the highest.
+  and the position must be worth at least **$2** (an order costs at least $0.10, which is 5% of $2; it was $0.30).
+- **The line is the site's stop.** 75% of the highest level reported (`LINE_FACTOR`), kept in the database (`exit_alert_kv 'lines'`) per position. It is *armed* only after the price has been above it, so a position that was already under its line when it was first
+  seen is never announced. When the price is at or under the line the site waits **25 seconds**, looks once more (a false "sell now" costs the owner an order) and only then sends, once per position and level (the claim is the negative level `−top` in `exit_alerts`).
+  75% of the level kept most of a run and was as good as a continuous 40% trail on the lab's coins; the line is a rule of thumb, not a prediction.
+- **The sale advice** is always a round percentage of what is held now with the dollars and the order's cost (flat $0.10, plus about 1% from $8 up: `orderFeeUsd`, measured on 113 of the owner's own trades). A slice worth less than $2.50 is not advised (the fee would be 4% or more of it); then
+  the message says the rest is small and what selling costs.
+- **The loss message** (new 2026-10-13, quiet, once per position; the claim is the level −0.7): only for a position under 72 hours old that has not passed 2×, at 0.7× or lower, worth at least $1, in a pool of at least $2,000 and five times the position, after two checks.
+  Why: of the owner's 200 coins since August, 78% were never sold at all and those lost 81% of the money put in; in the lab 89% of coins fell 30% below the first look within three days and 79% of those ended at half or lower; a hard stop was worth 8 to 14 points of the stake against holding, and
+  the −30% stop on a fresh position was the one measured improvement (+3 points, interval 1 to 4). It is an idea, and only a small one. **`EXIT_ALERT_LOSS=0` switches it off** (the laptop's private file, or the Vercel variable for the site's check).
+- **Switching on is silent.** A position that had already passed a level when the alerts (or the new ladder) were switched on is marked as seen, not reported; the ladder seeding is done once (`exit_alert_kv 'ladder_v2'`) and a position that is already under 0.7× at that moment does not get a loss message.
+  The welcome message lists what was above the first level.
 - Nothing about this changes a filter, a score, a tab or a card.
 
-A message looks like this (Dutch; redesigned 2026-10-11 to read like an app notification: the headline says how far the coin has run, the money sits in one aligned
-block, one idea underneath, and the link is a button under the message instead of a line of text):
+### What the research says, and what it does not
 
-```
-🟢 Normie · 2,9× je instap
-2×-drempel gehaald
+The numbers behind these choices are in docs/ALERT_REDESIGN.md and docs/EXIT_PRACTICE.md, on coins whose 72 hours were over (a coin that died is decided at once, a living one only after 72 hours, so a sample of "decided" coins that is too young is full of dead ones: an earlier version
+of these numbers had that flaw and was withdrawn). Short version: every exit rule loses on average on these coins; selling nothing is clearly worse than any exit; protecting the rest after the first sale is worth about 5 points of the stake; 50%, 75% and 100% sold at the first alert are the same on average;
+more rungs do not help; the one measured improvement is the −30% stop on a fresh position. At stakes of $2 to $5 every difference is cents: what is bought, and when, matters more than how it is sold.
 
-Waarde nu  $5,76
-Inleg      $2,00
-Al eruit   $0,00
-Op papier  +$3,76 (+188%)
+### Not built (said in the proposal, left out on purpose)
 
-Koers      $0,000729
-Instap     $0,000253
-Pool       $41K
-
-💡 Haal de helft eruit: dan heb je je inleg terug.
-[ 📊 Open in DexScreener ]
-```
-
-The icon follows the level (🟢 2×, 🚀 5×, 🔥 10× and up). "Op papier" is what is still held at today's price plus what was already taken out, against what was put in. The idea line follows the lab's
-exit research (docs/EXIT_STRATEGY.md, 1,123 coins): half out while the money is not back, and "een stop 40% onder de hoogste koers op de rest" (taking half out beat selling everything at 2× by 6 points of
-the stake, the stop under the rest is what makes it work, and a further sale at 5× added nothing measurable). When the money is already back it reads "Je inleg is er (bijna) al uit. Houd een stop 40% onder de
-hoogste koers op de rest."; at 5× "Het is een winnaar: houd een stop …". The table is a `<pre>` block (monospace, so the values start in the same
-place on every phone); on the Telegram page it is drawn in a monospace font too and the button shows as a plain link. If Telegram ever refuses the button the message is sent again without it,
-so an alert is never lost to a link.
+The share picture, the daily and weekly summaries, the "danger" messages (pool halved, creator selling), quiet hours and an English version. Nobody asked for them in the "add everything" answer of 2026-10-13 that fixed the standard choices (50% at 2×, the log ladder, Dutch, no quiet hours, the "Open in FOMO" button), and a
+message that is wrong costs more than a feature that is missing.
 
 ## Around the clock: the site checks by itself (2026-10-11)
 
@@ -95,7 +120,7 @@ lives in three places (the private file, Vercel, Vault); revoking it in BotFathe
 an error from Telegram is cleaned of the token before anything is logged. Messages only go to `api.telegram.org`, only to the paired chat.
 
 Variables: `EXIT_ALERT_TOKEN` (the bot token from @BotFather), `EXIT_ALERT_CHAT_ID` (set by pairing), `EXIT_ALERT_PAIR_CODE` (one-time, removed by pairing),
-`EXIT_ALERT_LEVELS`, `EXIT_ALERT_EVERY_SECONDS` (default 120). `EXIT_ALERTS=0` switches the loop off. These are **not** the `TELEGRAM_*` variables of the
+`EXIT_ALERT_LEVELS` (default `2,3,5,10,20,50,100`), `EXIT_ALERT_LOSS` (`0` switches the loss message off; read by the laptop's loop and by the site's own check), `EXIT_ALERT_EVERY_SECONDS` (default 120). `EXIT_ALERTS=0` switches the loop off. These are **not** the `TELEGRAM_*` variables of the
 older alert engine (docs/TELEGRAM_SETUP.md), which stays off, so no candidate alerts go to this bot.
 
 ## Pairing (no chat id to look up)
@@ -133,12 +158,15 @@ a password, and it shows coin names and amounts. The welcome message sent at pai
   prices nothing and tells nobody; the Telegram page shows the check's age but not its prices), or a free-plan limit reached (docs/LIMITS.md: the exit check is
   never held back by the daily budget, but the project would be blocked by Vercel if the month's 4 CPU-hours ran out). The Telegram page's status line is the
   place to look: orange means the heartbeat is more than 8 minutes old.
-- **Ceilings** (docs/LIMITS.md): at most 40 alerts in any 24 hours (`EXIT_ALERT_MAX_PER_DAY`), at most 6 per pass with 1.1 seconds between messages, and when Telegram answers "slow down" nothing is sent until the time it names has passed (never more than an hour). A real day brings one to five alerts.
+- **Ceilings** (docs/LIMITS.md): at most 40 alerts in any 24 hours (`EXIT_ALERT_MAX_PER_DAY`), at most 6 per pass with 1.1 seconds between messages, and when Telegram answers "slow down" nothing is sent until the time it names has passed (never more than an hour). With the ladder a real day brings a few messages; the first-profit and line messages have sound, the steps and the loss message do not.
 - Prices come from DexScreener every two minutes and a level needs two checks: a spike shorter than about four minutes can be missed, and the message follows
-  the price by two to four minutes.
+  the price by two to four minutes. The line message follows a fall by two minutes at most plus the 25-second second look. In the lab's data a fill five minutes late was assumed everywhere; the owner's own app is slower or faster than that depending on the minute.
+- **A coin with several pools** can be answered by DexScreener's batch endpoint with a dead bonding-curve pair that has no price (found 2026-10-13 with $VEIL, a graduation that went about 50×). The price step then asks the other endpoint (`latest/dex/tokens/<mint>`, every pool) for at most 8 such coins a pass
+  (`apps/web/lib/dexPairs.ts`); before this fix a held coin like that would never have produced a message.
+- **Not tested on a phone yet**: the colour of the buttons, the copy button and the quote blocks follow the Bot API; if a phone refuses one of them the message is sent again with fewer features, down to plain text, and is never lost.
 - The multiple is against what the wallet paid (price per token including fees), for the tokens still held; the wallet reader sees a trade within about five minutes.
-- A message is an idea. At the user's sizes ($2 to $5 a coin) the sums are small; the evidence is in docs/WALLET_REVIEW.md, and it describes three weeks, not the future.
-- Files: `apps/web/lib/exitAlerts.ts` (positions, levels, texts; pure), `apps/worker/src/exitLoop.ts` (Telegram, prices, state, pairing, the loop, `runPass`),
+- A message is an idea. At the user's sizes ($2 to $5 a coin) the sums are small; the evidence is in docs/WALLET_REVIEW.md and docs/WALLET_REVIEW_2.md, and it describes a few weeks, not the future.
+- Files: `apps/web/lib/exitAlerts.ts` (positions, levels, line, loss rules and texts; pure), `apps/web/lib/dexPairs.ts` (the price fallback), `apps/worker/src/exitLoop.ts` (Telegram client with buttons and silent sends, prices, state, pairing, the loop, `runPass`),
   `apps/web/lib/exitTick.ts` and `apps/web/app/api/cron/exit-alerts/route.ts` (the site's own check), `scripts/cron-setup.ts` (the clock),
   `apps/worker/src/telegramLog.ts` (the record and its copy to the hosted database), `apps/web/app/telegram/page.tsx` and `apps/web/app/api/telegram-messages/route.ts`,
-  `scripts/exit-alerts-check.ts`, `scripts/exit-alerts-test.ts`, tests `apps/web/lib/exitAlerts.test.ts`, `apps/web/lib/exitTick.test.ts`, `apps/worker/src/exitLoop.test.ts` and `apps/worker/src/telegramLog.test.ts`.
+  `scripts/exit-alerts-check.ts`, `scripts/exit-alerts-test.ts`, `scripts/exit-alerts-dryrun.ts` (what would the alerts send right now, on the real data, nothing written, nothing sent), tests `apps/web/lib/exitAlerts.test.ts`, `apps/web/lib/exitTick.test.ts`, `apps/worker/src/exitLoop.test.ts` and `apps/worker/src/telegramLog.test.ts`.

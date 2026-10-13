@@ -56,7 +56,7 @@ export interface TickDeps {
   tg: (token: string) => Telegram;
   addCpu: (ms: number) => Promise<void>;
   /** the pass itself; replaced in tests */
-  run?: (cfg: { chatId: string; levels: number[] }, st: PassState, store: Store, tg: Telegram) => Promise<{ positions: number; priced: number; sent: number }>;
+  run?: (cfg: { chatId: string; levels: number[]; loss?: boolean }, st: PassState, store: Store, tg: Telegram) => Promise<{ positions: number; priced: number; sent: number }>;
   now: () => number;
   log: (msg: string, extra?: Record<string, unknown>) => void;
 }
@@ -112,7 +112,7 @@ export async function exitTick(opts: { test?: boolean } = {}, over: Partial<Tick
     const p0 = Date.now();
     const st = (warm ??= newPassState());
     const run = d.run ?? ((c, s, st2, t) => runPass(c, { store: st2, tg: t, prices: (m) => dexQuotes(m), log: d.log, now: d.now, minGapS: 60 }, s, { persistStreaks: true }));
-    const r = await run({ chatId: cfg.chatId, levels: cfg.levels }, st, store, tg);
+    const r = await run({ chatId: cfg.chatId, levels: cfg.levels, loss: cfg.loss }, st, store, tg);
     const passMs = Date.now() - p0;
     const ms = Date.now() - t0;
     const cpu = process.cpuUsage(cpu0);

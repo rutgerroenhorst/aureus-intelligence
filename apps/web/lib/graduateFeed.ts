@@ -23,6 +23,7 @@
 
 import { fetchTransaction, rpc } from "./wallet";
 import { JUDGE_FROM_MIN, JUDGE_TO_MIN } from "./lab/pump";
+import { MAX_RESCUES, rescuePair } from "./dexPairs";
 
 export const MIGRATION_AUTHORITY = "39azUYFWPz3VHgKCf3VChUwbpURdCHRxjWVowf5jUJjg";
 export const PUMP_PROGRAM = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P";
@@ -499,6 +500,16 @@ export function realFeedDeps(log: FeedDeps["log"]): FeedDeps {
           const cur = out.get(m);
           if (!cur || (p.liquidity?.usd ?? 0) > (cur.liquidity?.usd ?? 0)) out.set(m, p);
         }
+      }
+      // one pair per coin comes back and it can be an old bonding-curve pair without a price (lib/dexPairs.ts, $VEIL): such a coin would read as "not listed" for hours.
+      // Ask for its other pools (at most MAX_RESCUES a round) and use the best priced one.
+      let rescued = 0;
+      for (const [m, p] of out) {
+        if (rescued >= MAX_RESCUES) break;
+        if (price(p.priceUsd) != null) continue;
+        rescued++;
+        const alt = await rescuePair(m, (u) => getJson(u, 15_000));
+        if (alt) out.set(m, alt as unknown as DexPair);
       }
       return out;
     },

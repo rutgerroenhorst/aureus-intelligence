@@ -12,6 +12,7 @@
  */
 
 import type { Queryable } from "./builder";
+import { MAX_RESCUES, rescuePair } from "../dexPairs";
 
 const HEADERS = { accept: "application/json", "user-agent": "Aureus-Lab/1.0" };
 const HOSTED = Boolean(process.env.VERCEL);
@@ -145,6 +146,17 @@ export async function discoverRunners(db: Queryable, opts: { force?: boolean } =
       ],
     );
     added = res.rowCount ?? 0;
+    // A coin the lab closed as "never listed" or "gone" (a graduation it could not price, or one that dropped out) can be a runner later: Jupiter's lists carry it with real liquidity and
+    // real traders. Without this it could never come back ($VEIL: closed as never listed at graduation, then a 50x coin Jupiter listed for a day). Re-opened as a runner, from now.
+    const back = await db.query(
+      `UPDATE lab_watch w SET active = true, lane = 'runner', reason = v.reason, note = 'reopened_as_runner', gone_polls = 0, polls = 0, last_polled_at = NULL, first_seen_at = now(),
+              watch_until = now() + make_interval(days => $3::int)
+         FROM unnest($1::text[], $2::text[]) AS v(mint, reason)
+        WHERE w.mint = v.mint AND NOT w.active AND w.note IN ('never_listed', 'gone')
+        RETURNING w.mint`,
+      [pick.map((x) => x.t.id), pick.map((x) => x.reason), WATCH_DAYS],
+    );
+    added += back.rowCount ?? 0;
     // What Jupiter said about each new coin at this moment is its first "organic score / holders" reading (the first lesson snapshot uses it).
     const fresh = new Set<string>(res.rows.map((r: { mint: string }) => r.mint));
     const sig = pick.filter((x) => fresh.has(x.t.id!));
@@ -215,6 +227,7 @@ export async function collectWatch(db: Queryable, opts: { maxCalls?: number } = 
   const polled = new Set<string>();
   const seenNow = new Map<string, any>();
   const goneNow: string[] = [];
+  let rescued = 0;
   const now = Date.now() / 1000;
   for (let i = 0; i < mints.length; i += 30) {
     const batch = mints.slice(i, i + 30);
@@ -228,7 +241,14 @@ export async function collectWatch(db: Queryable, opts: { maxCalls?: number } = 
     }
     for (const m of batch) {
       polled.add(m);
-      const p = best.get(m);
+      let p = best.get(m);
+      // The batch answer is ONE pair per coin and can be an old pump.fun bonding-curve pair without a price ($VEIL, 2026-10-13: a coin that went about 50x was marked "never listed"
+      // after twelve such answers). A coin whose pair has no price is asked for its other pools before it is called gone.
+      if (p && !((fin(p.priceUsd) ?? 0) > 0) && rescued < MAX_RESCUES) {
+        rescued++;
+        const alt = await rescuePair(m, (u) => getJson(u));
+        if (alt) p = alt;
+      }
       if (p && (fin(p.priceUsd) ?? 0) > 0) {
         out.push({ mint: m, payload: pairToRow(p, now) });
         seenNow.set(m, p);

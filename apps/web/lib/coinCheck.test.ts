@@ -22,7 +22,7 @@ const dexPair = (o: Record<string, unknown> = {}) => ({
 describe("looking at the coin again", () => {
   it("takes the pool with the most liquidity of this coin, and reads its numbers", async () => {
     const f = await fetchFresh("solana", MINT, pairsResponse([dexPair({ pairAddress: "SMALL", liquidity: { usd: 900 } }), dexPair({ pairAddress: "BIG" }), dexPair({ baseToken: { address: "OtherOtherOtherOtherOtherOtherOtherOther1", symbol: "X" }, liquidity: { usd: 9e9 } })]), 1_800_000_000_000 + 30 * 3_600_000);
-    expect(f).toEqual({ symbol: "OTTER", pair: "BIG", priceUsd: 0.0004, liq: 22000, mcap: 90000, vol1: 8000, vol24: 85000, buys1: 160, sells1: 120, ch1: 4, ch24: 35, ageH: 30 });
+    expect(f).toEqual({ symbol: "OTTER", pair: "BIG", dex: null, priceUsd: 0.0004, liq: 22000, mcap: 90000, vol1: 8000, vol24: 85000, buys1: 160, sells1: 120, ch1: 4, ch24: 35, ageH: 30 });
   });
   it("says null when no pool is listed and 'error' when it could not ask (or the address is not one)", async () => {
     expect(await fetchFresh("solana", MINT, pairsResponse([]))).toBeNull();
@@ -346,5 +346,67 @@ describe("the test sale judges the price impact, not the dollars", () => {
     expect(await sellTest(MINT, 1, 6, quote({ outAmount: "4000000", priceImpactPct: "0.0014" }))).toMatchObject({ state: "ok", impact: 0.0014 });
     expect(await sellTest(MINT, 1, 6, quote({ outAmount: "4000000", priceImpactPct: "n/a" }))).toEqual({ state: "ok", usdOut: 4 });
     expect(await sellTest(MINT, 1, 6, quote({ outAmount: "0" }))).toEqual({ state: "error" });
+  });
+});
+
+
+describe("a coin whose batch pair has no price (an old bonding-curve pair) is not called dead", () => {
+  it("asks for the coin's other pools and reads the live one (this is what hid $VEIL, a graduation that went about 50x)", async () => {
+    const urls: string[] = [];
+    const f = (async (url: string) => {
+      urls.push(url);
+      if (url.includes("/tokens/v1/")) return new Response(JSON.stringify([dexPair({ dexId: "pumpfun", pairAddress: "CURVE", priceUsd: null, liquidity: { usd: null } })]), { status: 200 });
+      return new Response(JSON.stringify({ pairs: [dexPair({ dexId: "pumpswap", pairAddress: "LIVE", chainId: "solana", liquidity: { usd: 142_000 } })] }), { status: 200 });
+    }) as unknown as typeof fetch;
+    const fresh = await fetchFresh("solana", MINT, f);
+    expect(fresh).not.toBeNull();
+    expect(fresh).not.toBe("error");
+    expect((fresh as Fresh).pair).toBe("LIVE");
+    expect((fresh as Fresh).dex).toBe("pumpswap");
+    expect((fresh as Fresh).liq).toBe(142_000);
+    expect(urls.some((u) => u.includes(`/latest/dex/tokens/${MINT}`))).toBe(true);
+  });
+
+  it("a coin that really has no priced pool anywhere is still reported as it was", async () => {
+    const f = (async (url: string) => (url.includes("/tokens/v1/") ? new Response(JSON.stringify([dexPair({ priceUsd: null })]), { status: 200 }) : new Response(JSON.stringify({ pairs: [] }), { status: 200 }))) as unknown as typeof fetch;
+    const fresh = (await fetchFresh("solana", MINT, f)) as Fresh;
+    expect(fresh.priceUsd).toBeNull();
+  });
+});
+
+describe("the age of the pool (a note with what the lab measured, counted for nothing)", () => {
+  const young: Fresh = { ...alive, dex: "pumpswap", ageH: 2.5 };
+  const noteOf = (f: Fresh) => verdict({}, f).checks!.find((c) => c.key === "age");
+
+  it("says how old the pool is and what share of PumpSwap coins of about that age lost half in a day or doubled", () => {
+    const n = noteOf(young)!;
+    expect(n.state).toBe("note");
+    expect(n.text).toContain("Pool age 2.5 hours");
+    expect(n.text).toContain("63% lost half within a day and 21% doubled within three days");
+    expect(n.text).toContain("not counted");
+    expect(noteOf({ ...young, ageH: 20 })!.text).toContain("28% lost half");
+    expect(noteOf({ ...young, ageH: 5 })!.text).toContain("47% lost half");
+  });
+
+  it("for a pool under an hour it says the lab has no finished record, and gives the rate at an hour", () => {
+    const n = noteOf({ ...young, ageH: 0.3 })!;
+    expect(n.text).toContain("Pool age 18 minutes");
+    expect(n.text).toContain("no finished record");
+    expect(n.text).toContain("78%");
+  });
+
+  it("is only shown for a PumpSwap pool that is alive and not older than a day and a half", () => {
+    expect(noteOf({ ...young, dex: "raydium" })).toBeUndefined();
+    expect(noteOf({ ...young, dex: null })).toBeUndefined();
+    expect(noteOf({ ...young, ageH: 80 })).toBeUndefined();
+    expect(judgeCoin({ ...young, liq: 300 }, { tab: "elite" }, {}, NOW).checks!.find((c) => c.key === "age")).toBeUndefined();
+  });
+
+  it("never changes the verdict: a young coin is not hidden for being young", () => {
+    const old = verdict({}, { ...alive, dex: "pumpswap", ageH: 90 });
+    const withNote = verdict({}, { ...alive, dex: "pumpswap", ageH: 1.5 });
+    expect(withNote.verdict).toBe(old.verdict);
+    expect(withNote.flags).toEqual(old.flags);
+    expect(withNote.lines).toEqual(old.lines);
   });
 });

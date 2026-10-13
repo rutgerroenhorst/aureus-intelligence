@@ -14,4 +14,5 @@ export const CHECK_LINE_ENTRY: Record<string, string> = {
   holders: "top-holders",
   lp: "lp-lock-burn",
   memory: "eigen-record",
+  age: "eerste-uur",
 };

@@ -9,6 +9,7 @@
  */
 
 import { decodeFills, decodeFlows, fetchSignatures, fetchTransaction, rpc, solUsdLookup, type Fill, type Flow } from "./wallet";
+import { MAX_RESCUES, rescuePair } from "./dexPairs";
 
 interface Queryable {
   query(text: string, params?: unknown[]): Promise<{ rows: any[]; rowCount?: number | null }>;
@@ -42,11 +43,29 @@ async function fetchPairs(mints: string[]): Promise<Map<string, Pair> | null> {
       const pairs = (await res.json()) as Pair[];
       if (!Array.isArray(pairs)) return null;
       const best = new Map<string, Pair>();
+      const unpriced: string[] = [];
       for (const p of pairs) {
         const m = p.baseToken?.address;
         if (!m || !mints.includes(m)) continue;
+        if (!((num(p.priceUsd) ?? 0) > 0)) {
+          unpriced.push(m);
+          continue;
+        }
         const cur = best.get(m);
         if (!cur || (p.liquidity?.usd ?? 0) > (cur.liquidity?.usd ?? 0)) best.set(m, p);
+      }
+      // a coin whose batch pair has no price (an old bonding-curve pair, lib/dexPairs.ts) would be valued at nothing in the journal: ask for its other pools
+      const getJson = async (url: string): Promise<unknown> => {
+        try {
+          const r = await fetch(url, { headers: { accept: "application/json", "user-agent": "Aureus-Wallet/1.0" }, signal: AbortSignal.timeout(15_000) });
+          return r.ok ? await r.json() : null;
+        } catch {
+          return null;
+        }
+      };
+      for (const m of [...new Set(unpriced)].filter((x) => !best.has(x)).slice(0, MAX_RESCUES)) {
+        const alt = await rescuePair(m, getJson);
+        if (alt) best.set(m, alt as unknown as Pair);
       }
       return best;
     } catch {

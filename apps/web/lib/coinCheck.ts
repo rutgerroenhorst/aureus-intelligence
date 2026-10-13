@@ -20,10 +20,14 @@ import { CHAIN_BY_ID, isTokenAddress } from "./chains";
 import type { JupToken } from "./graduateFeed";
 import { rugSnapshot, type RugRow } from "./lab/rugcheck";
 import { rpc } from "./wallet";
+import { bestPricedPair, rescuePair } from "./dexPairs";
+import { ageNote } from "./ageRates";
 
 export interface Fresh {
   symbol: string | null;
   pair: string | null;
+  /** which exchange the pool is on (DexScreener's dexId: "pumpswap", "raydium", ...) */
+  dex?: string | null;
   priceUsd: number | null;
   liq: number | null;
   mcap: number | null;
@@ -53,11 +57,25 @@ export async function fetchFresh(chain: string, address: string, fetchImpl: type
     if (!Array.isArray(pairs)) return "error";
     const mine = pairs.filter((p) => String(p?.baseToken?.address ?? "").toLowerCase() === address.toLowerCase());
     if (!mine.length) return null;
-    const best = [...mine].sort((a, b) => (fin(b?.liquidity?.usd) ?? 0) - (fin(a?.liquidity?.usd) ?? 0))[0]!;
+    let best = [...mine].sort((a, b) => (fin(b?.liquidity?.usd) ?? 0) - (fin(a?.liquidity?.usd) ?? 0))[0]!;
+    // the batch answer is one pair per coin and can be an old pump.fun bonding-curve pair with no price: a coin that is running would then read as dead ($VEIL, 2026-10-13).
+    // Ask for its other pools before saying there is no pool (Solana only: the other endpoint is asked with the same address).
+    if (c.dex === "solana" && !bestPricedPair([best], address, "solana")) {
+      const alt = await rescuePair(address, async (u) => {
+        try {
+          const r = await fetchImpl(u, { headers: { accept: "application/json", "user-agent": "Aureus-Check/1.0" }, signal: AbortSignal.timeout(15_000) });
+          return r.ok ? await r.json() : null;
+        } catch {
+          return null;
+        }
+      });
+      if (alt) best = alt as typeof best;
+    }
     const created = fin(best.pairCreatedAt);
     return {
       symbol: typeof best.baseToken?.symbol === "string" ? best.baseToken.symbol : null,
       pair: typeof best.pairAddress === "string" ? best.pairAddress : null,
+      dex: typeof best.dexId === "string" ? best.dexId : null,
       priceUsd: fin(best.priceUsd),
       liq: fin(best.liquidity?.usd),
       mcap: fin(best.marketCap) ?? fin(best.fdv),
@@ -309,6 +327,11 @@ export function judgeCoin(fresh: Fresh | null | "error", ctx: { tab: string }, e
     if (trades1 >= 20) {
       if ((fresh.sells1 ?? 0) > SELL_PRESSURE * (fresh.buys1 ?? 0)) add("pressure", "warn", `Selling outweighs buying ${SELL_PRESSURE} to 1 in the last hour (${fresh.buys1 ?? 0} buys, ${fresh.sells1 ?? 0} sells)`, "selling outweighs buying 3 to 1 in the last hour");
       else add("pressure", "ok", `Buying and selling in balance (${fresh.buys1 ?? 0} buys, ${fresh.sells1 ?? 0} sells in the last hour)`);
+    }
+    // how old the pool is, with what the lab measured for PumpSwap coins of that age: shown, never counted (a group's rate says nothing about this coin, and a young coin must not be hidden for being young)
+    if (fresh.dex === "pumpswap" && fresh.ageH != null) {
+      const note = ageNote(fresh.ageH);
+      if (note) add("age", "note", note);
     }
   }
 

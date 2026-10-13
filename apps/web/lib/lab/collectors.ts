@@ -12,6 +12,7 @@
  */
 
 import type { Queryable } from "./builder";
+import { MAX_RESCUES, rescuePair } from "../dexPairs";
 
 const HEADERS = { accept: "application/json", "user-agent": "Aureus-Lab/1.0" };
 
@@ -92,6 +93,7 @@ export async function collectPriceTail(db: Queryable, opts: { limit?: number } =
   let priced = 0;
   let gone = 0;
   let answered = 0;
+  let rescued = 0;
   const now = Date.now() / 1000;
   for (let i = 0; i < mints.length; i += 30) {
     const batch = mints.slice(i, i + 30);
@@ -105,7 +107,13 @@ export async function collectPriceTail(db: Queryable, opts: { limit?: number } =
       if (!best.has(m) || (p.liquidity?.usd ?? 0) > (best.get(m).liquidity?.usd ?? 0)) best.set(m, p);
     }
     for (const m of batch) {
-      const p = best.get(m);
+      let p = best.get(m);
+      // a pair without a price (an old bonding-curve pair, lib/dexPairs.ts) is not a coin that is gone: ask for its other pools first
+      if (p && !((fin(p.priceUsd) ?? 0) > 0) && rescued < MAX_RESCUES) {
+        rescued++;
+        const alt = await rescuePair(m, (u) => getJson(u));
+        if (alt) p = alt;
+      }
       const price = fin(p?.priceUsd);
       if (p && price != null && price > 0) {
         out.push({ mint: m, source: "price_tail", payload: { t: now, p: price, liq: fin(p.liquidity?.usd), mcap: fin(p.marketCap) ?? fin(p.fdv) } });

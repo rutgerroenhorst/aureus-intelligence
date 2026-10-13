@@ -211,7 +211,8 @@ export const handelen: Entry[] = [
       "Op een echte beurs staat een stop in het orderboek. Op een DEX bestaat dat boek niet: je terminal of een bot kijkt naar de prijs en verstuurt op het afgesproken moment een swap. Die swap kan zoals elke transactie mislukken of tegen een slechtere prijs worden uitgevoerd.",
       "Bij een dunne pool of een snelle val kan een stop op −30% uitgevoerd worden op −60%, of niet uitgevoerd worden. Een take-profit-order is betrouwbaarder omdat de prijs stijgt en er dan meer kopers zijn.",
       "Gebruik dit soort orders voor winst nemen, niet als vangnet. Je echte vangnet is de grootte van je inleg.",
+      "In de FOMO-app bestaan stop en limiet niet op gewone memecoins, alleen bij de perps (*fomo-geen-stop*): daar bewaakt Auriga de lijn en meldt het wanneer je moet verkopen.",
     ],
-    see: ["stop-loss-memecoin", "trailing-stop", "positiegrootte"],
+    see: ["stop-loss-memecoin", "trailing-stop", "positiegrootte", "fomo-geen-stop"],
   },
 ];

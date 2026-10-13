@@ -133,6 +133,17 @@ export function GraduatesTab({ coins, lab, meta, entered, failedMints, onEnter, 
     else l.sort((a, b) => a.ageMin - b.ageMin);
     return l.slice(0, 60);
   }, [coins, sort, showAll, judged]);
+  // Hidden coins that are running anyway: the default view hides whole kinds because most of them end in a drain (born, Mayhem Mode, small pools), and a run is easy to miss there.
+  // ($VEIL, 2026-10-12, a graduation that went about 50x, was not hidden by a kind: its price lookups got a dead bonding-curve pair, lib/dexPairs.ts, so it read "no longer listed".)
+  // A hidden coin that has doubled with a real pool under it is shown here, with what it was hidden for.
+  const running = useMemo(
+    () =>
+      coins
+        .filter((c) => judged && !c.healthy && !c.drained && !c.empty && c.hiddenWhy !== "gone" && (c.sinceFirst ?? 0) >= 2 && (c.liq ?? 0) >= 20_000 && c.ageMin <= 720)
+        .sort((a, b) => (b.sinceFirst ?? 0) - (a.sinceFirst ?? 0))
+        .slice(0, 5),
+    [coins, judged],
+  );
   const { ageMin: snapAge, stale, source: feed } = gradSnapshot(meta, Date.now());
   const hiddenText = [hidden.born && `${hidden.born} born graduated`, hidden.mayhem && `${hidden.mayhem} Mayhem Mode`, hidden.empty && `${hidden.empty} empty pools`, hidden.drained && `${hidden.drained} drained`, hidden.small && `${hidden.small} pools under $5K`, hidden.gone && `${hidden.gone} no longer listed`, hidden.waiting && `${hidden.waiting} without a reading yet`].filter(Boolean).join(", ");
   return (
@@ -188,6 +199,22 @@ export function GraduatesTab({ coins, lab, meta, entered, failedMints, onEnter, 
         ))}
       </div>
       {judged && !showAll && hidden.total > 0 && <div style={{ fontSize: 11, color: "#8a8a8e", marginBottom: 10 }}>Hidden: {hiddenText}.</div>}
+      {judged && !showAll && running.length > 0 && (
+        <div style={{ border: "1px solid #5a4a1a", background: "#1c1810", borderRadius: 8, padding: "9px 11px", marginBottom: 10, fontSize: 12, lineHeight: 1.6, color: "#e5c07b" }}>
+          <b>Hidden, but running now</b> (doubled or more since first seen, with a pool of $20K or more):
+          {running.map((c) => (
+            <div key={c.mint}>
+              <a href={`https://dexscreener.com/solana/${c.mint}`} target="_blank" rel="noreferrer" style={{ color: brand.blueText, fontWeight: 700 }}>
+                {c.symbol ?? "?"}
+              </a>{" "}
+              {c.sinceFirst!.toFixed(1)}x since first seen, {usd(c.mcap)} · pool {usd(c.liq)} · hidden as <i>{c.hiddenWhy === "born" ? "born graduated" : c.hiddenWhy === "mayhem" ? "Mayhem Mode" : c.hiddenWhy ?? "small"}</i>
+            </div>
+          ))}
+          <div style={{ color: "#a89a70", marginTop: 3 }}>
+            Most coins of these kinds end in a drain. In the lab's data (10 to 12 October, 867 graduations) one in nine born graduations doubled in the first day, but none of the 105 that were still alive an hour later doubled again. A rare one does run for days. Nothing here is a signal: look, then decide with the Check.
+          </div>
+        </div>
+      )}
       {list.length === 0 ? (
         <div style={{ textAlign: "center", color: "#8a8a8e", padding: 32 }}>
           {coins.length > 0 && !showAll ? "Nothing worth a look right now: every recent graduation is one of the kinds above." : <>No graduations recorded. They come from pump.fun's event stream, which needs the laptop worker (<code>pnpm worker:start</code>) or <code>scripts/lab-daemon.ts</code> running; the hosted site shows the laptop's last snapshot.</>}

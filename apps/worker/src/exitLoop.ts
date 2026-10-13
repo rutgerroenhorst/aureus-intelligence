@@ -18,20 +18,28 @@ import fs from "node:fs";
 import path from "node:path";
 import pg from "pg";
 import { logMessage, type LoggedMessage } from "./telegramLog";
+import { MAX_RESCUES, rescuePair } from "../../web/lib/dexPairs";
 import {
-  alertButtons,
-  alertText,
+  alertMessage,
   CONFIRM_CHECKS,
-  dexLink,
   LEVELS_DEFAULT,
+  lineFor,
+  LOSS_AT,
+  LOSS_KEY,
+  LOSS_MIN_VALUE_USD,
+  LOSS_WINDOW_S,
   loggedText,
+  MIN_POOL_USD,
   openPosition,
+  POOL_TO_POSITION,
   readPosition,
   welcomeText,
+  type AlertKind,
   type Fill,
   type HeldNow,
   type MessageButton,
   type Position,
+  type Reading,
 } from "../../web/lib/exitAlerts";
 
 type Log = (msg: string, extra?: Record<string, unknown>) => void;
@@ -48,6 +56,8 @@ export interface ExitConfig {
   chatId: string | null;
   pairCode: string | null;
   levels: number[];
+  /** the quiet message for a fresh position that fell 30% (EXIT_ALERT_LOSS=0 switches it off) */
+  loss: boolean;
   file: string;
 }
 
@@ -75,7 +85,7 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env, file: string = 
     .split(",")
     .map((s) => Number(s.trim()))
     .filter((n) => Number.isFinite(n) && n > 1);
-  return { token, chatId: get("EXIT_ALERT_CHAT_ID") || null, pairCode: get("EXIT_ALERT_PAIR_CODE") || null, levels: levels.length ? [...new Set(levels)].sort((a, b) => a - b) : LEVELS_DEFAULT, file };
+  return { token, chatId: get("EXIT_ALERT_CHAT_ID") || null, pairCode: get("EXIT_ALERT_PAIR_CODE") || null, levels: levels.length ? [...new Set(levels)].sort((a, b) => a - b) : LEVELS_DEFAULT, loss: get("EXIT_ALERT_LOSS") !== "0", file };
 }
 
 /** Set (or, with null, remove) one variable in the env file, keeping the other lines and the file private. */
@@ -103,9 +113,25 @@ export interface Update {
 }
 
 export interface Telegram {
-  /** `buttons` become one row of link buttons under the message (Telegram's inline keyboard) */
-  send(chatId: string, text: string, opts?: { buttons?: MessageButton[] }): Promise<{ ok: true; messageId: number } | { ok: false; error: string; retryAfter?: number }>;
+  /**
+   * `buttons` become rows of two under the message (Telegram's inline keyboard): links, and copy buttons; `silent` sends without a sound.
+   * A button or a colour Telegram does not accept never costs the message: it is sent again with less (see `attempts` in telegram()).
+   */
+  send(chatId: string, text: string, opts?: { buttons?: MessageButton[]; silent?: boolean }): Promise<{ ok: true; messageId: number } | { ok: false; error: string; retryAfter?: number }>;
   updates(offset: number): Promise<Update[] | null>;
+}
+
+/** The inline keyboard for these buttons, two to a row. `plain` drops the colours, `noCopy` drops the copy buttons. */
+export function keyboard(buttons: MessageButton[], variant: { plain?: boolean; noCopy?: boolean } = {}): Array<Array<Record<string, unknown>>> {
+  const out: Array<Record<string, unknown>> = [];
+  for (const b of buttons) {
+    const style = !variant.plain && b.style ? { style: b.style } : {};
+    if (b.url && /^https?:\/\//.test(b.url)) out.push({ text: b.text, url: b.url, ...style });
+    else if (b.copy && !variant.noCopy) out.push({ text: b.text, copy_text: { text: b.copy.slice(0, 256) }, ...style });
+  }
+  const rows: Array<Array<Record<string, unknown>>> = [];
+  for (let i = 0; i < out.length; i += 2) rows.push(out.slice(i, i + 2));
+  return rows;
 }
 
 export function telegram(token: string, fetchImpl: typeof fetch = fetch): Telegram {
@@ -125,11 +151,15 @@ export function telegram(token: string, fetchImpl: typeof fetch = fetch): Telegr
   };
   return {
     async send(chatId, text, opts) {
-      const buttons = (opts?.buttons ?? []).filter((b) => /^https?:\/\//.test(b.url));
-      const base = { chat_id: chatId, text, parse_mode: "HTML", disable_web_page_preview: true };
-      let r = await call("sendMessage", buttons.length ? { ...base, reply_markup: { inline_keyboard: [buttons.map((b) => ({ text: b.text, url: b.url }))] } } : base);
-      // a button Telegram does not accept must never cost the alert itself: send the message again without it
-      if (buttons.length && !r.json?.ok && /button|reply markup|url/i.test(String(r.json?.description ?? ""))) r = await call("sendMessage", base);
+      const buttons = opts?.buttons ?? [];
+      const base = { chat_id: chatId, text, parse_mode: "HTML", disable_web_page_preview: true, ...(opts?.silent ? { disable_notification: true } : {}) };
+      // the message with everything first; when Telegram refuses a button or a colour it is sent again with less: no colours, then no copy buttons, then no buttons at all.
+      // A decoration must never cost an alert.
+      const attempts = [keyboard(buttons), keyboard(buttons, { plain: true }), keyboard(buttons, { plain: true, noCopy: true })].filter((k, i, all) => k.length && JSON.stringify(k) !== JSON.stringify(all[i - 1]));
+      let r = await call("sendMessage", attempts.length ? { ...base, reply_markup: { inline_keyboard: attempts[0] } } : base);
+      for (let i = 1; !r.json?.ok && attempts.length && i <= attempts.length && /button|reply markup|url|style|copy/i.test(String(r.json?.description ?? "")); i++) {
+        r = await call("sendMessage", i < attempts.length ? { ...base, reply_markup: { inline_keyboard: attempts[i] } } : base);
+      }
       if (r.json?.ok && r.json.result?.message_id != null) return { ok: true, messageId: Number(r.json.result.message_id) };
       const retryAfter = Number(r.json?.parameters?.retry_after);
       return { ok: false, error: clean(String(r.json?.description ?? r.error ?? `http ${r.status}`)).slice(0, 160), ...(Number.isFinite(retryAfter) && retryAfter > 0 ? { retryAfter } : {}) };
@@ -156,9 +186,14 @@ const fin = (x: unknown): number | null => {
   return Number.isFinite(n) ? n : null;
 };
 
-/** DexScreener's best pool (most liquidity) for each coin, 30 coins a call. A coin it does not list is missing from the map. */
+/**
+ * DexScreener's best pool (most liquidity) for each coin, 30 coins a call. A coin it does not list is missing from the map.
+ * The batch answer is one pair per coin; for the rare coin whose pair has no price (an old pump.fun bonding-curve pair, lib/dexPairs.ts) the coin's other pools are asked
+ * for, so a held coin that is running is never left without an alert because of it.
+ */
 export async function dexQuotes(mints: string[], fetchImpl: typeof fetch = fetch): Promise<Map<string, Priced>> {
   const out = new Map<string, Priced>();
+  const unpriced: string[] = [];
   for (let i = 0; i < mints.length; i += 30) {
     const batch = mints.slice(i, i + 30);
     try {
@@ -170,7 +205,11 @@ export async function dexQuotes(mints: string[], fetchImpl: typeof fetch = fetch
         const m = p?.baseToken?.address as string | undefined;
         const price = fin(p?.priceUsd);
         const liq = fin(p?.liquidity?.usd) ?? 0;
-        if (!m || price == null || price <= 0 || !batch.includes(m)) continue;
+        if (!m || !batch.includes(m)) continue;
+        if (price == null || price <= 0) {
+          unpriced.push(m);
+          continue;
+        }
         const cur = out.get(m);
         if (!cur || liq > cur.liq) out.set(m, { price, liq, pair: (p?.pairAddress as string | undefined) ?? null, symbol: (p?.baseToken?.symbol as string | undefined) ?? null });
       }
@@ -178,6 +217,19 @@ export async function dexQuotes(mints: string[], fetchImpl: typeof fetch = fetch
       /* these coins are simply not priced this time */
     }
     if (i + 30 < mints.length) await new Promise((r) => setTimeout(r, 150));
+  }
+  const getJson = async (url: string): Promise<unknown> => {
+    try {
+      const res = await fetchImpl(url, { headers: { accept: "application/json", "user-agent": "Aureus-Exit/1.0" }, signal: AbortSignal.timeout(20_000) });
+      return res.ok ? await res.json() : null;
+    } catch {
+      return null;
+    }
+  };
+  for (const m of [...new Set(unpriced)].filter((x) => !out.has(x)).slice(0, MAX_RESCUES)) {
+    const alt = await rescuePair(m, getJson);
+    const price = fin(alt?.priceUsd);
+    if (alt && price != null && price > 0) out.set(m, { price, liq: fin(alt.liquidity?.usd) ?? 0, pair: alt.pairAddress ?? null, symbol: alt.baseToken?.symbol ?? null });
   }
   return out;
 }
@@ -212,6 +264,11 @@ export interface Store {
   alertsLast24h(): Promise<number>;
   loadStreaks(): Promise<Record<string, Streak>>;
   saveStreaks(s: Record<string, Streak>): Promise<void>;
+  /** the highest level reported (state 'sent') for every position, key `${mint}|${started}`: what the line is measured from and what makes a message "first" or "next step" */
+  sentTop(): Promise<Map<string, number>>;
+  /** small values kept next to the alerts (exit_alert_kv): which positions are armed for their line, and whether the new ladder has been seeded */
+  kvGet(key: string): Promise<string | null>;
+  kvSet(key: string, value: string): Promise<void>;
 }
 
 export function pgStore(db: Db): Store {
@@ -304,6 +361,17 @@ export function pgStore(db: Db): Store {
     async saveStreaks(s) {
       await db.query(`INSERT INTO exit_alert_kv (key, value) VALUES ('streaks', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`, [JSON.stringify(s)]);
     },
+    async sentTop() {
+      const { rows } = await db.query(`SELECT mint, EXTRACT(EPOCH FROM position_start)::float8 AS started, max(level)::float8 AS top FROM exit_alerts WHERE state = 'sent' AND level > 0 GROUP BY mint, position_start`);
+      return new Map(rows.map((r) => [`${r.mint}|${Math.floor(Number(r.started))}`, Number(r.top)] as [string, number]));
+    },
+    async kvGet(key) {
+      const { rows } = await db.query(`SELECT value FROM exit_alert_kv WHERE key = $1`, [key]);
+      return rows[0] ? String(rows[0].value) : null;
+    },
+    async kvSet(key, value) {
+      await db.query(`INSERT INTO exit_alert_kv (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`, [key, value]);
+    },
   };
 }
 
@@ -338,14 +406,20 @@ export interface PassState {
   capLoggedOn: string;
   /** positions, worked out from the fills, and the fingerprint of the fills they were worked out from */
   cache: { version: string; positions: Position[]; symbols: Map<string, string> } | null;
-  /** every recorded level, and the fingerprint it was read at */
-  known: { version: string; map: Map<string, Set<number>> } | null;
+  /** every recorded level, the highest level reported per position, and the fingerprint they were read at */
+  known: { version: string; map: Map<string, Set<number>>; sent: Map<string, number> } | null;
   armed: number | null;
   /** the streaks as last written to the database (to write only when something changed) */
   streaksJson: string;
+  /** positions that were seen above the line of their highest reported level, with that level: only these can be told "the price fell to the line" (so a position that was already below the line when this was switched on is never announced) */
+  lines: Map<string, number>;
+  /** the lines as last written to the database */
+  linesJson: string;
+  /** the new ladder has been seeded (positions that had already passed a level are not told about the new levels between and above): read from the database once per process */
+  ladderChecked: boolean;
 }
 
-export const newPassState = (): PassState => ({ streak: new Map(), misses: new Map(), pass: 0, logged: 0, failLogged: new Map(), pauseUntil: 0, capLoggedOn: "", cache: null, known: null, armed: null, streaksJson: "{}" });
+export const newPassState = (): PassState => ({ streak: new Map(), misses: new Map(), pass: 0, logged: 0, failLogged: new Map(), pauseUntil: 0, capLoggedOn: "", cache: null, known: null, armed: null, streaksJson: "{}", lines: new Map(), linesJson: "{}", ladderChecked: false });
 /** A ceiling on the alerts of one day: a bug must never be able to flood the phone. A real day brings one to five. EXIT_ALERT_MAX_PER_DAY changes it. */
 const MAX_ALERTS_PER_DAY = Number(process.env.EXIT_ALERT_MAX_PER_DAY ?? 40);
 const realSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -380,8 +454,12 @@ export interface PassOptions {
   persistStreaks?: boolean;
 }
 
-export async function runPass(cfg: { chatId: string; levels: number[] }, deps: Deps, st: PassState, opts: PassOptions = {}): Promise<{ positions: number; priced: number; sent: number }> {
+/** After a price has fallen to the line, how long to wait before looking once more: one print is not a fall, and a false "sell now" costs the owner an order. */
+const LINE_RECHECK_S = 25;
+
+export async function runPass(cfg: { chatId: string; levels: number[]; loss?: boolean }, deps: Deps, st: PassState, opts: PassOptions = {}): Promise<{ positions: number; priced: number; sent: number }> {
   const { store, tg, log } = deps;
+  const sleep = deps.sleep ?? realSleep;
   st.pass++;
   if (st.armed == null) {
     st.armed = await store.armedAt();
@@ -397,6 +475,22 @@ export async function runPass(cfg: { chatId: string; levels: number[] }, deps: D
     const loaded = await store.loadStreaks();
     st.streak = new Map(Object.entries(loaded));
     st.streaksJson = JSON.stringify(loaded);
+    const rawLines = await store.kvGet("lines");
+    let lines: Record<string, number> = {};
+    try {
+      const parsed = rawLines ? JSON.parse(rawLines) : {};
+      if (parsed && typeof parsed === "object") lines = parsed as Record<string, number>;
+    } catch {
+      lines = {};
+    }
+    st.lines = new Map(Object.entries(lines).map(([k, v]) => [k, Number(v)] as [string, number]));
+    st.linesJson = JSON.stringify(lines);
+  }
+  // one time, ever: has the new ladder been seeded? (a position that had passed 2x and 5x must not be told about 3x, 10x and so on the moment the ladder is switched on)
+  let ladderSeed = false;
+  if (!st.ladderChecked) {
+    ladderSeed = (await store.kvGet("ladder_v2")) == null;
+    st.ladderChecked = !ladderSeed;
   }
   // the ceiling for the last 24 hours: asked about only when there is something to send
   let room: number | null = null;
@@ -404,12 +498,59 @@ export async function runPass(cfg: { chatId: string; levels: number[] }, deps: D
   const { held, symbols } = await currentPositions(deps, st);
   // every recorded level in one read, and again only when the fingerprint says something was written
   const kv = await store.knownVersion();
-  if (!st.known || st.known.version !== kv) st.known = { version: kv, map: await store.knownAll() };
+  if (!st.known || st.known.version !== kv) st.known = { version: kv, map: await store.knownAll(), sent: await store.sentTop() };
   const knownMap = st.known.map;
+  const sentTop = st.known.sent;
   let wrote = false;
   const gap = deps.minGapS ?? 60;
   let sent = 0;
   let priced = 0;
+  const lineCandidates: Array<{ pos: Position; started: number; top: number; line: number; q: Priced }> = [];
+
+  /** Send one message for a position, record it for the Telegram page, and mark or release the claimed levels. Returns true when Telegram took it. */
+  const deliver = async (pos: Position, q: Priced, r: Reading, kind: AlertKind, level: number, claimed: number[], started: number): Promise<boolean> => {
+    const symbol = symbols.get(pos.mint) ?? q.symbol ?? pos.mint.slice(0, 6);
+    const msg = alertMessage({ kind, symbol, mint: pos.mint, level, multiple: r.multiple, value: r.value, bought: pos.bought, sold: pos.sold, price: q.price, basis: pos.basis, liq: q.liq, pair: q.pair });
+    if (sent > 0) await sleep(1100);
+    const res = await tg.send(cfg.chatId, msg.text, { buttons: msg.buttons, silent: msg.silent });
+    // the page shows what went out; a failed send is recorded once per half hour per alert
+    const failKey = `${pos.mint}|${kind}|${level}`;
+    if (res.ok || deps.now() - (st.failLogged.get(failKey) ?? 0) > 1800) {
+      await store.logMessage({ kind: "alert", ok: res.ok, messageId: res.ok ? res.messageId : null, symbol, level, multiple: r.multiple, html: loggedText(msg.text, msg.buttons), error: res.ok ? null : res.error });
+      st.logged++;
+      if (!res.ok) st.failLogged.set(failKey, deps.now());
+    }
+    const known = knownMap.get(`${pos.mint}|${started}`);
+    for (const l of claimed) {
+      if (res.ok) {
+        await store.markSent(pos.mint, started, l, res.messageId);
+        known?.add(l);
+        st.streak.delete(`${pos.mint}|${started}|${l}`);
+      } else {
+        await store.release(pos.mint, started, l);
+      }
+    }
+    if (res.ok) {
+      sent++;
+      room = (room ?? 0) - 1;
+      log("exit alert sent", { symbol, kind, level, multiple: Number(r.multiple.toFixed(2)) });
+    } else {
+      // Telegram asked to slow down: wait that long (at most an hour) before trying anything again
+      if (res.retryAfter) st.pauseUntil = deps.now() + Math.min(3600, res.retryAfter);
+      log("exit alert not sent", { symbol, kind, level, error: res.error, ...(res.retryAfter ? { retryAfterS: res.retryAfter } : {}) });
+    }
+    return res.ok;
+  };
+  const ceilingHit = async (): Promise<boolean> => {
+    if ((await roomLeft()) > 0) return false;
+    const day = new Date(deps.now() * 1000).toISOString().slice(0, 10);
+    if (st.capLoggedOn !== day) {
+      st.capLoggedOn = day;
+      log("exit alerts: the daily ceiling is reached, nothing more is sent until older alerts fall out of the last 24 hours", { ceiling: MAX_ALERTS_PER_DAY });
+    }
+    return true;
+  };
+
   for (const { pos, q } of held) {
     if (!q) continue;
     priced++;
@@ -423,6 +564,20 @@ export async function runPass(cfg: { chatId: string; levels: number[] }, deps: D
       await store.seed(pos.mint, started, seed);
       known = new Set([0, ...seed]);
       knownMap.set(posKey, known);
+      wrote = true;
+    } else if (ladderSeed && [...known].some((l) => l >= 2)) {
+      // a position that had already passed a level (reported or seeded) is not told about the levels of the new ladder that it is already above
+      const extra = r.reached.filter((l) => !known!.has(l));
+      if (extra.length) {
+        await store.seed(pos.mint, started, extra);
+        for (const l of extra) known.add(l);
+        wrote = true;
+      }
+    }
+    // the loss message is new too: a position that is already 30% down when it is switched on is not news
+    if (ladderSeed && r.multiple <= LOSS_AT && !known.has(LOSS_KEY)) {
+      await store.seed(pos.mint, started, [LOSS_KEY]);
+      known.add(LOSS_KEY);
       wrote = true;
     }
     // levels that have now been shown by enough checks in a row; claimed first, so two processes can never both report the same one
@@ -441,56 +596,73 @@ export async function runPass(cfg: { chatId: string; levels: number[] }, deps: D
         st.streak.set(key, { n, t: deps.now() });
       }
       if (n < CONFIRM_CHECKS || sent >= MAX_PER_PASS) continue;
-      if ((await roomLeft()) <= 0) {
-        const day = new Date(deps.now() * 1000).toISOString().slice(0, 10);
-        if (st.capLoggedOn !== day) {
-          st.capLoggedOn = day;
-          log("exit alerts: the daily ceiling is reached, nothing more is sent until older alerts fall out of the last 24 hours", { ceiling: MAX_ALERTS_PER_DAY });
-        }
-        continue;
-      }
+      if (await ceilingHit()) continue;
       if (await store.claim(pos.mint, started, level, { multiple: r.multiple, price: q.price, basis: pos.basis, value: r.value })) {
         due.push(level);
         wrote = true;
       } else st.streak.delete(key);
     }
-    if (!due.length) continue;
-    // a coin that jumped over two levels at once gets one message, for the highest
-    const top = Math.max(...due);
-    const symbol = symbols.get(pos.mint) ?? q.symbol ?? pos.mint.slice(0, 6);
-    const link = dexLink(q.pair, pos.mint);
-    const text = alertText({ symbol, level: top, multiple: r.multiple, value: r.value, bought: pos.bought, sold: pos.sold, price: q.price, basis: pos.basis, liq: q.liq, link });
-    const buttons = alertButtons({ link });
-    if (sent > 0) await (deps.sleep ?? realSleep)(1100);
-    const res = await tg.send(cfg.chatId, text, { buttons });
-    // the page shows what went out; a failed send is recorded once per half hour per alert
-    const failKey = `${pos.mint}|${top}`;
-    if (res.ok || deps.now() - (st.failLogged.get(failKey) ?? 0) > 1800) {
-      await store.logMessage({ kind: "alert", ok: res.ok, messageId: res.ok ? res.messageId : null, symbol, level: top, multiple: r.multiple, html: loggedText(text, buttons), error: res.ok ? null : res.error });
-      st.logged++;
-      if (!res.ok) st.failLogged.set(failKey, deps.now());
+    if (due.length) {
+      // a coin that jumped over several levels at once gets one message, for the highest; the first level ever reported is the one with sound, the later ones are quiet
+      const top = Math.max(...due);
+      const kind: AlertKind = (sentTop.get(posKey) ?? 0) > 0 ? "step" : "first";
+      if (await deliver(pos, q, r, kind, top, due, started)) sentTop.set(posKey, Math.max(sentTop.get(posKey) ?? 0, top));
     }
-    for (const level of due) {
-      if (res.ok) {
-        await store.markSent(pos.mint, started, level, res.messageId);
-        known.add(level);
-        st.streak.delete(`${pos.mint}|${started}|${level}`);
-      } else {
-        await store.release(pos.mint, started, level);
+    // the line: the site's own stop, 75% of the highest level the position has passed (reported, or seeded because it had already passed it when the alerts or the new ladder were switched on:
+    // the owner was told about those in the welcome message, and a coin that stood at 24x must not wait for a fall to 3.75x before it is announced)
+    const topSent = Math.max(sentTop.get(posKey) ?? 0, ...[...known].filter((l) => l > 0));
+    if (topSent > 0) {
+      const line = lineFor(topSent);
+      if (r.multiple > line) {
+        if (st.lines.get(posKey) !== topSent) st.lines.set(posKey, topSent);
+      } else if (st.lines.get(posKey) === topSent && r.alertable && !known.has(-topSent)) {
+        lineCandidates.push({ pos, started, top: topSent, line, q });
       }
     }
-    if (res.ok) {
-      sent++;
-      room = (room ?? 0) - 1;
-      log("exit alert sent", { symbol, level: top, multiple: Number(r.multiple.toFixed(2)) });
-    } else {
-      // Telegram asked to slow down: wait that long (at most an hour) before trying anything again
-      if (res.retryAfter) st.pauseUntil = deps.now() + Math.min(3600, res.retryAfter);
-      log("exit alert not sent", { symbol, level: top, error: res.error, ...(res.retryAfter ? { retryAfterS: res.retryAfter } : {}) });
+    // the loss message: a position under 72 hours old that has fallen to 70% of what was paid without ever having passed 2x gets one quiet message, after two checks in a row
+    if (cfg.loss !== false && !known.has(LOSS_KEY) && topSent < 2 && deps.now() - pos.started <= LOSS_WINDOW_S) {
+      const lossKey = `${pos.mint}|${started}|${LOSS_KEY}`;
+      const lossOk = Number.isFinite(r.multiple) && r.multiple <= LOSS_AT && r.value >= LOSS_MIN_VALUE_USD && q.liq >= MIN_POOL_USD && q.liq >= POOL_TO_POSITION * r.value;
+      if (!lossOk) st.streak.delete(lossKey);
+      else {
+        const prev = st.streak.get(lossKey);
+        let n = prev?.n ?? 0;
+        if (!prev || deps.now() - prev.t >= gap) {
+          n++;
+          st.streak.set(lossKey, { n, t: deps.now() });
+        }
+        if (n >= CONFIRM_CHECKS && sent < MAX_PER_PASS && !(await ceilingHit())) {
+          if (await store.claim(pos.mint, started, LOSS_KEY, { multiple: r.multiple, price: q.price, basis: pos.basis, value: r.value })) {
+            wrote = true;
+            await deliver(pos, q, r, "loss", LOSS_AT, [LOSS_KEY], started);
+          } else st.streak.delete(lossKey);
+        }
+      }
     }
   }
+
+  // positions that have fallen to their line: look once more after a pause (one print is not a fall), then claim and send, once per position and level
+  if (lineCandidates.length && deps.now() >= st.pauseUntil) {
+    await sleep(LINE_RECHECK_S * 1000);
+    const again = await deps.prices(lineCandidates.map((c) => c.pos.mint));
+    for (const c of lineCandidates) {
+      if (sent >= MAX_PER_PASS) break;
+      const q2 = again.get(c.pos.mint);
+      if (!q2) continue;
+      const r2 = readPosition(c.pos, q2, cfg.levels);
+      if (!(r2.multiple <= c.line) || !r2.alertable) continue;
+      if (await ceilingHit()) continue;
+      if (!(await store.claim(c.pos.mint, c.started, -c.top, { multiple: r2.multiple, price: q2.price, basis: c.pos.basis, value: r2.value }))) continue;
+      wrote = true;
+      await deliver(c.pos, q2, r2, "line", c.top, [-c.top], c.started);
+    }
+  }
+
   // what this pass wrote is already in `known`; the next pass reads again only if somebody else wrote too
   if (wrote) st.known = null;
+  // lines are only kept for positions that are still held
+  const heldKeys = new Set(held.map(({ pos }) => `${pos.mint}|${Math.floor(pos.started)}`));
+  for (const k of [...st.lines.keys()]) if (!heldKeys.has(k)) st.lines.delete(k);
   if (opts.persistStreaks) {
     for (const [k, v] of st.streak) if (deps.now() - v.t > STREAK_KEEP_S) st.streak.delete(k);
     const json = JSON.stringify(Object.fromEntries(st.streak));
@@ -498,6 +670,15 @@ export async function runPass(cfg: { chatId: string; levels: number[] }, deps: D
       await store.saveStreaks(Object.fromEntries(st.streak));
       st.streaksJson = json;
     }
+    const linesJson = JSON.stringify(Object.fromEntries(st.lines));
+    if (linesJson !== st.linesJson) {
+      await store.kvSet("lines", linesJson);
+      st.linesJson = linesJson;
+    }
+  }
+  if (ladderSeed) {
+    await store.kvSet("ladder_v2", String(Math.floor(deps.now())));
+    st.ladderChecked = true;
   }
   return { positions: held.length, priced, sent };
 }
@@ -596,7 +777,7 @@ export function startExitLoop(db: Db, log: Log): () => void {
         log("exit alerts paired and on", { levels: cfg.levels });
         return 5_000;
       }
-      const r = await runPass({ chatId: cfg.chatId, levels: cfg.levels }, deps, st, { persistStreaks: Boolean(hostedUrl) });
+      const r = await runPass({ chatId: cfg.chatId, levels: cfg.levels, loss: cfg.loss }, deps, st, { persistStreaks: Boolean(hostedUrl) });
       if (failures > 0) log("exit alerts running again", { positions: r.positions });
       failures = 0;
       return EVERY_MS;

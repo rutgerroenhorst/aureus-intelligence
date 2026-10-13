@@ -4,6 +4,12 @@ The owner asked: more modern, "commercial" and clean messages (something that co
 question: why alert only at 2x and 5x, why not at every x, and could each level say what to take out (for example 50% at 2x, 25% at 10x)? **Nothing here is built yet**: this is the
 research, the numbers and the proposal, with the decisions the owner still has to make. The current alerts are described in `docs/EXIT_ALERTS.md`.
 
+> **Status, 2026-10-13 evening: the core is built.** The owner answered "Ja, doe maar alles toevoegen" to the two open questions, which fixed the standard choices: **50% at 2×**, the **log ladder 2, 3, 5, 10, 20, 50, 100**, Dutch only, no quiet hours, the **"Open in FOMO" button**
+> (plus DexScreener and a copy-address button), and a line in the Check button about the coin's age and the base rate for that age. Built and tested (apps/web/lib/exitAlerts.ts, apps/worker/src/exitLoop.ts): the four message kinds (first profit, quiet next step, line reached, and the loss message below), the line at
+> 75% of the highest level with a 25-second second look (the proposal said 30), silent sends, coloured link buttons and a copy button with a fallback chain, a minimum position of $2, no sale advice for a slice under $2.50, the order cost in every advice, and a silent switch-on (positions that already passed a level are marked as seen; the ladder is seeded once).
+> **Added beyond the proposal:** the quiet **loss message** (a position under 72 hours old at 0.7× or lower that never passed 2×; the "fresh loser" idea from the table, now switched on by default because the owner's own record is dominated by coins that were never sold: docs/WALLET_REVIEW_2.md; `EXIT_ALERT_LOSS=0` switches it off).
+> **Not built:** the share picture, the day and week summaries, the danger messages, quiet hours, an English version, Rich Messages. No test or preview message was sent to the owner's chat; the dry run (`scripts/exit-alerts-dryrun.ts`) prints what the real data would send, without sending.
+
 > **Correction, later the same day (2026-10-13):** the first version of the numbers in this document rested on a flawed selection of coins. A coin that has died is "decided" at once, a living one only after
 > 72 hours, so the most recent coins in the sample were mostly dead ones, which made selling early look better than it is. Everything below is redone with only the coins whose 72 hours were over by the
 > latest reading (**1,161 coins instead of 1,479**). **Withdrawn: "the more is sold at the first alert, the better" (all out +7, 90% +5, 75% +3 points).** With the correct selection 50%, 75%, 90% and 100% at the
@@ -201,17 +207,19 @@ check the AFM's guidance or ask a lawyer.
 
 ## Decisions for the owner
 
+*Answered 2026-10-13 ("doe maar alles toevoegen"): the first option of each, as proposed. Left open and not built: the share picture and the summaries (decision 4), quiet hours (decision 3), a preview in the owner's chat (decision 6, waits for a yes).*
+
 1. The ladder: log ladder (2, 3, 5, 10, 20, 50, 100), as proposed; or only 2, 5 and 10.
 2. What the 2x message suggests, now that every exit is by hand: **sell 50% (the stake out, the current advice; with the owner's optional 25% more at 10x)**, 75%, or everything. Measured, they are the same on average (within +-2 points);
    the difference is in what is kept: a quarter more sold at the first alert takes about 35 points off a coin that goes on to 5x, and saves about as much on the coins that never recover. Proposed: 50%, because it is the owner's own plan,
-   it keeps the runners and costs one order less than a ladder. The percentage is worked out against "keep half of the tokens bought", so a coin on which the owner already sold part gets only what is still needed.
+   it keeps the runners and costs one order less than a ladder. The percentage is worked out against "keep half of the tokens bought", so a coin on which the owner already sold part gets only what is still needed. *(Built as: 50% of what is held now; when what was already taken out is 90% or more of what was put in, the message says the stake is out and to let the rest run.)*
 3. Quiet: which types make a sound, quiet hours (while the owner sleeps nothing protects the rest, and the line message is the only protection there is), a minimum position value (proposed about $2).
 4. Look: Dutch only or Dutch and English; the share picture with 5x and above and weekly, or only on request.
 5. What counts as x: the coin's price (proposed: stable, one event per level, unaffected by the owner's own sales, with the result shown next to it), or the result of the whole position as the trigger (a level would then depend on what was sold).
 6. A live preview of the new messages in the owner's own Telegram chat (it is the owner's bot and chat, but it is a message sent, so it waits for a yes).
 7. ~~One share link from the FOMO app~~: given 2026-10-13, so the "Open in FOMO" button is in the proposal; it only has to be tried on the owner's phone once.
 
-## How it would be built (additive, in steps, each tested and reversible)
+## How it was built (additive, in steps, each tested and reversible; step 1 done 2026-10-13)
 
 1. **Messages and levels**: `apps/web/lib/exitAlerts.ts` (text, pure, with tests) and the positions' highest price (a small additive table: the line has to be known between ticks); the log ladder, the next-step and line-reached
    types, silent sends, styled buttons and the copy button; `EXIT_ALERT_LEVELS` stays the switch. Tests for every type and for the counting (a coin that jumps over three levels at once gets one message), for the percentages

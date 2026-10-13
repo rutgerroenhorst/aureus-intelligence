@@ -32,6 +32,12 @@ First reading, 2026-10-11: 24 deposits, 4.3774 SOL, $473.33 at the prices of tho
 that evening; no withdrawals. Checked against the chain: the SOL that came in was swapped for USDC within minutes each time. Transactions read before this feature existed were looked at once more by
 `corepack pnpm exec tsx scripts/wallet-flows.ts` (3 of 145 could not be read at that moment and are tried again the next time it runs; `--reprice` recomputes the dollars, `--dry-run` only prints).
 
+### The 88 USDC payments that deliver no coin (open question, 2026-10-13)
+
+88 transactions (24 August to 11 October, $2 to $25, $297.30 in all, mostly exactly $2, 49 of them on 3 to 7 September) pay USDC through a `DepositToken` instruction of one program into one shared USDC account (the same account receives payments from many other wallets within the same second; the fee payer is the same
+gasless relayer as for the owner's normal swaps; now and then a large sum leaves that account to one address). The owner says they are purchased coins. **No coin arrives in this wallet** after such a payment, so the coins are on another network (the trading app is multichain) or kept in the app: the wallet journal, the
+exit alerts and the wallet reviews do not see them. They are not counted as deposits or withdrawals. To cover them the owner's (public) address on that network is needed, or the app's own activity list for a few of the payments. The decoding and probes are scratch work (git-ignored); the finding is in `docs/WALLET_REVIEW_2.md`.
+
 ## Privacy
 
 The address is only in the database tables `wallet_watch` (laptop and hosted). It is not in the repository, no API returns it and logs show it masked

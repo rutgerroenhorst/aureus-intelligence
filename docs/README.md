@@ -13,7 +13,7 @@ Supabase (the database and the clock), with the laptop as an optional extra. **I
 | [`RESTORE.md`](RESTORE.md) | going back to a tagged state of the code (`scripts/restore-baseline.sh`), the migrations since each restore point, the database clock |
 | [`LIMITS.md`](LIMITS.md) | the free-plan limits, what is measured against them, what to do when a warning shows |
 | [`OPERATIONS.md`](OPERATIONS.md) | running the worker and the web app on the laptop (PM2 or Docker Compose); older, the hosted side is in the files below |
-| [`EXIT_ALERTS.md`](EXIT_ALERTS.md), [`TELEGRAM_SETUP.md`](TELEGRAM_SETUP.md) | the Telegram exit alerts (2x/5x), the bot, pairing, rotating the token |
+| [`EXIT_ALERTS.md`](EXIT_ALERTS.md), [`TELEGRAM_SETUP.md`](TELEGRAM_SETUP.md) | the Telegram exit alerts (rebuilt 2026-10-13: first profit at 2x, quiet steps 3-100x, the line = the site's stop, the loss message, buttons incl. Open in FOMO), the bot, pairing, rotating the token |
 | [`GRADUATIONS_FEED.md`](GRADUATIONS_FEED.md) | the Graduations tab without the laptop: the chain feed, the source priority |
 | [`CLOUD_SCAN_AND_LEARNING.md`](CLOUD_SCAN_AND_LEARNING.md) | how the hosted site scans and learns by itself, the leases, the budgets |
 | [`DATA_SOURCES.md`](DATA_SOURCES.md) | every free data source: what was tested, what is used, the traps |
@@ -28,7 +28,8 @@ Supabase (the database and the clock), with the laptop as an optional extra. **I
 | [`ALERT_REDESIGN.md`](ALERT_REDESIGN.md) | research and proposal for the Telegram messages: which levels to alert at (and why not every x), what to suggest, how they should look and be shared, what the FOMO app can and cannot do (no stops) and what an order costs there; not built yet |
 | [`EXIT_PRACTICE.md`](EXIT_PRACTICE.md) | the exit and entry rules used in practice for pump.fun / PumpSwap memecoins (guides, a vendor, two papers), graded and tested on the lab's coins: none beats the current advice; the entry moment matters as much; includes the correction of the "decided window" bias |
 | [`HOT_NETWORKS.md`](HOT_NETWORKS.md) | the ranking of networks at the top of the Radar and the Hot tab |
-| [`WALLET.md`](WALLET.md), [`WALLET_REVIEW.md`](WALLET_REVIEW.md) | the followed wallet: the decoder, the journal merge, what it showed |
+| [`WALLET.md`](WALLET.md), [`WALLET_REVIEW.md`](WALLET_REVIEW.md), [`WALLET_REVIEW_2.md`](WALLET_REVIEW_2.md) | the followed wallet: the decoder, the journal merge, what it showed (second review: 200 coins since August, 78% never sold, the 88 payments the review cannot see) |
+| [`GRADUATION_AUDIT.md`](GRADUATION_AUDIT.md) | why $VEIL never showed (DexScreener's batch endpoint hands back a dead bonding-curve pair), the fix, and whether the Graduations tab's default view hides the coins that run |
 | [`KENNIS.md`](KENNIS.md) | the Kennis tab: the written knowledge base, how it searches, how to add to it |
 | [`BRAND.md`](BRAND.md) | the Auriga name, mark, colours, icons |
 | [`TAIL_RESEARCH.md`](TAIL_RESEARCH.md), [`RESEARCH_CHECKS.md`](RESEARCH_CHECKS.md), [`RESEARCH_COIN_STUDY.md`](RESEARCH_COIN_STUDY.md) | research: why the big winners are missed, outside claims that were checked, an outcome study |

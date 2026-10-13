@@ -43,6 +43,8 @@ Entry signals people name (checked against what the lab can test):
 
 - **Coins**: every lab coin with at least three clean readings whose entry plus 72 hours was over by the latest reading; one row per coin; phantom readings removed. Populations: **PumpSwap** (the first-look pool is PumpSwap: a pump.fun graduate, 763 coins at the first look),
   other pools (387) and all (1,161).
+- **What "the first look" is** (corrected 2026-10-13): the lab's first reading of a coin, not the moment of its graduation. The Radar's door admits a pool only once it is 60 minutes old (and up to $150K market cap), so the first look is at a pool age of **1.0 / 1.3 / 17.1 hours** (10th / median / 90th percentile).
+  An earlier version of this page, and of the chat answers built on it, read "74% lose half at the first look" as the graduation moment. The graduation lane (coins seen at their graduation by the chain feed and the stream, since 2026-10-09) has no finished cohort yet; the forward test in section 5 is for it.
 - **Entry**: at the first look, and 6 hours later (the first reading at least six hours after the first look; the coin has to be alive and priced then). Later entries 1, 3, 12 and 24 hours after the first look are in section 4.
 - **Fills and costs**: a trigger on a reading is sold **five minutes later** at the price then (an alert, then a person), with the owner's real cost per sale (a flat $0.10, +1% from $8; `docs/ALERT_REDESIGN.md`), stake $3, 72-hour horizon.
 - **Rules**: 29, fixed in the header of the script (baselines; the five ladders of the guides, each as written and with a 40% trail; seven trailing stops from 10% to 50%; a tightening and a time-decay trail; three hard stops; five overlays on the
@@ -97,19 +99,35 @@ What holds:
 5. **A time stop** (sell when 6-12 hours after the entry the coin never reached 1.3x) is a small plus at the first look (+2 [0, 4]) and a larger one at a 6 h entry against the current advice (+8 [2, 13]); against the proposal it is +4 [-3, 9]. Borderline.
 6. **The liquidity guard does nothing** (see the table in section 1: the price stop fires first).
 
-**Entry timing** (the current exit, PumpSwap coins that are alive and priced N hours after their first look; stake $3, real cost, 5 minutes late):
+**Entry timing on the age of the pool** (the current exit; PumpSwap coins entered when their pool is N hours old, alive and priced then; stake $3, real cost, 5 minutes late; redone on the pool's age on 2026-10-13, the first version counted hours after the first look):
 
-| entered | coins | lose half within 24 h | touch 2x within 72 h | mean result | later entry minus first-look entry [90%] |
-| --- | --- | --- | --- | --- | --- |
-| at the first look | 763 | **74%** | 24% | -21% | |
-| 1 h later | 702 | 57% | 20% | -8% | +14 [-3, 31] |
-| 3 h later | 638 | 49% | 18% | -13% | +8 [-7, 25] |
-| 6 h later | 558 | 42% | 18% | -12% | +10 [-5, 23] |
-| 12 h later | 463 | 37% | 16% | -14% | +7 [-6, 21] |
-| 24 h later | 387 | 20% | 12% | -15% | +6 [-5, 17] |
+| pool age | coins | lose half within 24 h | touch 2x within 72 h | hold for 72 h | the current exit | later entry minus the 1 h entry [90%] |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 h | 519 | **78%** | 24% | -54% | -22% | |
+| 2 h | 514 | 63% | 21% | -44% | -18% | +5 [-14, 21] |
+| 3 h | 507 | 56% | 17% | -43% | -9% | +13 [-6, 32] |
+| 6 h | 488 | 47% | 16% | -35% | -22% | 0 [-16, 16] |
+| 12 h | 419 | 37% | 20% | -24% | -9% | +14 [-5, 30] |
+| 24 h | 402 | 28% | 12% | -26% | -21% | +2 [-13, 15] |
 
-Waiting makes the crash much rarer (74% of the first-look entries lose half within a day, 20% of the entries a day later) and the doubling rarer too (24% to 12%). The effect on the average result (+6 to +14 points) points the same way but
-**is within noise**; most of it is in the first hour. For other pools nothing can be said (the average of "hold" there is carried by a few big winners).
+Waiting makes the crash rarer (78% of the entries at a pool age of one hour lose half within a day, 28% of the entries a day later) and the doubling rarer too (24% to 12%). The effect on the average result of the current exit is **within noise**: every interval includes zero (0 to +14 points), and
+the current exit beats holding by 31 [21, 42] points at one hour, which is the only large, clear number in the table. Other pools: the share that loses half within a day does not fall with age (45-51% for the first six hours, 34-37% later), and the average of "hold" there is carried by a few big winners, so nothing can be said.
+These rows are what the Check button's age line quotes (`apps/web/lib/ageRates.ts`).
+
+**What became of a fresh loser** (`scripts/lab-fresh-loser.ts`, read 2026-10-13, the basis of the loss message; every lab coin whose first look is at least 73 hours before the latest reading, entered at the first look; 537 coins, 354 on PumpSwap):
+
+| | PumpSwap | other pools | all |
+| --- | --- | --- | --- |
+| fell to 0.7x of the first look or lower within 72 h | 90% (319 / 354) | 87% (154 / 177) | **89%** (477 / 537) |
+| of those: ended at half or lower | 84% | 69% | **79%** |
+| of those: ended at 0.3x or lower | 78% | 57% | 71% |
+| of those: back at 1x or more | 8% | 15% | **10%** |
+| of those: reached 0.7x within 6 h | 72% | 71% | 71% |
+
+A coin that is 30% under what was paid in its first days is, in this data, usually a coin that keeps falling. It is also nearly every coin: 89% of the lab's first-look entries fell that far. So the loss message is not rare; it is quiet, once per position, and it is a statistic, not a forecast of the coin in hand
+(the lab entered at the first look, the owner enters at all kinds of moments). The −30% stop on a fresh position was worth +3 [1, 5] points of a $3 stake against the current exit, fee included (the one measured improvement; the alert research has the table, section 1 the −30% rows with a wider interval).
+At a $2 stake an order costs 5 points of it, at $5 two points, so for the smallest positions the message is about break-even on average; the proposal had it only for positions of $4 or more, the built message goes down to a position worth $1 because the owner's
+typical positions are $2 to $5, says the cost in the message and is quiet. `EXIT_ALERT_LOSS=0` switches it off.
 
 **Entry conditions, exploratory** (six conditions fixed before looking; PumpSwap coins; the current exit; "a" against "b"; a difference is "a minus b"; they decide nothing until they hold on coins that come later):
 
@@ -130,7 +148,7 @@ The guides' "minimum pool of $30,000-50,000" has the opposite sign at a one-hour
 
 - There is no exit rule in circulation for these coins that is better than what the owner already uses, measurably. What is *supported*: sell something at the first double, never leave the rest without an exit, do not use a hard stop alone, and a stop at -30% on
   a fresh position is a small plus. Tight trailing stops from the entry and a time stop are candidates.
-- The **entry moment** matters at least as much as any exit: a PumpSwap coin bought at its first look has a 74% chance of losing half within a day; an hour later 57%, six hours later 42%.
+- The **entry moment** matters at least as much as any exit: a PumpSwap coin bought when its pool is an hour old has a 78% chance of losing half within a day; at six hours 47%, at a day 28%. (Whether waiting pays on average is not established: every interval includes zero.)
 - The signals people name for entries are mostly **registered hypotheses with no verdict yet** (H1-H12 in the Learning Lab; the ones with a verdict in the early data are H3 "volume dried up", p=0.002, and H2 "buying a high", p=0.04, both still to be confirmed on coins
   first seen after 2026-10-10); the new work here adds one more thing to check, "tight trails from the entry".
 - Predictors have a bad record out of time (the audit paper: 0.86 to 0.46), which is why nothing here was tuned on the old coins.
@@ -138,12 +156,12 @@ The guides' "minimum pool of $30,000-50,000" has the opposite sign at a one-hour
 ## 5. Forward test, fixed now
 
 Re-run `scripts/lab-exit-practice.ts` after 2026-10-27 and look **only at coins first seen after 2026-10-13** (the graduation lane will have mature cohorts by then). The claims, with the bar for believing them: (a) entering PumpSwap coins an hour or more after the first look beats
-the first-look entry on the mean (here +6 to +14); (b) a 20-25% trail from the entry beats the current advice by 5 points or more with the interval above zero; (c) a stop at -30% on a fresh position stays at about +3; (d) 50%, 75% and 100% at the first alert stay equal.
+the first-look entry on the mean (here 0 to +14, all within noise); (b) a 20-25% trail from the entry beats the current advice by 5 points or more with the interval above zero; (c) a stop at -30% on a fresh position stays at about +3; (d) 50%, 75% and 100% at the first alert stay equal.
 Anything that fails stays out.
 
 ## 6. Not built, and what could be (all need the owner's yes)
 
-- A "this coin is N minutes old" line in the Check button with the base rate from this table (74% of PumpSwap coins lose half within a day at the first look).
+- ~~A "this coin is N minutes old" line in the Check button with the base rate from this table~~: **built 2026-10-13** (`apps/web/lib/ageRates.ts`, the "Pool age" line of the Check; a note, never part of its verdict; the rates are copied from the table above and carry their date, so they have to be redone when this table is).
 - No separate "pool down by half" danger message in the alert redesign: on PumpSwap the price stop already covers it.
 - Nothing about the exits changes: the alert redesign keeps the current advice (decision 2 in `docs/ALERT_REDESIGN.md`).
 

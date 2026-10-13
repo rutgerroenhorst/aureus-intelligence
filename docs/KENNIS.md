@@ -6,7 +6,7 @@ This is that: text written by hand, found by a search that runs in the browser, 
 
 ## What it is, and what it is not
 
-- **It is** a reference: 170 entries in 12 categories (basics, trading on a DEX, pump.fun and memecoins, holders and wallets, scams and rugs, security, patterns,
+- **It is** a reference: 172 entries in 12 categories (basics, trading on a DEX, pump.fun and memecoins, holders and wallets, scams and rugs, security, patterns,
   risk management, taking profit and exiting, psychology, tools, and this system itself), 134 word-list terms (including trading slang), over a thousand sample
   questions that the entries answer, and four calculators.
 - **It is not** a model. It does not reason, combine, or make anything up. A question is answered by *finding* the written entry that fits best; when nothing fits well
@@ -105,6 +105,8 @@ When the Check gets a new line, add it to `checkLinks.ts` and give it an entry; 
 - **Written for this system.** The entries about taking profit quote the lab (`docs/EXIT_STRATEGY.md`: 1,123 followed coins, 15.7% reached 2x, 9.4% 3x, 5.4% 5x, 2.6% 10x;
   half out at 2x plus a 40% trailing stop beat all-out-at-2x by about 6 points; *what you buy matters more than the exit*). If the lab reports change those numbers, change the
   entries too (search the entries for the number). The user's own numbers come from the database and are always current.
+- **Updated with the alert rebuild (2026-10-13).** `alerts-2x-5x` now describes the ladder, the line and the loss message; `check-lijnen` has the pool-age line and `graduations-uitleg` the "Hidden, but running now" strip; `eerste-uur` and `born-graduated` were rewritten (the lab's first look is at a pool age of about 1.3 hours; hidden kinds mostly drain, one in nine born graduations still doubles);
+  `exit-onderzoek` and `limit-orders` say what the matured-cohort research found and that the owner's trading app cannot place a stop; new entries `fomo-geen-stop` and `fomo-kosten` (172 entries in all). The Check's "age" line links to `eerste-uur`.
 - **Facts that go stale are kept out.** No prices, no fee tables, no "the best exchange". Platform behaviour (pump.fun's curve, PumpSwap versus Raydium, RugCheck's fields)
   is described as of the writing and named as such; the Check and the lab are the live evidence.
 - **Not advice.** The entries say what the numbers show and what usually goes wrong; they never say "buy this". Risk rules are phrased as rules of play, with the sums shown.

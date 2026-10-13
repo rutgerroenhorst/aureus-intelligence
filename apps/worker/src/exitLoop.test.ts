@@ -2,8 +2,8 @@ import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { newPassState, pairFromUpdates, parseEnv, readConfig, runPass, setEnvVar, telegram, welcome, type Deps, type PassState, type Priced, type Store, type Streak, type Telegram, type Update } from "./exitLoop";
-import type { Fill } from "../../web/lib/exitAlerts";
+import { dexQuotes, keyboard, newPassState, pairFromUpdates, parseEnv, readConfig, runPass, setEnvVar, telegram, welcome, type Deps, type PassState, type Priced, type Store, type Streak, type Telegram, type Update } from "./exitLoop";
+import { LEVELS_DEFAULT, type Fill, type MessageButton } from "../../web/lib/exitAlerts";
 import type { LoggedMessage } from "./telegramLog";
 
 const TOKEN = "111:not-a-real-token-unit-test";
@@ -22,13 +22,13 @@ describe("configuration: environment and a private file", () => {
     expect(readConfig({ EXIT_ALERT_CHAT_ID: "7" } as NodeJS.ProcessEnv, f)!.chatId).toBe("7");
   });
 
-  it("has no configuration without a token, and defaults to 2x and 5x", () => {
+  it("has no configuration without a token, and defaults to the log ladder 2, 3, 5, 10, 20, 50, 100", () => {
     const f = tmp();
     expect(readConfig({}, f)).toBeNull();
     fs.writeFileSync(f, `EXIT_ALERT_TOKEN=${TOKEN}\n`);
-    expect(readConfig({}, f)!.levels).toEqual([2, 5]);
+    expect(readConfig({}, f)!.levels).toEqual([2, 3, 5, 10, 20, 50, 100]);
     fs.writeFileSync(f, `EXIT_ALERT_TOKEN=${TOKEN}\nEXIT_ALERT_LEVELS=nonsense,0.5\n`);
-    expect(readConfig({}, f)!.levels).toEqual([2, 5]);
+    expect(readConfig({}, f)!.levels).toEqual([2, 3, 5, 10, 20, 50, 100]);
   });
 
   it("sets and removes one variable, keeps the others and keeps the file private", () => {
@@ -82,6 +82,74 @@ describe("the Telegram client", () => {
     expect(r).toEqual({ ok: true, messageId: 9 });
     expect(bodies).toHaveLength(2);
     expect(bodies[1].reply_markup).toBeUndefined();
+  });
+
+  it("sends link and copy buttons two to a row with their colours, and a quiet message without a sound", async () => {
+    let seenBody: any = null;
+    const f = (async (_url: string, init: any) => {
+      seenBody = JSON.parse(init.body);
+      return new Response(JSON.stringify({ ok: true, result: { message_id: 6 } }), { status: 200 });
+    }) as unknown as typeof fetch;
+    const buttons: MessageButton[] = [
+      { text: "Open in FOMO", url: "https://fomo.family/coin?address=M&chainId=1399811149", style: "success" },
+      { text: "DexScreener", url: "https://dexscreener.com/solana/P" },
+      { text: "Kopieer adres", copy: "MINTADDRESS" },
+    ];
+    await telegram(TOKEN, f).send("42", "hi", { buttons, silent: true });
+    expect(seenBody.disable_notification).toBe(true);
+    expect(seenBody.reply_markup.inline_keyboard).toEqual([
+      [{ text: "Open in FOMO", url: "https://fomo.family/coin?address=M&chainId=1399811149", style: "success" }, { text: "DexScreener", url: "https://dexscreener.com/solana/P" }],
+      [{ text: "Kopieer adres", copy_text: { text: "MINTADDRESS" } }],
+    ]);
+    await telegram(TOKEN, f).send("42", "loud", { buttons });
+    expect(seenBody.disable_notification).toBeUndefined();
+  });
+
+  it("when Telegram refuses a colour or a copy button it sends the message again with less, down to no buttons, and never loses the message", async () => {
+    const bodies: any[] = [];
+    const buttons: MessageButton[] = [
+      { text: "Open in FOMO", url: "https://fomo.family/coin?address=M&chainId=1399811149", style: "success" },
+      { text: "Kopieer adres", copy: "MINTADDRESS" },
+    ];
+    // refuses anything with a colour, then anything with a copy button
+    const f = (async (_url: string, init: any) => {
+      const b = JSON.parse(init.body);
+      bodies.push(b);
+      const kb = JSON.stringify(b.reply_markup ?? {});
+      if (kb.includes('"style"')) return new Response(JSON.stringify({ ok: false, description: "Bad Request: BUTTON_STYLE_INVALID" }), { status: 400 });
+      if (kb.includes("copy_text")) return new Response(JSON.stringify({ ok: false, description: "Bad Request: unsupported button type" }), { status: 400 });
+      return new Response(JSON.stringify({ ok: true, result: { message_id: 11 } }), { status: 200 });
+    }) as unknown as typeof fetch;
+    const r = await telegram(TOKEN, f).send("42", "hi", { buttons });
+    expect(r).toEqual({ ok: true, messageId: 11 });
+    expect(bodies).toHaveLength(3);
+    expect(JSON.stringify(bodies[1].reply_markup)).not.toContain("style");
+    expect(JSON.stringify(bodies[1].reply_markup)).toContain("copy_text");
+    expect(JSON.stringify(bodies[2].reply_markup)).not.toContain("copy_text");
+    expect(bodies[2].reply_markup.inline_keyboard).toEqual([[{ text: "Open in FOMO", url: "https://fomo.family/coin?address=M&chainId=1399811149" }]]);
+    // and when every keyboard is refused the message itself still goes out
+    const bodies2: any[] = [];
+    const g = (async (_url: string, init: any) => {
+      const b = JSON.parse(init.body);
+      bodies2.push(b);
+      return b.reply_markup ? new Response(JSON.stringify({ ok: false, description: "Bad Request: BUTTON_URL_INVALID" }), { status: 400 }) : new Response(JSON.stringify({ ok: true, result: { message_id: 12 } }), { status: 200 });
+    }) as unknown as typeof fetch;
+    expect(await telegram(TOKEN, g).send("42", "hi", { buttons })).toEqual({ ok: true, messageId: 12 });
+    expect(bodies2[bodies2.length - 1].reply_markup).toBeUndefined();
+  });
+
+  it("builds the keyboard two buttons to a row, drops links that are not http(s), and trims what a copy button copies", () => {
+    const rows = keyboard([
+      { text: "a", url: "https://a.example" },
+      { text: "b", url: "javascript:alert(1)" },
+      { text: "c", copy: "x".repeat(400) },
+      { text: "d", url: "https://d.example", style: "danger" },
+    ]);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toHaveLength(2);
+    expect((rows[0]![1] as any).copy_text.text).toHaveLength(256);
+    expect(rows[1]).toEqual([{ text: "d", url: "https://d.example", style: "danger" }]);
+    expect(keyboard([{ text: "d", url: "https://d.example", style: "danger" }], { plain: true })).toEqual([[{ text: "d", url: "https://d.example" }]]);
   });
 
   it("never lets the token into an error, whatever the failure", async () => {
@@ -140,6 +208,7 @@ function memStore(fills: Map<string, Fill[]>, armed: number | null) {
   /** how often the big reads happened */
   const reads = { fills: 0, knownAll: 0, alertsLast24h: 0 };
   let streaks: Record<string, Streak> = {};
+  const kv = new Map<string, string>();
   const rows = new Map<string, { state: string; messageId?: number }>();
   const records: LoggedMessage[] = [];
   let armedAt = armed;
@@ -193,14 +262,27 @@ function memStore(fills: Map<string, Fill[]>, armed: number | null) {
     saveStreaks: async (x) => {
       streaks = JSON.parse(JSON.stringify(x));
     },
+    sentTop: async () => {
+      const out = new Map<string, number>();
+      for (const [k, v] of rows) {
+        const [m, st, l] = k.split("|");
+        if (v.state === "sent" && Number(l) > 0) out.set(`${m}|${st}`, Math.max(out.get(`${m}|${st}`) ?? 0, Number(l)));
+      }
+      return out;
+    },
+    kvGet: async (k) => kv.get(k) ?? null,
+    kvSet: async (k, v) => {
+      kv.set(k, v);
+    },
   };
-  return { store, rows, records, extraAlerts, reads, streaks: () => streaks };
+  return { store, rows, records, extraAlerts, reads, kv, streaks: () => streaks };
 }
 
 function harness(opts: { fills: Map<string, Fill[]>; armed: number | null; quotes: Record<string, Priced | undefined> }) {
-  const { store, rows, records, extraAlerts, reads, streaks } = memStore(opts.fills, opts.armed);
+  const { store, rows, records, extraAlerts, reads, kv, streaks } = memStore(opts.fills, opts.armed);
   const sent: string[] = [];
-  const buttons: Array<Array<{ text: string; url: string }> | undefined> = [];
+  const silent: boolean[] = [];
+  const buttons: Array<MessageButton[] | undefined> = [];
   const logs: string[] = [];
   let fail = false;
   let retryAfter: number | undefined;
@@ -208,6 +290,7 @@ function harness(opts: { fills: Map<string, Fill[]>; armed: number | null; quote
     send: async (_chat, text, opts) => {
       if (fail) return { ok: false, error: "Too Many Requests", ...(retryAfter ? { retryAfter } : {}) };
       sent.push(text);
+      silent.push(Boolean(opts?.silent));
       buttons.push(opts?.buttons);
       return { ok: true, messageId: 1000 + sent.length };
     },
@@ -223,7 +306,7 @@ function harness(opts: { fills: Map<string, Fill[]>; armed: number | null; quote
     // each pass of the tests is a separate check, whatever the clock says
     minGapS: 0,
   };
-  return { deps, rows, records, reads, streaks, sent, buttons, logs, st: newPassState(), extraAlerts, setFail: (v: boolean) => (fail = v), setRetryAfter: (v: number | undefined) => (retryAfter = v) };
+  return { deps, rows, records, reads, streaks, kv, sent, silent, buttons, logs, st: newPassState(), extraAlerts, setFail: (v: boolean) => (fail = v), setRetryAfter: (v: number | undefined) => (retryAfter = v) };
 }
 
 const cfg = { chatId: "42", levels: [2, 5] };
@@ -251,11 +334,14 @@ describe("a pass", () => {
     expect(h.sent).toEqual([]); // one check is not enough
     await runPass(cfg, h.deps, h.st);
     expect(h.sent).toHaveLength(1);
-    expect(h.sent[0]).toContain("<b>M1</b>");
-    expect(h.sent[0]).toContain("2×-drempel gehaald");
-    // the link is a button under the message, not text in it
+    expect(h.sent[0]).toContain("<b>M1</b> · koers <b>2,1×</b>");
+    expect(h.sent[0]).toContain("Verkoop <b>50%</b> van wat je nu hebt");
+    // the first level reported is the one with sound; the links are buttons under the message, not text in it
+    expect(h.silent[0]).toBe(false);
     expect(h.sent[0]).not.toContain("https://");
-    expect(h.buttons[0]).toEqual([{ text: "📊 Open in DexScreener", url: "https://dexscreener.com/solana/PAIRX" }]);
+    expect(h.buttons[0]!.map((b) => b.text)).toEqual(["Open in FOMO", "DexScreener", "Kopieer adres"]);
+    expect(h.buttons[0]![1]).toEqual({ text: "DexScreener", url: "https://dexscreener.com/solana/PAIRX" });
+    expect(h.buttons[0]![2]).toEqual({ text: "Kopieer adres", copy: "m1" });
     expect(h.rows.get("m1|900000|2")).toEqual({ state: "sent", messageId: 1001 });
     await runPass(cfg, h.deps, h.st);
     await runPass(cfg, h.deps, h.st);
@@ -281,7 +367,7 @@ describe("a pass", () => {
     await runPass(cfg, h.deps, h.st);
     await runPass(cfg, h.deps, h.st);
     expect(h.sent).toHaveLength(1);
-    expect(h.sent[0]).toContain("5×-drempel gehaald");
+    expect(h.sent[0]).toContain("koers <b>6,5×</b>");
     expect(h.rows.get("m1|900000|2")?.state).toBe("sent");
     expect(h.rows.get("m1|900000|5")?.state).toBe("sent");
   });
@@ -383,7 +469,7 @@ describe("the record of what was sent (the Telegram page)", () => {
     expect(h.records).toHaveLength(1);
     expect(h.records[0]).toMatchObject({ kind: "alert", ok: true, messageId: 1001, symbol: "M1", level: 2 });
     // what the page shows is the text as sent plus the button's link
-    expect(h.records[0]!.html).toBe(`${h.sent[0]}\n\n📊 Open in DexScreener: https://dexscreener.com/solana/PAIRX`);
+    expect(h.records[0]!.html).toBe(`${h.sent[0]}\n\nOpen in FOMO: https://fomo.family/coin?address=m1&chainId=1399811149\nDexScreener: https://dexscreener.com/solana/PAIRX\nKopieer adres: m1`);
     expect(h.st.logged).toBe(1);
   });
 
@@ -572,5 +658,339 @@ describe("running where every check may start in a new process (the site's own 2
     await runPass(cfg, h.deps, h.st);
     expect(h.reads.alertsLast24h).toBe(1);
     expect(h.sent).toHaveLength(1);
+  });
+});
+
+
+describe("the ladder, the quiet steps and the line (the site's own stop)", () => {
+  const ladder = { chatId: "42", levels: LEVELS_DEFAULT };
+  // bought after the alerts were switched on, so nothing is seeded: 1000 tokens for $2 (price 0.002)
+  const fresh = () => oneBuy(1_000_500);
+  const at = (h: ReturnType<typeof harness>, price: number, liq = 20_000) => {
+    h.deps.prices = async () => new Map([["m1", quote(price, liq)]]);
+  };
+  /** a crossing needs two checks in a row */
+  const hold = async (h: ReturnType<typeof harness>, price: number, passes = 2) => {
+    at(h, price);
+    for (let i = 0; i < passes; i++) await runPass(ladder, h.deps, h.st);
+  };
+
+  it("the first level reported has sound; the next levels are quiet steps that move the line up", async () => {
+    const h = harness({ fills: fresh(), armed: 1_000_000, quotes: { m1: quote(0.003) } });
+    await runPass(ladder, h.deps, h.st);
+    await hold(h, 0.0042); // 2.1x
+    await hold(h, 0.0064); // 3.2x
+    await hold(h, 0.0104); // 5.2x
+    expect(h.sent).toHaveLength(3);
+    expect(h.silent).toEqual([false, true, true]);
+    expect(h.sent[0]).toMatch(/^🟢/);
+    expect(h.sent[0]).toContain("Verkoop <b>50%</b>");
+    expect(h.sent[1]).toMatch(/^🔵/);
+    expect(h.sent[1]).toContain("De lijn gaat omhoog naar <b>2,3×</b>");
+    expect(h.sent[2]).toContain("De lijn gaat omhoog naar <b>3,8×</b>");
+    expect(["2", "3", "5"].map((l) => h.rows.get(`m1|1000500|${l}`)?.state)).toEqual(["sent", "sent", "sent"]);
+  });
+
+  it("a coin that jumps over several levels gets one message, with sound if nothing was reported before", async () => {
+    const h = harness({ fills: fresh(), armed: 1_000_000, quotes: { m1: quote(0.003) } });
+    await runPass(ladder, h.deps, h.st);
+    await hold(h, 0.022); // 11x
+    expect(h.sent).toHaveLength(1);
+    expect(h.silent[0]).toBe(false);
+    expect(h.sent[0]).toContain("koers <b>11×</b>");
+    for (const l of ["2", "3", "5", "10"]) expect(h.rows.get(`m1|1000500|${l}`)?.state).toBe("sent");
+  });
+
+  it("when the price falls to the line it says so once, with sound, after a second look: sell the rest", async () => {
+    const sleeps: number[] = [];
+    const h = harness({ fills: fresh(), armed: 1_000_000, quotes: { m1: quote(0.003) } });
+    h.deps.sleep = async (ms) => {
+      sleeps.push(ms);
+    };
+    await runPass(ladder, h.deps, h.st);
+    await hold(h, 0.0042); // first profit at 2.1x, armed: the line is 1.5x = $0.003
+    expect(h.sent).toHaveLength(1);
+    at(h, 0.0028); // 1.4x: under the line
+    sleeps.length = 0;
+    await runPass(ladder, h.deps, h.st);
+    expect(sleeps).toEqual([25_000]); // one look more, after a pause
+    expect(h.sent).toHaveLength(2);
+    expect(h.silent[1]).toBe(false);
+    expect(h.sent[1]).toMatch(/^🔴 <b>M1<\/b> · koers <b>1,4×<\/b>/);
+    expect(h.sent[1]).toContain("Laatste niveau: <b>2,0×</b>, de lijn lag op <b>1,5×</b>.");
+    expect(h.sent[1]).toContain("Verkoop de rest (<b>100%</b>) nu: ≈ $2,80");
+    expect(h.buttons[1]![0]).toMatchObject({ text: "Open in FOMO", style: "danger" });
+    expect(h.rows.get("m1|1000500|-2")?.state).toBe("sent");
+    // once: still under the line, nothing more
+    at(h, 0.0025);
+    await runPass(ladder, h.deps, h.st);
+    await runPass(ladder, h.deps, h.st);
+    expect(h.sent).toHaveLength(2);
+    expect(h.records.filter((r) => r.kind === "alert" && r.ok)).toHaveLength(2);
+  });
+
+  it("one bad print under the line is not a fall: the second look cancels it and nothing is claimed", async () => {
+    const h = harness({ fills: fresh(), armed: 1_000_000, quotes: { m1: quote(0.003) } });
+    await runPass(ladder, h.deps, h.st);
+    await hold(h, 0.0042);
+    const seen: number[] = [];
+    h.deps.prices = async () => {
+      seen.push(seen.length);
+      // the pass sees 1.4x, the look after the pause sees 1.9x again
+      return new Map([["m1", quote(seen.length === 1 ? 0.0028 : 0.0038)]]);
+    };
+    await runPass(ladder, h.deps, h.st);
+    expect(seen.length).toBeGreaterThanOrEqual(2);
+    expect(h.sent).toHaveLength(1);
+    expect(h.rows.has("m1|1000500|-2")).toBe(false);
+  });
+
+  it("a position that was already under its line before it was ever seen above it is never announced (nothing is said about old positions when this is switched on)", async () => {
+    const h = harness({ fills: oneBuy(), armed: 1_000_000, quotes: { m1: quote(0.001) } }); // 0.5x now
+    // the 2x alert was sent long ago, under the old ladder
+    h.rows.set("m1|900000|0", { state: "seeded" });
+    h.rows.set("m1|900000|2", { state: "sent", messageId: 5 });
+    await runPass(ladder, h.deps, h.st);
+    await runPass(ladder, h.deps, h.st);
+    expect(h.sent).toEqual([]);
+    // it rises above the line (armed), then falls under it: now it is announced
+    at(h, 0.0045);
+    await runPass(ladder, h.deps, h.st);
+    at(h, 0.0025); // 1.25x
+    await runPass(ladder, h.deps, h.st);
+    expect(h.sent).toHaveLength(1);
+    expect(h.sent[0]).toMatch(/^🔴/);
+  });
+
+  it("the line follows the highest level reported: after 5x it is 3.75x", async () => {
+    const h = harness({ fills: fresh(), armed: 1_000_000, quotes: { m1: quote(0.003) } });
+    await runPass(ladder, h.deps, h.st);
+    await hold(h, 0.0104); // 5.2x: first profit for the highest level
+    expect(h.sent).toHaveLength(1);
+    await hold(h, 0.0086); // 4.3x: above the line of 3.75x
+    expect(h.sent).toHaveLength(1);
+    await hold(h, 0.0066, 1); // 3.3x: under it
+    expect(h.sent).toHaveLength(2);
+    expect(h.sent[1]).toContain("de lijn lag op <b>3,8×</b>");
+  });
+
+  it("the line message needs a real pool and a position worth an order, like every other message", async () => {
+    const h = harness({ fills: fresh(), armed: 1_000_000, quotes: { m1: quote(0.003) } });
+    await runPass(ladder, h.deps, h.st);
+    await hold(h, 0.0042);
+    h.deps.prices = async () => new Map([["m1", quote(0.0028, 500)]]);
+    await runPass(ladder, h.deps, h.st);
+    expect(h.sent).toHaveLength(1);
+  });
+
+  it("a position worth less than $2 stays quiet: an order costs at least $0.10, which is 5% of it", async () => {
+    // 400 tokens are left of the 1000 bought at 0.002; at 2.1x they are worth $1.68
+    const small = new Map<string, Fill[]>([["m1", [{ t: 1_000_500, side: "buy", tokens: 1000, usd: 2 }, { t: 1_000_600, side: "sell", tokens: 600, usd: 2.4 }]]]);
+    const h = harness({ fills: small, armed: 1_000_000, quotes: { m1: quote(0.003) } });
+    await runPass(ladder, h.deps, h.st);
+    await hold(h, 0.0042);
+    expect(h.sent).toEqual([]);
+  });
+
+  it("the ladder is switched on without a flood: a position that had passed a level is not told about the new levels it is above, and later levels are reported as steps", async () => {
+    const h = harness({ fills: oneBuy(), armed: 1_000_000, quotes: { m1: quote(0.012) } }); // 6x now
+    // under the old ladder 2x and 5x were reported
+    h.rows.set("m1|900000|0", { state: "seeded" });
+    h.rows.set("m1|900000|2", { state: "sent", messageId: 1 });
+    h.rows.set("m1|900000|5", { state: "sent", messageId: 2 });
+    await runPass(ladder, h.deps, h.st);
+    await runPass(ladder, h.deps, h.st);
+    await runPass(ladder, h.deps, h.st);
+    expect(h.sent).toEqual([]);
+    expect(h.rows.get("m1|900000|3")?.state).toBe("seeded");
+    expect(h.kv.get("ladder_v2")).toBeDefined();
+    // it goes on to 10x: a quiet step, with the line at 3.75x (from the 5x that was reported before)
+    await hold(h, 0.0215);
+    expect(h.sent).toHaveLength(1);
+    expect(h.silent[0]).toBe(true);
+    expect(h.sent[0]).toContain("De lijn gaat omhoog naar <b>7,5×</b>");
+    function hold(hh: ReturnType<typeof harness>, price: number) {
+      hh.deps.prices = async () => new Map([["m1", quote(price)]]);
+      return runPass(ladder, hh.deps, hh.st).then(() => runPass(ladder, hh.deps, hh.st));
+    }
+  });
+
+  it("a position that had already passed levels when they were switched on (seeded, never reported) has its line under the highest of them, not under the first", async () => {
+    const h = harness({ fills: oneBuy(), armed: 1_000_000, quotes: { m1: quote(0.048) } }); // 24x now
+    await runPass(ladder, h.deps, h.st); // seeds 2, 3, 5, 10, 20: bought before arming, nothing reported
+    expect(h.sent).toEqual([]);
+    for (const l of ["2", "3", "5", "10", "20"]) expect(h.rows.get(`m1|900000|${l}`)?.state).toBe("seeded");
+    await runPass(ladder, h.deps, h.st); // seen above the line of 20x (15x): armed
+    // it falls to 12x: under the line of 15x, long before the old line of 1.5x
+    h.deps.prices = async () => new Map([["m1", quote(0.024)]]);
+    await runPass(ladder, h.deps, h.st);
+    expect(h.sent).toHaveLength(1);
+    expect(h.sent[0]).toMatch(/^🔴/);
+    expect(h.sent[0]).toContain("Laatste niveau: <b>20×</b>, de lijn lag op <b>15×</b>.");
+  });
+
+  it("the new levels are seeded once only: a position that has not reported anything and is above 3x still gets its first profit", async () => {
+    const h = harness({ fills: fresh(), armed: 1_000_000, quotes: { m1: quote(0.003) } });
+    await runPass(ladder, h.deps, h.st); // seen, nothing reported: known is {0}
+    await hold(h, 0.0072); // 3.6x
+    expect(h.sent).toHaveLength(1);
+    expect(h.silent[0]).toBe(false);
+    expect(h.sent[0]).toContain("koers <b>3,6×</b>");
+  });
+
+  it("at 10x the owner's own idea is offered, quietly, once", async () => {
+    const fills = new Map<string, Fill[]>([["m1", [{ t: 1_000_500, side: "buy", tokens: 1000, usd: 2 }]]]);
+    const h = harness({ fills, armed: 1_000_000, quotes: { m1: quote(0.003) } });
+    await runPass(ladder, h.deps, h.st);
+    await hold(h, 0.0042);
+    await hold(h, 0.021); // 10.5x: a position of $21
+    expect(h.sent).toHaveLength(2);
+    expect(h.silent[1]).toBe(true);
+    expect(h.sent[1]).toContain("verkoop <b>25%</b> van wat je nu hebt (≈ $5,25)");
+  });
+
+  it("the arming and the claim live in the database: another process fires the line once, and two runners never both send it", async () => {
+    let now = 1_000_000;
+    const h = harness({ fills: fresh(), armed: 1_000_000, quotes: { m1: quote(0.003) } });
+    h.deps.now = () => now;
+    h.deps.minGapS = 60;
+    const persist = { persistStreaks: true } as const;
+    await runPass(ladder, h.deps, newPassState(), persist);
+    at(h, 0.0042);
+    await runPass(ladder, h.deps, newPassState(), persist);
+    now += 120;
+    await runPass(ladder, h.deps, newPassState(), persist); // first profit sent; the armed line is written to the database
+    expect(h.sent).toHaveLength(1);
+    expect(JSON.parse(h.kv.get("lines") ?? "{}")).toEqual({ "m1|1000500": 2 });
+    now += 120;
+    at(h, 0.0028);
+    await runPass(ladder, h.deps, newPassState(), persist); // a brand new process reads the armed line and fires
+    expect(h.sent).toHaveLength(2);
+    await runPass(ladder, h.deps, newPassState(), persist); // another runner, same moment
+    expect(h.sent).toHaveLength(2);
+  });
+
+  it("forgets the line of a position that is no longer held", async () => {
+    const fills = fresh();
+    const h = harness({ fills, armed: 1_000_000, quotes: { m1: quote(0.003) } });
+    await runPass(ladder, h.deps, h.st, { persistStreaks: true });
+    await hold(h, 0.0042);
+    expect(h.st.lines.size).toBe(1);
+    fills.set("m1", [{ t: 1_000_500, side: "buy", tokens: 1000, usd: 2 }, { t: 1_001_000, side: "sell", tokens: 1000, usd: 4 }]);
+    await runPass(ladder, h.deps, h.st, { persistStreaks: true });
+    expect(h.st.lines.size).toBe(0);
+  });
+});
+
+describe("the loss message (a fresh position that fell 30%)", () => {
+  const ladder = { chatId: "42", levels: LEVELS_DEFAULT };
+  const fresh = (t = 1_000_500, usd = 2) => new Map<string, Fill[]>([["m1", [{ t, side: "buy", tokens: 1000, usd }]]]);
+  const run = async (h: ReturnType<typeof harness>, price: number, passes = 2, liq = 20_000, cfgOver: { loss?: boolean } = {}) => {
+    h.deps.prices = async () => new Map([["m1", quote(price, liq)]]);
+    for (let i = 0; i < passes; i++) await runPass({ ...ladder, ...cfgOver }, h.deps, h.st);
+  };
+  const started = async (h: ReturnType<typeof harness>) => {
+    h.deps.now = () => 1_001_000;
+    await run(h, 0.002, 1); // seen at its own price: nothing
+  };
+
+  it("is sent once, quietly, after two checks in a row at 70% of what was paid or lower", async () => {
+    const h = harness({ fills: fresh(), armed: 1_000_000, quotes: { m1: quote(0.002) } });
+    await started(h);
+    await run(h, 0.0013, 1); // 0.65x: one check
+    expect(h.sent).toEqual([]);
+    await run(h, 0.0013, 1);
+    expect(h.sent).toHaveLength(1);
+    expect(h.silent[0]).toBe(true);
+    expect(h.sent[0]).toMatch(/^🟠 <b>M1<\/b> · koers <b>0,6×<\/b>/);
+    expect(h.sent[0]).toContain("Verkoop alles (<b>100%</b>): ≈ $1,30.");
+    expect(h.rows.get("m1|1000500|-0.7")?.state).toBe("sent");
+    await run(h, 0.0008, 3);
+    expect(h.sent).toHaveLength(1);
+  });
+
+  it("one check is not enough, and a glitch that recovers sends nothing", async () => {
+    const h = harness({ fills: fresh(), armed: 1_000_000, quotes: { m1: quote(0.002) } });
+    await started(h);
+    await run(h, 0.0012, 1);
+    await run(h, 0.002, 1);
+    await run(h, 0.0012, 1);
+    expect(h.sent).toEqual([]);
+  });
+
+  it("is only for positions under 72 hours old, and only until the position has passed 2x", async () => {
+    const old = harness({ fills: fresh(600_000), armed: 1_000_000, quotes: { m1: quote(0.002) } }); // bought 4.6 days before "now"
+    await runPass(ladder, old.deps, old.st);
+    await run(old, 0.0012, 3);
+    expect(old.sent).toEqual([]);
+    const profit = harness({ fills: fresh(), armed: 1_000_000, quotes: { m1: quote(0.002) } });
+    await started(profit);
+    await run(profit, 0.0042, 2); // first profit
+    expect(profit.sent).toHaveLength(1);
+    await run(profit, 0.0012, 3); // down to 0.6x: the line's business, not a fresh loser
+    expect(profit.sent.filter((t) => t.startsWith("🟠"))).toEqual([]);
+  });
+
+  it("needs a position worth $1, a real pool and a position that is small next to it, and can be switched off", async () => {
+    const tiny = harness({ fills: new Map<string, Fill[]>([["m1", [{ t: 1_000_500, side: "buy", tokens: 500, usd: 1 }]]]), armed: 1_000_000, quotes: { m1: quote(0.002) } });
+    tiny.deps.now = () => 1_001_000;
+    await runPass(ladder, tiny.deps, tiny.st);
+    await run(tiny, 0.0012, 3); // $0.60 of value
+    expect(tiny.sent).toEqual([]);
+    const thin = harness({ fills: fresh(), armed: 1_000_000, quotes: { m1: quote(0.002) } });
+    await started(thin);
+    await run(thin, 0.0012, 3, 500);
+    expect(thin.sent).toEqual([]);
+    const off = harness({ fills: fresh(), armed: 1_000_000, quotes: { m1: quote(0.002) } });
+    await started(off);
+    await run(off, 0.0012, 3, 20_000, { loss: false });
+    expect(off.sent).toEqual([]);
+  });
+
+  it("is not sent for a position that was already 30% down when it was switched on, and a later first profit still has sound", async () => {
+    const h = harness({ fills: fresh(), armed: 1_000_000, quotes: { m1: quote(0.0012) } });
+    h.deps.now = () => 1_001_000;
+    await run(h, 0.0012, 3); // seen for the first time at 0.6x, with the new ladder not yet seeded
+    expect(h.sent).toEqual([]);
+    expect(h.rows.get("m1|1000500|-0.7")?.state).toBe("seeded");
+    await run(h, 0.0042, 2);
+    expect(h.sent).toHaveLength(1);
+    expect(h.silent[0]).toBe(false);
+    expect(h.sent[0]).toMatch(/^🟢/);
+  });
+});
+
+describe("prices for the held coins", () => {
+  const MINT = "HgTGdc29D5bDMrDvsCLnorxz899VyDj7ZN7FPa6vpump";
+  const OTHER = "OTHERmint1111111111111111111111111111111111";
+  const json = (body: unknown) => Promise.resolve({ ok: true, json: () => Promise.resolve(body) } as Response);
+
+  it("takes the most liquid priced pool of each coin from the batch answer", async () => {
+    const f = (async () => json([{ baseToken: { address: MINT, symbol: "VEIL" }, priceUsd: "0.0025", liquidity: { usd: 142_000 }, pairAddress: "LIVE" }])) as unknown as typeof fetch;
+    const q = await dexQuotes([MINT], f);
+    expect(q.get(MINT)).toEqual({ price: 0.0025, liq: 142_000, pair: "LIVE", symbol: "VEIL" });
+  });
+
+  it("a coin whose batch pair has no price (an old bonding-curve pair) is priced from its other pools, so its alert can still fire", async () => {
+    const urls: string[] = [];
+    const f = (async (url: string) => {
+      urls.push(url);
+      if (url.includes("/tokens/v1/")) return json([{ baseToken: { address: MINT, symbol: "VEIL" }, dexId: "pumpfun", priceUsd: null, liquidity: { usd: null }, pairAddress: "CURVE" }]);
+      return json({ pairs: [{ chainId: "solana", baseToken: { address: MINT, symbol: "VEIL" }, dexId: "pumpswap", priceUsd: "0.0024", liquidity: { usd: 140_000 }, pairAddress: "LIVE" }] });
+    }) as unknown as typeof fetch;
+    const q = await dexQuotes([MINT], f);
+    expect(q.get(MINT)).toEqual({ price: 0.0024, liq: 140_000, pair: "LIVE", symbol: "VEIL" });
+    expect(urls.some((u) => u.includes(`/latest/dex/tokens/${MINT}`))).toBe(true);
+  });
+
+  it("a coin the batch answer does not list at all is not asked about again (it is gone), and a coin with a price costs no extra call", async () => {
+    const urls: string[] = [];
+    const f = (async (url: string) => {
+      urls.push(url);
+      return json([{ baseToken: { address: MINT, symbol: "VEIL" }, priceUsd: "0.1", liquidity: { usd: 50_000 }, pairAddress: "P" }]);
+    }) as unknown as typeof fetch;
+    const q = await dexQuotes([MINT, OTHER], f);
+    expect(q.has(OTHER)).toBe(false);
+    expect(urls).toHaveLength(1);
   });
 });

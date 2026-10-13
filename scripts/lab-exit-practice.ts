@@ -222,14 +222,16 @@ interface CoinRow {
   mint: string;
   /** epoch seconds of the first look */
   t0: number;
+  /** epoch seconds the pool was created (the age axis of section 3: the Radar's door only admits a pool that is 60 minutes old, so its first look is at about 1.3 hours of age, not at 0) */
+  born: number | null;
   lane: string;
   pump: boolean | null;
   obs: Obs[];
 }
 
 async function loadCoins(): Promise<CoinRow[]> {
-  const meta = new Map<string, { lane: string; pump: boolean | null }>();
-  for (const r of (await pool.query(`SELECT mint, lane, snaps->0->'f'->>'lp_pump' AS lp FROM lab_coins`)).rows) meta.set(r.mint, { lane: r.lane, pump: r.lp == null ? null : r.lp === "1" });
+  const meta = new Map<string, { lane: string; pump: boolean | null; born: number | null }>();
+  for (const r of (await pool.query(`SELECT mint, lane, snaps->0->'f'->>'lp_pump' AS lp, EXTRACT(EPOCH FROM pair_created_at)::float8 AS born FROM lab_coins`)).rows) meta.set(r.mint, { lane: r.lane, pump: r.lp == null ? null : r.lp === "1", born: r.born == null ? null : Number(r.born) });
   const cands = [...(await selectCandidates(pool, { limit: 1_000_000, all: true })), ...(await selectWatch(pool, { limit: 1_000_000, all: true }))];
   const best = new Map<string, CoinRow>();
   for (let b = 0; b < cands.length; b += 40) {
@@ -239,7 +241,7 @@ async function loadCoins(): Promise<CoinRow[]> {
       const { clean } = cleanObs(obsMap.get(c.pool_id) ?? []);
       if (clean.length < 3) continue;
       const m = meta.get(c.mint);
-      const row: CoinRow = { mint: c.mint, t0: clean[0]!.t, lane: m?.lane ?? c.lane ?? "fresh", pump: m?.pump ?? null, obs: clean };
+      const row: CoinRow = { mint: c.mint, t0: clean[0]!.t, born: m?.born ?? null, lane: m?.lane ?? c.lane ?? "fresh", pump: m?.pump ?? null, obs: clean };
       const old = best.get(c.mint);
       if (!old || old.obs.length < clean.length) best.set(c.mint, row);
     }
@@ -263,6 +265,21 @@ function entryIndex(c: CoinRow, tauH: number): number | null {
   if (c.obs[k]!.dead || !(c.obs[k]!.p > 0)) return null;
   const y = forwardLabels(c.obs, k, { rule: "auto" });
   if (!y || y.go2 == null) return null; // the whole window has to be decided
+  return k;
+}
+
+/** The reading at which a coin is entered when its POOL is `ageH` hours old (the first reading at or after that age, no more than 2 hours later): alive, priced, window over and decided. */
+function entryIndexAtAge(c: CoinRow, ageH: number): number | null {
+  if (c.born == null) return null;
+  const target = c.born + ageH * HOUR;
+  let k = 0;
+  while (k < c.obs.length && c.obs[k]!.t < target) k++;
+  if (k >= c.obs.length) return null;
+  if (c.obs[k]!.t - target > 2 * HOUR) return null;
+  if (MATURE_ONLY && c.obs[k]!.t + 72 * HOUR > NOW_S - HOUR) return null;
+  if (c.obs[k]!.dead || !(c.obs[k]!.p > 0)) return null;
+  const y = forwardLabels(c.obs, k, { rule: "auto" });
+  if (!y || y.go2 == null) return null;
   return k;
 }
 
@@ -411,25 +428,27 @@ async function main() {
     }
   }
 
-  // --- 3. entry timing
+  // --- 3. entry timing, on the age of the POOL
   const touch2 = (c: CoinRow, k: number) => Math.max(...c.obs.slice(k).filter((o) => o.t - c.obs[k]!.t <= HORIZON_S).map((o) => o.p)) / c.obs[k]!.p >= 2;
   const lose24 = (c: CoinRow, k: number) => Math.min(...c.obs.slice(k).filter((o) => o.t - c.obs[k]!.t <= 24 * HOUR).map((o) => o.p)) / c.obs[k]!.p <= 0.5;
-  console.log("\n== 3. Entry timing: the same exits for an entry N hours after the first look (a coin has to be alive and priced then; stake $3, real cost, 5 minutes late)");
-  console.log("   pool        hours      n   lose half within 24 h   touch 2x   hold 72 h   CURRENT   all out at 2x   CURRENT vs hold [90%]   CURRENT: later entry minus first-look entry [90%]");
+  const firstLookAges = all.filter((c) => c.born != null && c.lane === "fresh").map((c) => (c.t0 - c.born!) / HOUR).sort((a, b) => a - b);
+  console.log(`\n== 3. Entry timing on the age of the pool: the same exits for an entry when the pool is N hours old (a coin has to be alive and priced then; stake $3, real cost, 5 minutes late). The Radar's first look is at a pool age of ${q(firstLookAges, 0.1).toFixed(1)} / ${q(firstLookAges, 0.5).toFixed(1)} / ${q(firstLookAges, 0.9).toFixed(1)} h (10th / median / 90th percentile)`);
+  console.log("   pool        age     median age   n   lose half within 24 h   touch 2x   hold 72 h   CURRENT   all out at 2x   CURRENT vs hold [90%]   CURRENT: later entry minus the earliest [90%]");
   const base0 = new Map<string, number[]>();
-  for (const [pname, pred] of [["PUMPSWAP", (c: CoinRow) => c.pump === true], ["OTHER   ", (c: CoinRow) => c.pump === false]] as Array<[string, (c: CoinRow) => boolean]>) {
-    for (const tau of [0, 1, 3, 6, 12, 24]) {
-      const set = all.filter(pred).map((c) => ({ c, k: entryIndex(c, tau) })).filter((x): x is { c: CoinRow; k: number } => x.k != null);
+  for (const [pname, pred] of [["PUMPSWAP", (c: CoinRow) => c.pump === true && c.lane === "fresh"], ["OTHER   ", (c: CoinRow) => c.pump === false && c.lane === "fresh"]] as Array<[string, (c: CoinRow) => boolean]>) {
+    for (const age of [1, 2, 3, 6, 12, 24]) {
+      const set = all.filter(pred).map((c) => ({ c, k: entryIndexAtAge(c, age) })).filter((x): x is { c: CoinRow; k: number } => x.k != null);
       if (set.length < 30) continue;
       const v = (id: string) => set.map((r) => netFlat(simulate(r.c.obs, r.k, RULES[IDX.get(id)!]!), STAKE));
       const hold = v("A0");
       const cur = v("A1");
       const out = v("A3");
       const d = cur.map((x, j) => x - hold[j]!);
-      if (tau === 0) base0.set(pname, cur);
+      const ages = set.map((r) => (r.c.obs[r.k]!.t - r.c.born!) / HOUR).sort((a, b) => a - b);
+      if (age === 1) base0.set(pname, cur);
       const b0 = base0.get(pname);
       let vs0 = "";
-      if (b0 && tau > 0) {
+      if (b0 && age > 1) {
         const rand = rng(23);
         const ds: number[] = [];
         for (let b = 0; b < 1000; b++) {
@@ -440,10 +459,10 @@ async function main() {
           ds.push(sa / cur.length - sb / b0.length);
         }
         ds.sort((x, y) => x - y);
-        vs0 = `   ${((mean(cur) - mean(b0)) * 100).toFixed(0)} [${(ds[50]! * 100).toFixed(0)}, ${(ds[950]! * 100).toFixed(0)}] vs the first look`;
+        vs0 = `   ${((mean(cur) - mean(b0)) * 100).toFixed(0)} [${(ds[50]! * 100).toFixed(0)}, ${(ds[950]! * 100).toFixed(0)}]`;
       }
       console.log(
-        `   ${pname}  ${String(tau).padStart(5)} h ${String(set.length).padStart(6)}   ${(100 * set.filter((r) => lose24(r.c, r.k)).length / set.length).toFixed(0).padStart(18)}%   ${(100 * set.filter((r) => touch2(r.c, r.k)).length / set.length).toFixed(0).padStart(7)}%   ${((mean(hold) - 1) * 100).toFixed(0).padStart(8)}%   ${((mean(cur) - 1) * 100).toFixed(0).padStart(6)}%   ${((mean(out) - 1) * 100).toFixed(0).padStart(12)}%   ${pts(pairedBoot(d))}${vs0}`,
+        `   ${pname}  ${String(age).padStart(4)} h  ${q(ages, 0.5).toFixed(1).padStart(8)} h ${String(set.length).padStart(5)}   ${(100 * set.filter((r) => lose24(r.c, r.k)).length / set.length).toFixed(0).padStart(18)}%   ${(100 * set.filter((r) => touch2(r.c, r.k)).length / set.length).toFixed(0).padStart(7)}%   ${((mean(hold) - 1) * 100).toFixed(0).padStart(8)}%   ${((mean(cur) - 1) * 100).toFixed(0).padStart(6)}%   ${((mean(out) - 1) * 100).toFixed(0).padStart(12)}%   ${pts(pairedBoot(d))}${vs0}`,
       );
     }
   }

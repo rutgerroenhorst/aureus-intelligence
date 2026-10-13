@@ -24,9 +24,11 @@ Every coin card has a small **🔍 Check** button (next to Enter and DexScreener
    | the creator | Jupiter's audit, RugCheck | ⚠ still holds 20% or more, ⚠ has rugged before; **ℹ its wallet has minted 50+ tokens: shown, not counted** (see below) |
    | **this system's own record** | our database (`prices`, `liquidity_snapshots`) | ⚠ price 80% or more below the highest this system recorded, ✗ 95% or more; ⚠ liquidity under 20% of its recorded peak |
    | the Hot tab's own rule | the tab's simple "new and small" rule | ⚠ no longer fits |
+   | **pool age** (PumpSwap pools; added 2026-10-13) | `lib/ageRates.ts`: for coins the lab followed that were still alive at about this pool age, the share that lost half within a day and the share that doubled within three days (78% / 24% at an hour old, 28% / 12% at a day; as of 2026-10-13, coins whose 72 hours were over) | a **note** only (`ℹ`), never a warning and never part of the verdict: a group's rate, not a forecast. Under an hour old it says the lab has no finished record that young |
 
    Only on Solana: the test sale, RugCheck, Jupiter's record and our own record know nothing of the other networks, so on those the lines say "not checked: only on Solana" instead of passing silently.
    A coin that is dead on DexScreener's numbers alone (no pool, a pool under $1,000, or no trades and no volume) is not run through the others: it needs no more proof.
+   A coin whose batch answer is a pair without a price (an old bonding-curve pair) is asked for its other pools before it is called dead (`lib/dexPairs.ts`, 2026-10-13: a graduation that went about 55x would have read as dead).
    The coin's decimals (needed to size the test sale) come from Jupiter's record, or from the chain (`getTokenSupply`) when Jupiter does not list the coin. A source that does not answer is asked a second
    time after 0.7 s; if it still fails the line says which part failed (it never says "Jupiter does not know the coin" when the truth is that Jupiter did not answer).
 2. **Answers under the card, and does not just agree**: a *serious* finding (✗), or a dead coin, or **two or more** warning signs: "you are right" / "you have a point", with the reasons; *one* warning

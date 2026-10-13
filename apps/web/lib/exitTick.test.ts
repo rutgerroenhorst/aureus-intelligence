@@ -112,6 +112,22 @@ describe("the site's own exit check", () => {
     expect(t.order).toEqual([]);
   });
 
+  it("hands the pass the levels and the loss switch from the environment (EXIT_ALERT_LOSS=0 switches the loss message off on the site too)", async () => {
+    const seen: Array<{ levels: number[]; loss?: boolean }> = [];
+    const spy = (env: NodeJS.ProcessEnv) =>
+      setup({
+        env,
+        run: async (cfg) => {
+          seen.push({ levels: cfg.levels, loss: cfg.loss });
+          return { positions: 0, priced: 0, sent: 0 };
+        },
+      });
+    await exitTick({}, spy(ENV).deps);
+    await exitTick({}, spy({ ...ENV, EXIT_ALERT_LOSS: "0", EXIT_ALERT_LEVELS: "2,4" } as unknown as NodeJS.ProcessEnv).deps);
+    expect(seen[0]).toEqual({ levels: [2, 3, 5, 10, 20, 50, 100], loss: true });
+    expect(seen[1]).toEqual({ levels: [2, 4], loss: false });
+  });
+
   it("never lets the token into what it returns", async () => {
     const t = setup({
       run: async () => {

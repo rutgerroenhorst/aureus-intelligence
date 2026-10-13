@@ -152,7 +152,13 @@ export async function buildDossier(mint: string): Promise<Dossier | { error: str
   ]);
   const sources: Dossier["sources"] = { dexscreener: dex.ok ? "ok" : dex.error, orders: orders.ok ? "ok" : orders.error, jupiter: jup.ok ? "ok" : jup.error, rugcheck: rug.ok ? "ok" : rug.error };
 
-  const pairs = dex.ok && Array.isArray(dex.json) ? (dex.json as any[]).filter((p) => p?.baseToken?.address === mint).sort((a, b) => (b.liquidity?.usd ?? 0) - (a.liquidity?.usd ?? 0)) : [];
+  let pairs = dex.ok && Array.isArray(dex.json) ? (dex.json as any[]).filter((p) => p?.baseToken?.address === mint).sort((a, b) => (b.liquidity?.usd ?? 0) - (a.liquidity?.usd ?? 0)) : [];
+  // the batch answer is one pair per coin and can be an old bonding-curve pair without a price (lib/dexPairs.ts, $VEIL): ask for the coin's other pools then
+  if (dex.ok && pairs.length && !((num(pairs[0].priceUsd) ?? 0) > 0)) {
+    const more = await getJson(`https://api.dexscreener.com/latest/dex/tokens/${mint}`);
+    const all = more.ok && Array.isArray((more.json as any)?.pairs) ? ((more.json as any).pairs as any[]).filter((q) => q?.baseToken?.address === mint && q?.chainId === "solana" && (num(q.priceUsd) ?? 0) > 0) : [];
+    if (all.length) pairs = all.sort((a, b) => (b.liquidity?.usd ?? 0) - (a.liquidity?.usd ?? 0));
+  }
   const p = pairs[0];
   const market: Dossier["market"] = p
     ? {

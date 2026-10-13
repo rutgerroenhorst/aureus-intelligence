@@ -78,7 +78,7 @@ the time of writing and should be checked on the dashboards when a plan changes.
 | `/api/telemetry` (every open screen, once a minute) | 22 ms (5 s on the first call after idle: starting up) | 1 KB | a few small queries |
 | other polled routes | 3 to 8 ms | 1 to 90 KB | small |
 | hosted lab recompute | 1 to 2 s | none | **6 MB**, now at most every 6 hours |
-| **exit check** (`/api/cron/exit-alerts`, every 2 minutes) | 42 to 112 ms warm (86 ms average over the first 12 h, 89 ms over the last 14 calls, 170 to 250 ms on a cold start); running time 1.7 s on average since the wallet is read only every other call | 80 bytes | **about 1 KB warm** (a few tiny queries), **about 45 KB when the instance was cold** (it re-reads the fills and the recorded levels once); 6 DexScreener calls of 30 coins, a Solana RPC call every other call |
+| **exit check** (`/api/cron/exit-alerts`, every 2 minutes) | 42 to 112 ms warm (86 ms average over the first 12 h, 89 ms over the last 14 calls, 170 to 250 ms on a cold start); running time 1.7 s on average since the wallet is read only every other call | 80 bytes | **about 1 KB warm** (a few tiny queries), **about 45 KB when the instance was cold** (it re-reads the fills and the recorded levels once); 6 DexScreener calls of 30 coins, a Solana RPC call every other call. **Added 2026-10-13:** at most 8 extra DexScreener calls per pass for coins whose batch pair has no price (in practice 0, the rate measured was 1 coin in 1,430), and, only when a held coin has fallen to its line, one pause of **25 seconds** and one more price call before the "sell the rest" message (rare; the route's limit is 60 seconds; a wait costs running time, not CPU) |
 
 ## If a warning mail arrives anyway
 
