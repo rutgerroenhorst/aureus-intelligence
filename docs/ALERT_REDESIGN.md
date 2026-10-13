@@ -122,11 +122,23 @@ One receiving account got **$0.10 on 72 of the 73 orders** (once $0.12; the "min
 0.5% in the reviews**. Which of the receivers is FOMO's, the chain does not say. Over the whole journal (278 USDC trades, about $800 traded) that is roughly **$29 in fees (3.6%)**, $22 of it on 210 buys. On a $2
 coin the way in and the way out together cost $0.20, a tenth of the stake, and a coin has to rise by about 10% before the owner is even.
 
-**The sales rules again with this cost** (section 2c of `scripts/lab-alert-ladders.ts`: a flat $0.10 and 1% more from $8, stakes of $2, $3 and $5, sold five minutes after the crossing): **the picture does not change.**
-All out at 2x is still the only rule clearly ahead of the current advice (+8 [2, 13], +7 [2, 13] and +7 [1, 12] points of the stake for $2, $3 and $5), the owner's idea is +1 (within noise), ten percent
-rungs +2 (within noise), an unprotected rest -5, a stop at -30% on a fresh position +3 [1, 5]. An extra order costs 5.0, 3.3 and 2.0 points of a $2, $3 and $5 stake, but only the one coin in six that reaches a rung
-pays it, so averaged over all coins it moves a rule by well under a point. Two things to read into the +7: it is an average over all coins, and as only 18% of the coins reach 2x, **on a coin that does reach
-2x, selling everything instead of half is worth about 40 points of the stake**; and it costs the runners (on the 86 coins that reached 5x, the owner's idea made 325% of the stake and all out at 2x 305%).
+**The sales rules again with this cost** (section 2c of `scripts/lab-alert-ladders.ts`: a flat $0.10 and 1% more from $8, stakes of $2, $3 and $5, sold five minutes after the crossing): **the picture does not change**,
+and a middle way was added because the app cannot protect the rest (rows "75%" and "90%": that share is sold at the first alert, the rest trails 40% below its top and is sold by hand). Points of the stake against the current advice
+(half at 2x), for a $2 / $3 / $5 stake, with the 90% interval:
+
+| sold at the first alert (2x) | $2 | $3 | $5 | on the 86 coins that reached 5x (% of the stake, run with the 5% cost) |
+| --- | --- | --- | --- | --- |
+| 50% (current advice) | baseline | baseline | baseline | 315% |
+| 50% at 2x, 25% at 10x (the owner's idea) | +1 [-2, 4] | +1 [-2, 3] | +1 [-2, 4] | 325% |
+| **75%** | **+4 [1, 6]** | **+4 [1, 6]** | **+3 [1, 6]** | 310% |
+| 90% | +6 [1, 11] | +6 [1, 10] | +5 [1, 10] | 307% |
+| 100% (all out) | +8 [2, 13] | +7 [2, 13] | +7 [1, 12] | 305% |
+
+The more is sold at the first alert, the better the average, in a straight line, because the rest is protected late (by hand, five minutes at best); from 75% up the interval stays above zero, and the runners lose little (on coins that
+reached 5x, 310% against 315%). Other rows are as before: an unprotected rest -5, a stop at -30% on a fresh position +3 [1, 5]. An extra order costs 5.0, 3.3 and 2.0 points of a $2, $3 and $5 stake, but only the one coin in six that
+reaches a rung pays it, so averaged over all coins it moves a rule by well under a point. Two things to read into the numbers: they are averages over all coins, and as only 18% of the coins reach 2x, **on a coin that does reach
+2x, selling everything instead of half is worth about 40 points of the stake** (75% instead of half: about 20); and the lab's coins are entered at the first look, not picked by the owner, so the level is lower than the owner's own
+results will be, but the order of the rules is the point.
 
 **What changes in the proposal below** (it is adapted):
 1. **The site is the stop, the owner is the order.** There is nothing to place in the app, so the messages never say "set a stop at X". The site watches the line of the step (75% of the highest level: at 2x the line is
@@ -134,8 +146,8 @@ pays it, so averaged over all coins it moves a rule by well under a point. Two t
    protects the rest**, so quiet hours are a bigger decision than they were).
 2. **Every sale advice is a percentage of what is held now**, because that is what the app sells, with the dollars next to it: "sell 50% (about $5.20, your stake)". After earlier sales it is a percentage of what is
    left, worked out from the wallet's holdings, so the message never advises something already done; round numbers only.
-3. **Few, larger orders.** Every message shows the cost of the order ("cost about $0.10"). No advice to sell a slice worth under about $2.50 (the fee is then 4% or more): "sell it all or leave it". The 10x step
-   "bank a quarter" appears only when that quarter is worth at least $2.50. The optional fresh-loser alert only for positions that were at least about $4 (a sale of what is left of a $2.80 position costs 3.6%).
+3. **Few, larger orders.** Every message shows the cost of the order ("cost about $0.10"). No advice to sell a slice worth under about $2.50 (the fee is then 4% or more): "sell it all or leave it". The optional
+   fresh-loser alert only for positions that were at least about $4 (a sale of what is left of a $2.80 position costs 3.6%). A leftover worth under $2.50 gets no "sell the rest" advice either, only the news that the line was hit.
 4. **The first-profit message is still the one that must be fast and loud**; it cannot be automated either.
 5. **The minimum position value to alert on rises from $0.30 to about $2**: a sale of less costs 5% or more.
 6. **The Jupiter button on a stop is dropped** (the owner sells inside FOMO, not on another venue); it stays DexScreener and copy address.
@@ -154,8 +166,8 @@ minute in a group. A bot cannot see which message a person saw, and an inbound b
 
 | type | when | sound | what it says |
 | --- | --- | --- | --- |
-| first profit | the first time a held coin is at 2x of what was paid for what is still held | **yes** | **sell X%** of what is held now (a round percentage, with the dollars it brings in and the cost of the order); the line below which the site will say "sell the rest" |
-| next step | 3x, 5x, 10x, 20x, 50x, 100x | no | the line moves up (a price the site watches; nothing to place in the app); what is certain if it is hit; at 10x the optional "sell 25%" |
+| first profit | the first time a held coin is at 2x of what was paid for what is still held | **yes** | **sell 75%** of what is held now (the tested middle way; 50%, 90% or 100% are the owner's choice, decision 2), with the dollars it brings in and the cost of the order; the line below which the site will say "sell the rest" |
+| next step | 3x, 5x, 10x, 20x, 50x, 100x | no | the line moves up (a price the site watches; nothing to place in the app); what is certain if it is hit; no further sale advice (the 25% that rides is the free ticket) |
 | line reached (the site's stop) | the price falls to the line of the step | **yes** | **sell the rest (100%) now**; top, now, what is kept |
 | day summary | 20:00 | no | counts and the best coin; the week gets a card |
 | (later) danger | pool down by half within minutes, or the maker sells | **yes** | the reason in one line |
@@ -181,8 +193,9 @@ check the AFM's guidance or ask a lawyer.
 ## Decisions for the owner
 
 1. The ladder: log ladder (2, 3, 5, 10, 20, 50, 100), as proposed; or only 2, 5 and 10.
-2. What the 2x message suggests, now that every exit is by hand: **sell 50% (the stake out) and 25% more at 10x** (the owner's idea; within noise of the current advice, keeps the runners), or **sell everything at 2x** (the only rule
-   measured ahead: +7 points averaged over all coins, about 40 on a coin that reaches 2x, at the cost of the runners: on coins that reach 5x it makes 305% of the stake against 325%).
+2. What the 2x message suggests, now that every exit is by hand: **sell 75%** (proposed: +3 to +4 points against half with the interval above zero, keeps a quarter riding for the runners, 310% on coins that reach 5x), **sell everything**
+   (the best average, +7 to +8, but nothing rides), or **sell 50% and 25% more at 10x** (the owner's own idea: within noise of the current advice, so the data does not support it over the other two). The percentage is worked out against
+   "keep 25% of the tokens bought", so a coin on which the owner already sold part gets only what is still needed.
 3. Quiet: which types make a sound, quiet hours (while the owner sleeps nothing protects the rest, and the line message is the only protection there is), a minimum position value (proposed about $2).
 4. Look: Dutch only or Dutch and English; the share picture with 5x and above and weekly, or only on request.
 5. What counts as x: the coin's price (proposed: stable, one event per level, unaffected by the owner's own sales, with the result shown next to it), or the result of the whole position as the trigger (a level would then depend on what was sold).

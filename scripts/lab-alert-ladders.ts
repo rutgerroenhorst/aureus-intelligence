@@ -58,6 +58,10 @@ RULES.push(
   { name: "half at 2x, rest stopped at 1.5x (fixed)", rungs: [[2, 0.5]], trail: flat(1), floor: 1.5 },
   { name: "half at 2x, stop steps up with the ladder (60% of the highest level: 2x->1.2x, 3x->1.8x, 5x->3x, 10x->6x)", rungs: [[2, 0.5]], trail: flat(1), floorFn: (m) => { const l = levelOf(m); return l == null ? null : 0.6 * l; } },
   { name: "half at 2x, stop steps up with the ladder (75% of the highest level: 2x->1.5x, 5x->3.8x, 10x->7.5x)", rungs: [[2, 0.5]], trail: flat(1), floorFn: (m) => { const l = levelOf(m); return l == null ? null : 0.75 * l; } },
+  // the middle way between half and everything (added when the owner's app turned out to have no stops: how much to keep when the rest is protected by hand?)
+  { name: "75% at 2x, trail 40% on the rest", rungs: [[2, 0.75]], trail: flat(0.4) },
+  { name: "90% at 2x, trail 40% on the rest", rungs: [[2, 0.9]], trail: flat(0.4) },
+  { name: "75% at 2x, 25% rest stopped at the 75% line (2x->1.5x, 5x->3.8x)", rungs: [[2, 0.75]], trail: flat(1), floorFn: (m) => { const l = levelOf(m); return l == null ? null : 0.75 * l; } },
 );
 const BASE = RULES.findIndex((r) => r.name.startsWith("CURRENT"));
 
