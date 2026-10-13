@@ -4,9 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "next dev -p 3000",
+    "dev": "next dev -H ${AUREUS_HOST:-127.0.0.1} -p 3000",
     "build": "NEXT_DIST_DIR=.next-build next build",
-    "start": "NEXT_DIST_DIR=.next-build next start -p 3000"
+    "start": "NEXT_DIST_DIR=.next-build next start -H ${AUREUS_HOST:-127.0.0.1} -p 3000"
   },
   "dependencies": {
     "@aureus/config": "workspace:*",

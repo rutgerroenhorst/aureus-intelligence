@@ -104,7 +104,14 @@ const moreNav = [
   { label: "Watchlist", href: "/watchlist", type: "watchlist" },
 ];
 
+/** The login page is shown without the menu and without any polling (nobody is logged in there). */
 export default function AppShellElite({ children }: AppShellEliteProps) {
+  const pathname = usePathname();
+  if (pathname === "/login") return <>{children}</>;
+  return <ShellInner>{children}</ShellInner>;
+}
+
+function ShellInner({ children }: AppShellEliteProps) {
   const pathname = usePathname();
   const [health, setHealth] = useState<Health>({ level: "unknown", label: "" });
   const [moreOpen, setMoreOpen] = useState(false);
@@ -152,6 +159,23 @@ export default function AppShellElite({ children }: AppShellEliteProps) {
   useEffect(() => {
     setMoreOpen(false);
   }, [pathname]);
+
+  // the site's lock (docs/ACCESS.md): when an API call is answered with 401 (the session ran out, or the code was changed), go to the login page
+  useEffect(() => {
+    const original = window.fetch.bind(window);
+    window.fetch = async (...args: Parameters<typeof fetch>) => {
+      const res = await original(...args);
+      if (res.status === 401) {
+        const input = args[0];
+        const url = typeof input === "string" ? input : input instanceof URL ? input.href : (input as Request).url;
+        if (/^(\/|https?:\/\/[^/]+\/)api\//.test(url) && !url.includes("/api/auth/")) window.location.assign(`/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+      }
+      return res;
+    };
+    return () => {
+      window.fetch = original;
+    };
+  }, []);
 
   const mainNav = [
     { label: "Home", href: "/home", type: "home", group: "Core" },
@@ -289,6 +313,11 @@ export default function AppShellElite({ children }: AppShellEliteProps) {
             <span style={{ fontWeight: 500 }}>{health.label}</span>
           </div>
         )}
+        <form method="post" action="/api/auth/logout" style={{ padding: "0 16px 4px" }}>
+          <button type="submit" style={{ background: "none", border: "none", padding: 0, color: "#6f6f73", fontSize: "11px", cursor: "pointer" }}>
+            Uitloggen
+          </button>
+        </form>
       </aside>
 
       {/* MAIN CONTENT */}
@@ -351,6 +380,11 @@ export default function AppShellElite({ children }: AppShellEliteProps) {
               <span>{item.label}</span>
             </Link>
           ))}
+          <form method="post" action="/api/auth/logout" style={{ display: "contents" }}>
+            <button type="submit">
+              <span>Uitloggen</span>
+            </button>
+          </form>
         </div>
       )}
       <nav className="ae-bottomnav" aria-label="Main">

@@ -27,7 +27,7 @@ module.exports = {
       name: "aureus-web",
       cwd: __dirname,
       script: "node_modules/.bin/next",
-      args: "start -p 3000",
+      args: "start -H 127.0.0.1 -p 3000", // this laptop only
       autorestart: true,
       max_restarts: 50,
       restart_delay: 2000,

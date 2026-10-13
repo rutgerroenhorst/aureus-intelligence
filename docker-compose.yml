@@ -14,8 +14,9 @@ services:
       POSTGRES_USER: aureus
       POSTGRES_PASSWORD: aureus
       POSTGRES_DB: aureus
+    # Only this laptop may connect (127.0.0.1). The default "5432:5432" listens on every network the laptop is on (home, cafe), and the password is "aureus".
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - aureus_pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -28,8 +29,9 @@ services:
     image: redis:7-alpine
     container_name: aureus_redis
     restart: unless-stopped
+    # Same for Redis, which has no password at all.
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -64,12 +66,13 @@ services:
     environment:
       DATABASE_URL: postgres://aureus:aureus@postgres:5432/aureus
       REDIS_URL: redis://redis:6379
+      AUREUS_HOST: 0.0.0.0 # inside the container the app listens on all of its interfaces; the port is published to this laptop only (below)
     env_file:
       - path: .env.local
         required: false
     command: ["corepack", "pnpm", "--filter", "@aureus/web", "start"]
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:3000/today').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 15s

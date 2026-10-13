@@ -33,3 +33,6 @@ logs/
 # local helper scripts that contain database credentials - never commit
 run-migrations.mjs
 *.env.local
+
+# private notes about the infrastructure (project ids, where each secret lives): never commit
+.private/

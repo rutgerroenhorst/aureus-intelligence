@@ -138,6 +138,22 @@ html {
     width: 18px;
     height: 18px;
   }
+  .ae-sheet button {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    min-height: 48px;
+    padding: 0 14px;
+    border-radius: 10px;
+    border: none;
+    background: #1a1a1f;
+    color: #8a8a8e;
+    font-size: 14px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+  }
 
   /* Page padding */
   .epw-header {

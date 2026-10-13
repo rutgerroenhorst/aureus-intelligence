@@ -18,6 +18,21 @@ const nextConfig = {
   // Type errors must not block a deploy: `next dev` never type-checks, so type nits slip in unnoticed.
   typescript: { ignoreBuildErrors: true },
   distDir: process.env.NEXT_DIST_DIR ?? ".next",
+  // Nothing of this site is for search engines, frames or referrers (docs/ACCESS.md).
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "X-Robots-Tag", value: "noindex, nofollow, noarchive" },
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "no-referrer" },
+          { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=()" },
+        ],
+      },
+    ];
+  },
   // Workspace packages ship as source-mapped ESM; transpile them for Next.
   transpilePackages: ["@aureus/config", "@aureus/contracts", "@aureus/readiness", "@aureus/rule-engine", "@aureus/research"],
   experimental: {
