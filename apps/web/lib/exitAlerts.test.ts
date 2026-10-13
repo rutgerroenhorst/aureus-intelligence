@@ -234,6 +234,11 @@ describe("the test message", () => {
     expect(t).toContain("VOORBEELD");
     expect(t).toContain("verzonnen");
     expect(t).toContain("🟢 <b>VOORBEELD</b>");
+    // the footer names every kind of message that can really come, with the levels of the ladder
+    expect(t).toContain("2× je instap");
+    expect(t).toContain("3×, 5×, 10×, 20×, 50×, 100×");
+    expect(t).toContain("onder de lijn");
+    expect(t).toContain("30% onder je instap");
     expect(t).not.toMatch(/undefined|NaN/);
     expect(testButtons()).toHaveLength(3);
   });

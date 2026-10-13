@@ -290,7 +290,7 @@ export function testText(): string {
     ``,
     alertMessage(EXAMPLE).text,
     ``,
-    `<i>Echte meldingen komen alleen als een coin die je bezit 2× of meer je instap raakt.</i>`,
+    `<i>Echte meldingen: met geluid als een coin die je bezit ${LEVELS_DEFAULT[0]}× je instap raakt (verkoop de helft), stil bij ${LEVELS_DEFAULT.slice(1).map((l) => `${l}×`).join(", ")} (dan gaat de lijn omhoog), met geluid als de koers onder de lijn zakt (verkoop de rest), en stil als een verse coin 30% onder je instap zakt. Een idee, geen opdracht.</i>`,
   ].join("\n");
 }
 export const testButtons = (): MessageButton[] => alertMessage(EXAMPLE).buttons;
