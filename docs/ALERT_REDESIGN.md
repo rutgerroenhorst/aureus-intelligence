@@ -70,6 +70,15 @@ was supposed to add; a first sale at the first alert does not suffer from that. 
 **What none of this changes**: at the owner's sizes ($2 to $5 a coin) every difference above is a matter of cents, and what is bought matters several times more than how it is sold. The value of better messages is
 in attention, learning and what can be shown to others, not in a measurable edge.
 
+## What "x" means once part has been sold (the owner's question, 2026-10-13)
+
+The multiple in the alert is **the coin's price divided by what was paid per token for the tokens still held** (`readPosition` in `apps/web/lib/exitAlerts.ts`). It is about the coin, so taking profit does not change it
+(as long as everything was bought at one price; if more was bought later at a higher price and the oldest tokens were sold first, what is left has a higher cost and the multiple of what is left is lower). The owner's *result* is
+a different number: (what is still held, at today's price, plus the money already taken out) divided by the money put in. Example: $5 in; at 5x the owner takes the $5 stake out (20% of the tokens); at 10x the rest is worth
+$40, plus $5 already out is $45: **the coin is at 10x, the owner's result is 9.0x** (+$40). Today's message puts the first number in the headline ("10x je instap") and the second only in the "Op papier" line, which reads as a
+contradiction. Proposal: the levels stay on the coin's price (one clear event per level, whatever was sold meanwhile), the headline shows both, **"koers 10x" and "jouw resultaat 9,0x"**, and every suggested sale is a sum in
+dollars computed from what is still held and what is already out (a 10x message after the stake was taken out never says "take your stake out"). On the share picture the same two numbers appear, labelled, without amounts.
+
 ## What Telegram can do (Bot API 10.3, August 2026)
 
 Formatting and sending: HTML with bold, italic, code, pre, quotes, **expandable quotes** (7.4); `disable_notification` sends silently; **message effects** such as confetti in private chats (7.4); photo with a caption of at most 1,024
@@ -94,7 +103,7 @@ minute in a group. A bot cannot see which message a person saw, and an inbound b
 Rules against noise: one message per coin per level (as now), several coins crossing in the same two minutes in one message each but at most six a pass (as now), the stop numbers stepped (75% of the highest level)
 so the owner sees "stop up to 3.8x", never a stream of tiny changes, a minimum position size to alert at all (today $0.30), and optional quiet hours in which only the loud types are loud.
 
-**Look**: one dot of colour (green, blue, red) instead of a row of emoji; the first line is `TICKER · 2.0x`; one line with the result; a quote block with the action in plain words; one small line with the pool; buttons: DexScreener (blue),
+**Look**: one dot of colour (green, blue, red) instead of a row of emoji; the first line is `TICKER · koers 2.0x`; one line with the owner's own result (`jouw resultaat`, lower than the coin's multiple once part was sold early); a quote block with the action in plain words; one small line with the pool; buttons: DexScreener (blue),
 copy address, and Jupiter (red) on a stop. No exclamation marks, no "idea" icon, no table of seven rows; the details move into an expandable quote. Language per message type can be switched between Dutch and English.
 
 **To share**: a picture (made on the site with `next/og`, no extra service, a few hundred milliseconds) in the Auriga colours: the factor large, the ticker, the time it took, a small price line from entry to top, "+440%", the wordmark and the
@@ -112,7 +121,8 @@ check the AFM's guidance or ask a lawyer.
 2. What the 2x message suggests: take out the stake (half at 2x, the current advice), or everything; and whether 10x says "bank a quarter" (the owner's idea; harmless, not measurably better).
 3. Quiet: which types make a sound, optional quiet hours, a minimum position value.
 4. Look: Dutch only or Dutch and English; the share picture with 5x and above and weekly, or only on request.
-5. A live preview of the new messages in the owner's own Telegram chat (it is the owner's bot and chat, but it is a message sent, so it waits for a yes).
+5. What counts as x: the coin's price (proposed: stable, one event per level, unaffected by the owner's own sales, with the result shown next to it), or the result of the whole position as the trigger (a level would then depend on what was sold).
+6. A live preview of the new messages in the owner's own Telegram chat (it is the owner's bot and chat, but it is a message sent, so it waits for a yes).
 
 ## How it would be built (additive, in steps, each tested and reversible)
 
