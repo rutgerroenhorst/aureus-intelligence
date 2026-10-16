@@ -23,7 +23,7 @@
 
 import { fetchTransaction, rpc } from "./wallet";
 import { JUDGE_FROM_MIN, JUDGE_TO_MIN } from "./lab/pump";
-import { MAX_RESCUES, rescuePair } from "./dexPairs";
+import { MAX_RESCUES, needsRescue, rescuePair } from "./dexPairs";
 
 export const MIGRATION_AUTHORITY = "39azUYFWPz3VHgKCf3VChUwbpURdCHRxjWVowf5jUJjg";
 export const PUMP_PROGRAM = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P";
@@ -506,10 +506,10 @@ export function realFeedDeps(log: FeedDeps["log"]): FeedDeps {
       let rescued = 0;
       for (const [m, p] of out) {
         if (rescued >= MAX_RESCUES) break;
-        if (price(p.priceUsd) != null) continue;
+        if (!needsRescue(p as never)) continue;
         rescued++;
         const alt = await rescuePair(m, (u) => getJson(u, 15_000));
-        if (alt) out.set(m, alt as unknown as DexPair);
+        if (alt && (price(alt.priceUsd) ?? 0) > 0) out.set(m, alt as unknown as DexPair);
       }
       return out;
     },

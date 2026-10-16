@@ -25,7 +25,7 @@ export interface Graduate {
   flags: string[];
   kind?: "born" | "mayhem" | "organic" | "unknown";
   healthy?: boolean;
-  hiddenWhy?: "drained" | "empty" | "born" | "mayhem" | "gone" | "small" | "waiting" | null;
+  hiddenWhy?: "drained" | "empty" | "born" | "mayhem" | "gone" | "small" | "waiting" | "collapsed" | "dead" | null;
   empty?: boolean;
   drained?: boolean;
   peakMultiple?: number | null;
@@ -72,7 +72,7 @@ const btn: React.CSSProperties = { padding: "6px 12px", background: "#1a1a1f", c
 const chip = (on: boolean): React.CSSProperties => ({ padding: "5px 10px", fontSize: 12, borderRadius: 6, cursor: "pointer", background: on ? "#2a2a3e" : "#1a1a1f", color: on ? "#fff" : "#8a8a8e", border: `1px solid ${on ? "#4a4a66" : "#2a2a2f"}` });
 
 /** The warnings worth a place on the card: a pool that is gone or never was, the kinds measured to end in a drain, and heavy concentration. */
-const SHOW = /drained|empty|born|Mayhem|insider networks hold ([2-9]\d|100)%|one wallet holds|within 2 minutes|down more than half|no longer listed/;
+const SHOW = /drained|empty|born|Mayhem|insider networks hold ([2-9]\d|100)%|one wallet holds|within 2 minutes|down more than half|no longer listed|collapsed|market cap only|no trading|dumped|pump that turned|no live pool/;
 
 /** One graduation: its own component because the Check button keeps state per coin. */
 function GraduateCard({ c, entered, failed, onEnter, note }: { c: Graduate; entered: boolean; failed: boolean; onEnter: (c: Graduate) => void; note?: CheckNote }) {
@@ -117,7 +117,7 @@ export function GraduatesTab({ coins, lab, meta, entered, failedMints, onEnter, 
   // older snapshots (before the kinds existed) have no verdict: show everything then
   const judged = coins.some((c) => c.healthy !== undefined);
   const hidden = useMemo(() => {
-    const h = { born: 0, mayhem: 0, empty: 0, drained: 0, gone: 0, small: 0, waiting: 0, total: 0 };
+    const h = { born: 0, mayhem: 0, empty: 0, drained: 0, gone: 0, small: 0, waiting: 0, collapsed: 0, dead: 0, total: 0 };
     for (const c of coins) {
       if (!judged || c.healthy) continue;
       h.total++;
@@ -145,7 +145,7 @@ export function GraduatesTab({ coins, lab, meta, entered, failedMints, onEnter, 
     [coins, judged],
   );
   const { ageMin: snapAge, stale, source: feed } = gradSnapshot(meta, Date.now());
-  const hiddenText = [hidden.born && `${hidden.born} born graduated`, hidden.mayhem && `${hidden.mayhem} Mayhem Mode`, hidden.empty && `${hidden.empty} empty pools`, hidden.drained && `${hidden.drained} drained`, hidden.small && `${hidden.small} pools under $5K`, hidden.gone && `${hidden.gone} no longer listed`, hidden.waiting && `${hidden.waiting} without a reading yet`].filter(Boolean).join(", ");
+  const hiddenText = [hidden.born && `${hidden.born} born graduated`, hidden.mayhem && `${hidden.mayhem} Mayhem Mode`, hidden.empty && `${hidden.empty} empty pools`, hidden.drained && `${hidden.drained} drained`, hidden.collapsed && `${hidden.collapsed} collapsed since the first hour`, hidden.dead && `${hidden.dead} with no trading`, hidden.small && `${hidden.small} pools under $5K`, hidden.gone && `${hidden.gone} no longer listed`, hidden.waiting && `${hidden.waiting} without a reading yet`].filter(Boolean).join(", ");
   return (
     <div style={{ padding: 16 }}>
       <TabIntro

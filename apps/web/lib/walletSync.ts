@@ -24,6 +24,7 @@ const MAX_TRIES = 8;
 
 /** What DexScreener says about a coin right now (kept small on purpose: this file must run outside Next, where "@/" paths do not exist). */
 interface Pair {
+  dexId?: string;
   baseToken?: { address?: string; symbol?: string };
   priceUsd?: string | number;
   marketCap?: number;
@@ -44,6 +45,7 @@ async function fetchPairs(mints: string[]): Promise<Map<string, Pair> | null> {
       if (!Array.isArray(pairs)) return null;
       const best = new Map<string, Pair>();
       const unpriced: string[] = [];
+      const curve: string[] = [];
       for (const p of pairs) {
         const m = p.baseToken?.address;
         if (!m || !mints.includes(m)) continue;
@@ -53,8 +55,9 @@ async function fetchPairs(mints: string[]): Promise<Map<string, Pair> | null> {
         }
         const cur = best.get(m);
         if (!cur || (p.liquidity?.usd ?? 0) > (cur.liquidity?.usd ?? 0)) best.set(m, p);
+        if (p.dexId === "pumpfun") curve.push(m);
       }
-      // a coin whose batch pair has no price (an old bonding-curve pair, lib/dexPairs.ts) would be valued at nothing in the journal: ask for its other pools
+      // a coin whose batch pair has no price (an old bonding-curve pair, lib/dexPairs.ts) would be valued at nothing in the journal, and one whose pair is the curve's frozen price at the wrong value: ask for its other pools
       const getJson = async (url: string): Promise<unknown> => {
         try {
           const r = await fetch(url, { headers: { accept: "application/json", "user-agent": "Aureus-Wallet/1.0" }, signal: AbortSignal.timeout(15_000) });
@@ -63,7 +66,7 @@ async function fetchPairs(mints: string[]): Promise<Map<string, Pair> | null> {
           return null;
         }
       };
-      for (const m of [...new Set(unpriced)].filter((x) => !best.has(x)).slice(0, MAX_RESCUES)) {
+      for (const m of [...new Set([...unpriced.filter((x) => !best.has(x)), ...curve])].slice(0, MAX_RESCUES)) {
         const alt = await rescuePair(m, getJson);
         if (alt) best.set(m, alt as unknown as Pair);
       }

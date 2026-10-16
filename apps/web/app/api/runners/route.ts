@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 import { getPool } from "@aureus/db";
 import { aiNameWide } from "@/lib/lab/narrative";
+import { flaggedPayload, gateLive } from "@/lib/liveGate";
 
 export const dynamic = "force-dynamic";
+// the live red-flag gate asks DexScreener about every coin it is about to show (lib/liveGate.ts); a slow exchange ends in "kept", but the call must be allowed the time
+export const maxDuration = 30;
 
 const noStore = { "Cache-Control": "no-store, max-age=0" };
 
@@ -89,7 +92,10 @@ export async function GET() {
         };
       })
       .sort((a, b) => a.seenHoursAgo - b.seenHoursAgo)
-      .slice(0, 60);
+      .slice(0, 80);
+    // judged as it is now (lib/liveGate.ts, docs/RED_FLAGS.md): the lab's reading can be hours old, and a runner that has since rugged, collapsed or stopped trading is left out; the list is filled to 60 from the next ones
+    const gate = await gateLive(coins, { mintOf: (c) => c.mint, ctxOf: (c) => ({ sinceFirst: c.sinceFirst, rowMcap: c.mcap }) });
+    const shown = gate.kept.slice(0, 60);
     // what the lab has learned so far about runners, in one line each (the lanes report is computed hourly)
     const lanes = await pool
       .query(`SELECT payload FROM lab_reports WHERE kind = 'lanes'`)
@@ -108,7 +114,8 @@ export async function GET() {
     return NextResponse.json(
       {
         at: new Date().toISOString(),
-        candidates: coins,
+        candidates: shown,
+        ...flaggedPayload(gate),
         lab: g ? { coins: g.n, followed3d: g.basis, held2: g.basis >= 8 ? g.held2 : null, held3: g.basis >= 8 ? g.held3.p : null } : null,
         prior,
       },

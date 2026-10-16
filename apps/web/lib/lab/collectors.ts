@@ -12,7 +12,7 @@
  */
 
 import type { Queryable } from "./builder";
-import { MAX_RESCUES, rescuePair } from "../dexPairs";
+import { MAX_RESCUES, needsRescue, rescuePair } from "../dexPairs";
 
 const HEADERS = { accept: "application/json", "user-agent": "Aureus-Lab/1.0" };
 
@@ -109,7 +109,7 @@ export async function collectPriceTail(db: Queryable, opts: { limit?: number } =
     for (const m of batch) {
       let p = best.get(m);
       // a pair without a price (an old bonding-curve pair, lib/dexPairs.ts) is not a coin that is gone: ask for its other pools first
-      if (p && !((fin(p.priceUsd) ?? 0) > 0) && rescued < MAX_RESCUES) {
+      if (p && needsRescue(p) && rescued < MAX_RESCUES) {
         rescued++;
         const alt = await rescuePair(m, (u) => getJson(u));
         if (alt) p = alt;

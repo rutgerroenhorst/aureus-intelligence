@@ -1,7 +1,10 @@
 import { internalFetch } from "@/lib/internalFetch";
+import { flaggedPayload, gateLive } from "@/lib/liveGate";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
+// the live red-flag gate asks DexScreener about every coin it is about to show (lib/liveGate.ts); a slow exchange ends in "kept", but the call must be allowed the time
+export const maxDuration = 30;
 
 const txnCache = new Map<string, {data: any, time: number}>();
 const TXN_CACHE_TTL = 60000;
@@ -85,7 +88,7 @@ export async function GET() {
       txnsMap.set(c.mint, txnsResults[idx]);
     });
 
-    const cateSignals = candidates
+    let cateSignals = candidates
       .map((c: any) => {
         const mcap = Number(c.marketCapUsd || 0);
         const liq = Number(c.liquidityUsd || 0);
@@ -273,9 +276,14 @@ export async function GET() {
       .sort((a: any, b: any) => b.cateScore - a.cateScore)
       .slice(0, 50);
 
+    // judged as it is now (lib/liveGate.ts, docs/RED_FLAGS.md): a coin that has rugged, collapsed or stopped trading since the scan is left out, and the tiles below count what is left
+    const gate = await gateLive(cateSignals, { mintOf: (c: any) => c.mint });
+    cateSignals = gate.kept;
+
     return NextResponse.json(
       {
         cateCoins: cateSignals,
+        ...flaggedPayload(gate),
         summary: {
           elite: cateSignals.filter(c => c.cateScore >= 100).length,
           hot: cateSignals.filter(c => c.cateScore >= 85 && c.cateScore < 100).length,

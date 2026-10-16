@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { bestPricedPair, fetchAllPairs, isPriced, rescuePair, type DexPairLike } from "./dexPairs";
+import { bestPricedPair, fetchAllPairs, isCurvePair, isPriced, needsRescue, rescuePair, type DexPairLike } from "./dexPairs";
 
 const MINT = "HgTGdc29D5bDMrDvsCLnorxz899VyDj7ZN7FPa6vpump";
 const pair = (over: Partial<DexPairLike>): DexPairLike => ({ chainId: "solana", dexId: "pumpswap", pairAddress: "P", baseToken: { address: MINT, symbol: "VEIL" }, priceUsd: "0.0025", liquidity: { usd: 142_000 }, ...over });
@@ -40,5 +40,21 @@ describe("asking the endpoint that lists every pool", () => {
     expect((await rescuePair(MINT, async () => ({ pairs: [pair({ dexId: "pumpfun", priceUsd: null }), pair({ pairAddress: "LIVE" })] })))!.pairAddress).toBe("LIVE");
     expect(await rescuePair(MINT, async () => ({ pairs: [] }))).toBeNull();
     expect(await rescuePair(MINT, async () => null)).toBeNull();
+  });
+});
+
+describe("an old bonding-curve pair is not the coin's price once it has graduated", () => {
+  const curve = pair({ dexId: "pumpfun", priceUsd: "0.00004367", liquidity: { usd: null } as never });
+  it("is recognised, and so is a pair without a price", () => {
+    expect(isCurvePair(curve)).toBe(true);
+    expect(isCurvePair(pair({}))).toBe(false);
+    expect(needsRescue(curve)).toBe(true);
+    expect(needsRescue(pair({ priceUsd: null }))).toBe(true);
+    expect(needsRescue(pair({}))).toBe(false);
+    expect(needsRescue(null)).toBe(false);
+  });
+  it("loses to the live pool of the same coin, however high the curve's frozen price stands", () => {
+    const live = pair({ dexId: "pumpswap", priceUsd: "0.000002372", liquidity: { usd: 2_360 } });
+    expect(bestPricedPair([curve, live], MINT)?.dexId).toBe("pumpswap");
   });
 });

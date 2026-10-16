@@ -3,6 +3,8 @@ import { getPool } from "@aureus/db";
 import { currentGraduates } from "@/lib/graduates";
 
 export const dynamic = "force-dynamic";
+// the live red-flag gate asks DexScreener about every coin it is about to show (lib/liveGate.ts); a slow exchange ends in "kept", but the call must be allowed the time
+export const maxDuration = 30;
 const noStore = { "Cache-Control": "no-store, max-age=0" };
 
 /**

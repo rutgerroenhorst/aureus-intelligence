@@ -1,7 +1,10 @@
 import { internalFetch } from "@/lib/internalFetch";
+import { flaggedPayload, gateLive } from "@/lib/liveGate";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
+// the live red-flag gate asks DexScreener about every coin it is about to show (lib/liveGate.ts); a slow exchange ends in "kept", but the call must be allowed the time
+export const maxDuration = 30;
 
 function calculateRiskScore(coin: any): { score: number; level: string; label: string } {
   let riskScore = 5;
@@ -157,11 +160,17 @@ export async function GET() {
         }
         return b.buy_score - a.buy_score;
       })
-      .slice(0, 30);
+      .slice(0, 45);
+
+    // Every signal is judged as it is now, not as it was at the last scan (lib/liveGate.ts, docs/RED_FLAGS.md): a coin that has rugged, collapsed or stopped trading since is left out and the
+    // list is filled from the next ones, so 30 real signals remain. The coins left out come back in `flaggedOut` with their reasons.
+    const gate = await gateLive(buySignals, { mintOf: (c: any) => c.mint });
+    const shown = gate.kept.slice(0, 30);
 
     return NextResponse.json({
-      buy_signals: buySignals,
-      signal_quality: buySignals.length > 8 ? "strong" : buySignals.length > 3 ? "moderate" : "weak",
+      buy_signals: shown,
+      signal_quality: shown.length > 8 ? "strong" : shown.length > 3 ? "moderate" : "weak",
+      ...flaggedPayload(gate),
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (err) {
     console.error("Signals error:", err);

@@ -194,6 +194,7 @@ const fin = (x: unknown): number | null => {
 export async function dexQuotes(mints: string[], fetchImpl: typeof fetch = fetch): Promise<Map<string, Priced>> {
   const out = new Map<string, Priced>();
   const unpriced: string[] = [];
+  const curve: string[] = [];
   for (let i = 0; i < mints.length; i += 30) {
     const batch = mints.slice(i, i + 30);
     try {
@@ -212,6 +213,8 @@ export async function dexQuotes(mints: string[], fetchImpl: typeof fetch = fetch
         }
         const cur = out.get(m);
         if (!cur || liq > cur.liq) out.set(m, { price, liq, pair: (p?.pairAddress as string | undefined) ?? null, symbol: (p?.baseToken?.symbol as string | undefined) ?? null });
+        // an old bonding-curve pair keeps the curve's last price (lib/dexPairs.ts isCurvePair): for a coin that has graduated that is not its price
+        if (p?.dexId === "pumpfun") curve.push(m);
       }
     } catch {
       /* these coins are simply not priced this time */
@@ -226,7 +229,7 @@ export async function dexQuotes(mints: string[], fetchImpl: typeof fetch = fetch
       return null;
     }
   };
-  for (const m of [...new Set(unpriced)].filter((x) => !out.has(x)).slice(0, MAX_RESCUES)) {
+  for (const m of [...new Set([...unpriced.filter((x) => !out.has(x)), ...curve])].slice(0, MAX_RESCUES)) {
     const alt = await rescuePair(m, getJson);
     const price = fin(alt?.priceUsd);
     if (alt && price != null && price > 0) out.set(m, { price, liq: fin(alt.liquidity?.usd) ?? 0, pair: alt.pairAddress ?? null, symbol: alt.baseToken?.symbol ?? null });

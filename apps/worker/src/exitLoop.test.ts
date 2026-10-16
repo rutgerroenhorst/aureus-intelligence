@@ -983,6 +983,15 @@ describe("prices for the held coins", () => {
     expect(urls.some((u) => u.includes(`/latest/dex/tokens/${MINT}`))).toBe(true);
   });
 
+  it("a graduated coin whose batch pair is the curve's frozen price is priced from its live pool (a stop that watched the curve would never fire)", async () => {
+    const f = (async (url: string) => {
+      if (url.includes("/tokens/v1/")) return json([{ baseToken: { address: MINT, symbol: "COIN" }, dexId: "pumpfun", priceUsd: "0.00004367", liquidity: { usd: null }, pairAddress: "CURVE" }]);
+      return json({ pairs: [{ chainId: "solana", baseToken: { address: MINT, symbol: "COIN" }, dexId: "pumpswap", priceUsd: "0.000002372", liquidity: { usd: 2_360 }, pairAddress: "LIVE" }, { chainId: "solana", baseToken: { address: MINT, symbol: "COIN" }, dexId: "pumpfun", priceUsd: "0.00004367", liquidity: { usd: null }, pairAddress: "CURVE" }] });
+    }) as unknown as typeof fetch;
+    const q = await dexQuotes([MINT], f);
+    expect(q.get(MINT)).toEqual({ price: 0.000002372, liq: 2_360, pair: "LIVE", symbol: "COIN" });
+  });
+
   it("a coin the batch answer does not list at all is not asked about again (it is gone), and a coin with a price costs no extra call", async () => {
     const urls: string[] = [];
     const f = (async (url: string) => {

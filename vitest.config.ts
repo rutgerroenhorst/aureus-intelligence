@@ -34,5 +34,7 @@ export default defineConfig({
     // DB-backed integration tests do real Postgres round-trips; the first one also
     // pays cold-start (pool connect + tsx compile). 5s is too tight — allow 30s.
     testTimeout: 30_000,
+    // the live red-flag gate asks DexScreener about every coin of a list (lib/liveGate.ts): never in a test unless the test hands it a fake exchange
+    env: { RED_FLAGS_LIVE: "0" },
   },
 });

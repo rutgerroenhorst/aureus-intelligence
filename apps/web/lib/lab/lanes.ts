@@ -12,7 +12,7 @@
  */
 
 import type { Queryable } from "./builder";
-import { MAX_RESCUES, rescuePair } from "../dexPairs";
+import { MAX_RESCUES, needsRescue, rescuePair } from "../dexPairs";
 
 const HEADERS = { accept: "application/json", "user-agent": "Aureus-Lab/1.0" };
 const HOSTED = Boolean(process.env.VERCEL);
@@ -243,8 +243,8 @@ export async function collectWatch(db: Queryable, opts: { maxCalls?: number } = 
       polled.add(m);
       let p = best.get(m);
       // The batch answer is ONE pair per coin and can be an old pump.fun bonding-curve pair without a price ($VEIL, 2026-10-13: a coin that went about 50x was marked "never listed"
-      // after twelve such answers). A coin whose pair has no price is asked for its other pools before it is called gone.
-      if (p && !((fin(p.priceUsd) ?? 0) > 0) && rescued < MAX_RESCUES) {
+      // after twelve such answers). A coin whose pair has no price, or is an old bonding-curve pair frozen at the curve's last price (2026-10-16: two graduations read $43K while their live pool stood at $2.3K), is asked for its other pools before it is called gone or fine.
+      if (p && needsRescue(p) && rescued < MAX_RESCUES) {
         rescued++;
         const alt = await rescuePair(m, (u) => getJson(u));
         if (alt) p = alt;

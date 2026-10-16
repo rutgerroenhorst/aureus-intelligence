@@ -32,6 +32,16 @@ const fin = (x: unknown): number | null => {
 
 export const isPriced = (p: DexPairLike | null | undefined): boolean => (fin(p?.priceUsd) ?? 0) > 0;
 
+/**
+ * An old pump.fun bonding-curve pair ("pumpfun" at DexScreener): once a coin has graduated its curve is closed, the pair keeps the last price from the curve and has no liquidity figure, and DexScreener's batch answer can
+ * hand THAT pair back instead of the live PumpSwap pool (found 2026-10-16: two graduations shown at $43K with a pool of "-" were really at $2.3K, rugged, their live pool one call away). Such a pair is stale for any coin that
+ * has graduated, so it is a reason to ask for the coin's other pools, exactly like a pair without a price.
+ */
+export const isCurvePair = (p: DexPairLike | null | undefined): boolean => p?.dexId === "pumpfun";
+
+/** The batch answer for this coin cannot be trusted: no price, or a bonding-curve pair. The coin's other pools settle it (rescuePair). */
+export const needsRescue = (p: DexPairLike | null | undefined): boolean => !!p && (!isPriced(p) || isCurvePair(p));
+
 /** The most liquid pair of the coin that has a price (null when none has). Only pairs whose base token is the coin and that are on the chain count. */
 export function bestPricedPair<T extends DexPairLike>(pairs: T[], mint: string, chain = "solana"): T | null {
   let best: T | null = null;

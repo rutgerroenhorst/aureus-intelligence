@@ -1,5 +1,6 @@
 "use client";
 import { createContext, useContext, useEffect, useState } from "react";
+import { FLAG_WORD, type FlagCode } from "@/lib/redFlags";
 import type { CheckLine } from "@/lib/coinCheck";
 import { AWAY_HOURS } from "@/lib/checkAway";
 import { brand } from "@/lib/brand";
@@ -171,6 +172,27 @@ export function CheckBadge({ note }: { note: CheckNote | undefined }) {
 }
 
 /** Above a list: how many coins the user's checks took off it, and the switch to see them. Nothing is shown when no coin was taken off. */
+/** The coins a list left out because of a severe red flag as they look now (lib/redFlags.ts, docs/RED_FLAGS.md): how many, why, and a way to look at them anyway. */
+export function FlaggedLine({ coins, shown, onToggle }: { coins: Array<{ symbol?: string | null; redFlags?: Array<{ code: string; text: string }> }>; shown: boolean; onToggle: () => void }) {
+  if (!coins.length) return null;
+  const words = new Map<string, number>();
+  for (const c of coins) {
+    const w = FLAG_WORD[(c.redFlags?.[0]?.code ?? "") as FlagCode] ?? "flagged";
+    words.set(w, (words.get(w) ?? 0) + 1);
+  }
+  const why = [...words.entries()].sort((a, b) => b[1] - a[1]).map(([w, n]) => `${n} ${w}`).join(", ");
+  const names = coins.slice(0, 5).map((c) => `${c.symbol ?? "?"} (${(c.redFlags?.[0]?.text ?? "").replace(/^(collapsed|pool drained|no trading|being dumped|pump that turned): ?/, "").slice(0, 44) || "red flag"})`);
+  return (
+    <div style={{ padding: "10px 16px 0", fontSize: 12, lineHeight: 1.5, color: "#8a8a8e" }}>
+      {coins.length} coin{coins.length === 1 ? "" : "s"} left out for red flags as {coins.length === 1 ? "it looks" : "they look"} right now ({why}): {names.join(", ")}
+      {coins.length > 5 ? `, and ${coins.length - 5} more` : ""}.{" "}
+      <button onClick={onToggle} style={{ background: "none", border: "none", color: brand.blueText, cursor: "pointer", padding: 0, fontSize: 12, textDecoration: "underline" }}>
+        {shown ? "Leave them out again" : "Show them"}
+      </button>
+    </div>
+  );
+}
+
 export function AwayLine({ count, shown, onToggle }: { count: number; shown: boolean; onToggle: () => void }) {
   if (!count) return null;
   return (

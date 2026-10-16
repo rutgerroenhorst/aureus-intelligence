@@ -5,7 +5,7 @@ import { usePolling, useOnScanDone } from "@/lib/usePolling";
 import { RunnersTab, type Runner, type RunnersLab, type RunnersPrior } from "./RunnersTab";
 import { GraduatesTab, type Graduate, type GradMeta } from "./GraduatesTab";
 import { HotChainsBar, HotTab, isNewSmall, type HotClient } from "./HotChains";
-import { AwayLine, CheckHubContext, type CheckAnswer, type CheckHub, type CheckNote } from "./CoinCheck";
+import { AwayLine, CheckHubContext, FlaggedLine, type CheckAnswer, type CheckHub, type CheckNote } from "./CoinCheck";
 import { CoinRow, UltraCard } from "./CoinRow";
 import { leaveOut, mergeNotes, noteKey } from "@/lib/checkAway";
 import { brand } from "@/lib/brand";
@@ -23,6 +23,8 @@ interface Candidate {
 type Tab = "hot" | "cate" | "signals" | "positions" | "trends" | "momentum" | "performance" | "elite-s" | "early" | "entry" | "qualified" | "stats" | "runners" | "graduates";
 
 /** The tabs in the order they are shown: the youngest coins first (the order the user asked for), then the rest. The tab used last is remembered on this device. */
+/** the list each tab is filled from, for the coins that list left out for red flags (the Graduations tab keeps its own "Hidden" line; the Hot tab applies the rules to its own pools) */
+const FLAG_KEY: Partial<Record<Tab, string>> = { cate: "cate", signals: "signals", early: "early", "elite-s": "elite", qualified: "incubation", runners: "runners" };
 const TAB_ORDER = ["graduates", "qualified", "early", "signals", "cate", "runners", "hot", "elite-s", "stats"] as const;
 const TAB_STORE = "auriga:radarTab";
 
@@ -99,6 +101,9 @@ export default function RadarPageElite() {
   const [checkLocal, setCheckLocal] = useState<Map<string, CheckNote>>(new Map());
   const [checkOpen, setCheckOpen] = useState<Set<string>>(new Set());
   const [showAway, setShowAway] = useState(false);
+  // the coins each list left out because they carry a severe red flag as they look now (lib/liveGate.ts, docs/RED_FLAGS.md), by list; "show them" puts them back
+  const [flagged, setFlagged] = useState<Record<string, Array<{ mint: string; symbol?: string | null; redFlags?: Array<{ code: string; text: string }> }>>>({});
+  const [showFlagged, setShowFlagged] = useState(false);
 
   // open on the tab used last (the first tab, Graduations, the first time)
   useEffect(() => {
@@ -135,6 +140,14 @@ export default function RadarPageElite() {
         setGradLab(d.graduates.lab || null);
         setGradMeta({ summary: d.graduates.summary || [], source: d.graduates.source, asOf: d.graduates.asOf });
       }
+      setFlagged((prev) => ({
+        signals: d.signals ? d.signals.flaggedOut ?? [] : prev.signals ?? [],
+        cate: d.cate ? d.cate.flaggedOut ?? [] : prev.cate ?? [],
+        early: d.ultraEarlyMomentum ? d.ultraEarlyMomentum.flaggedOut ?? [] : prev.early ?? [],
+        elite: d.elite ? d.elite.flaggedOut ?? [] : prev.elite ?? [],
+        incubation: d.incubation ? d.incubation.flaggedOut ?? [] : prev.incubation ?? [],
+        runners: d.runners ? d.runners.flaggedOut ?? [] : prev.runners ?? [],
+      }));
       if (d.checks) setCheckNotes(new Map(((d.checks.checks ?? []) as CheckNote[]).map((n) => [`${n.tab}|${n.mint}`, n])));
       if (d.runners) {
         setRunners(d.runners.candidates || []);
@@ -193,17 +206,18 @@ export default function RadarPageElite() {
   );
   const notes = useMemo(() => mergeNotes(checkNotes, checkLocal), [checkNotes, checkLocal]);
   const nowMs = Date.now();
-  const split = <T,>(tab: string, list: T[], mintOf: (x: T) => string) => {
+  const split = <T,>(tab: string, list: T[], mintOf: (x: T) => string, flagKey?: string) => {
     const r = leaveOut(tab, list, mintOf, notes, checkOpen, nowMs);
-    return { list: showAway ? list : r.shown, away: r.away.length };
+    const back = flagKey && showFlagged ? ((flagged[flagKey] ?? []) as unknown as T[]) : [];
+    return { list: [...(showAway ? list : r.shown), ...back], away: r.away.length };
   };
   const lists = {
-    cate: split("cate", cateCoins, (c) => c.mint),
-    signals: split("buy_signals", buySignals, (c) => c.mint),
-    early: split("ultra_momentum", ultraEarlyMomentum, (c) => c.mint),
-    elite: split("elite", eliteCandidates, (c) => c.mint),
-    incubation: split("incubation", incubationCandidates, (c) => c.mint),
-    runners: split("runners", runners, (c) => c.mint),
+    cate: split("cate", cateCoins, (c) => c.mint, "cate"),
+    signals: split("buy_signals", buySignals, (c) => c.mint, "signals"),
+    early: split("ultra_momentum", ultraEarlyMomentum, (c) => c.mint, "early"),
+    elite: split("elite", eliteCandidates, (c) => c.mint, "elite"),
+    incubation: split("incubation", incubationCandidates, (c) => c.mint, "incubation"),
+    runners: split("runners", runners, (c) => c.mint, "runners"),
     graduates: split("graduates", graduates, (c) => c.mint),
   };
   // the Hot tab keeps its pools per network; the check works on the coin's address
@@ -494,6 +508,7 @@ export default function RadarPageElite() {
 
         <div data-tab-content className="radar-tab-content" style={{ maxHeight: "calc(100vh - 320px)", overflowY: "auto" }}>
           <AwayLine count={awayHere[activeTab] ?? 0} shown={showAway} onToggle={() => setShowAway((v) => !v)} />
+          <FlaggedLine coins={flagged[FLAG_KEY[activeTab] ?? ""] ?? []} shown={showFlagged} onToggle={() => setShowFlagged((v) => !v)} />
           {renderContent()}
         </div>
       </div>

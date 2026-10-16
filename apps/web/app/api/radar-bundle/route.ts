@@ -3,6 +3,8 @@ import { internalFetch } from "@/lib/internalFetch";
 import { egressOver } from "@/lib/cloudScan";
 
 export const dynamic = "force-dynamic";
+// the live red-flag gate asks DexScreener about every coin it is about to show (lib/liveGate.ts); a slow exchange ends in "kept", but the call must be allowed the time
+export const maxDuration = 30;
 
 // Everything the Radar page needs, in ONE request. It used to call these twelve routes itself every
 // 10 s, which is ~3.4M requests a month for a single open tab against Vercel's free 1M.

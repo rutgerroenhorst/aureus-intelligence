@@ -6,6 +6,9 @@
 
 import { gradFate, gradFlags, gradKind, isHealthy, summarizeFates, type GradFate, type GradKind, type KindSummary, type Reading } from "./lab/pump";
 import { readingsOf, type FeedLog } from "./graduateFeed";
+import { fetchLive } from "./liveQuotes";
+import { liveRedFlags, type FlagCode } from "./redFlags";
+import type { GetJson } from "./dexPairs";
 
 interface Queryable {
   query(text: string, params?: unknown[]): Promise<{ rows: any[]; rowCount?: number | null }>;
@@ -35,7 +38,7 @@ export interface GraduateRow {
   /** a real pool that is still standing and is not one of the kinds measured to end in a drain: what is shown by default */
   healthy: boolean;
   /** why a coin is not shown by default (null when it is) */
-  hiddenWhy: null | "drained" | "empty" | "born" | "mayhem" | "gone" | "small" | "waiting";
+  hiddenWhy: null | "drained" | "empty" | "born" | "mayhem" | "gone" | "small" | "waiting" | "collapsed" | "dead";
   empty: boolean;
   drained: boolean;
   mcap: number | null;
@@ -209,6 +212,35 @@ export async function loadPushedGraduates(db: Queryable): Promise<GraduatesRepor
   return { ...p, candidates: (p.candidates ?? []).map((c) => ({ ...c, ageMin: c.ageMin + lateMin, readingAgeMin: c.readingAgeMin == null ? null : Math.round(c.readingAgeMin + lateMin) })), source: "laptop", asOf: new Date(snapAt).toISOString() };
 }
 
+/** Why a coin the live gate took off the default view is hidden, in the words of the tab's own "Hidden" line. */
+const WHY: Record<FlagCode, NonNullable<GraduateRow["hiddenWhy"]>> = { no_pool: "gone", drained: "drained", tiny_cap: "drained", collapsed: "collapsed", blowoff: "collapsed", dumping: "collapsed", dead_flow: "dead" };
+const WHY_ORDER: FlagCode[] = ["no_pool", "drained", "tiny_cap", "collapsed", "blowoff", "dumping", "dead_flow"];
+
+/**
+ * The default view judged on what the coins look like NOW (docs/RED_FLAGS.md). A graduation was "healthy" if its first hour looked fine and stayed so for good: a coin that rugged, collapsed or stopped trading
+ * two hours later kept its place (on 2026-10-16 13 of the 23 coins shown by default carried a severe flag: down 70% in six hours, a pool under $5K, a market cap under $10K). Every coin shown by default is looked up live,
+ * the numbers on its card are replaced by the live ones, and a coin with a severe flag is moved to the hidden ones with the flag's words on its card ("show all" still lists it). A coin that could not be read stays as it was.
+ */
+export async function liveGateGraduates(report: GraduatesReport, getJson?: GetJson): Promise<GraduatesReport> {
+  if (process.env.RED_FLAGS_LIVE === "0" && !getJson) return report;
+  const shown = report.candidates.filter((c) => c.healthy);
+  if (!shown.length) return report;
+  const live = await fetchLive(shown.map((c) => c.mint), getJson).catch(() => null);
+  if (!live) return report;
+  const candidates = report.candidates.map((c) => {
+    if (!c.healthy || !live.has(c.mint)) return c;
+    const state = live.get(c.mint) ?? null;
+    const flags = liveRedFlags(state, { sinceFirst: c.sinceFirst, peakMultiple: c.peakMultiple, rowMcap: c.mcap });
+    // the numbers on the card are today's, whatever the verdict (a row can be hours old)
+    const moved = state && c.sinceFirst != null && c.mcap != null && c.mcap > 0 && state.mcap != null ? c.sinceFirst * (state.mcap / c.mcap) : c.sinceFirst;
+    const fresh = state ? { mcap: state.mcap ?? c.mcap, liq: state.liq ?? c.liq, change1h: state.h1 ?? c.change1h, sinceFirst: moved, readingAgeMin: 0 } : {};
+    if (!flags.length) return { ...c, ...fresh };
+    const first = WHY_ORDER.find((k) => flags.some((f) => f.code === k))!;
+    return { ...c, ...fresh, healthy: false, hiddenWhy: WHY[first], drained: c.drained || flags.some((f) => f.code === "drained" || f.code === "tiny_cap"), flags: [...flags.map((f) => f.text), ...c.flags] };
+  });
+  return { ...report, candidates };
+}
+
 let memo: { at: number; body: GraduatesReport } | null = null;
 /** For tests: forget the shared answer. */
 export const resetGraduatesMemo = () => {
@@ -243,6 +275,7 @@ export async function currentGraduates(db: Queryable): Promise<GraduatesReport> 
   const chainBetter = pushedUnread && local.source === "chain" && local.candidates.some((c) => c.healthy);
   const body =
     local.candidates.length > 0 && local.source !== "chain" ? local : pushed && pushedFresh && !chainBetter ? pushed : local.candidates.length > 0 ? local : pushed ?? local;
-  memo = { at: Date.now(), body };
-  return body;
+  const gated = await liveGateGraduates(body);
+  memo = { at: Date.now(), body: gated };
+  return gated;
 }

@@ -20,7 +20,7 @@ import { CHAIN_BY_ID, isTokenAddress } from "./chains";
 import type { JupToken } from "./graduateFeed";
 import { rugSnapshot, type RugRow } from "./lab/rugcheck";
 import { rpc } from "./wallet";
-import { bestPricedPair, rescuePair } from "./dexPairs";
+import { needsRescue, rescuePair } from "./dexPairs";
 import { ageNote } from "./ageRates";
 
 export interface Fresh {
@@ -60,7 +60,7 @@ export async function fetchFresh(chain: string, address: string, fetchImpl: type
     let best = [...mine].sort((a, b) => (fin(b?.liquidity?.usd) ?? 0) - (fin(a?.liquidity?.usd) ?? 0))[0]!;
     // the batch answer is one pair per coin and can be an old pump.fun bonding-curve pair with no price: a coin that is running would then read as dead ($VEIL, 2026-10-13).
     // Ask for its other pools before saying there is no pool (Solana only: the other endpoint is asked with the same address).
-    if (c.dex === "solana" && !bestPricedPair([best], address, "solana")) {
+    if (c.dex === "solana" && needsRescue(best)) {
       const alt = await rescuePair(address, async (u) => {
         try {
           const r = await fetchImpl(u, { headers: { accept: "application/json", "user-agent": "Aureus-Check/1.0" }, signal: AbortSignal.timeout(15_000) });

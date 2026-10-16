@@ -4,6 +4,7 @@ import { dexUrl } from "@/lib/chains";
 import { CheckBadge, CheckButton, CheckPanel, useCoinCheck, type CheckNote } from "./CoinCheck";
 import type { HotChain, HotPool } from "@/lib/hotChains";
 import { brand } from "@/lib/brand";
+import { liveRedFlags } from "@/lib/redFlags";
 import { CoinName, TabIntro } from "./parts";
 
 export interface HotClient {
@@ -27,7 +28,12 @@ const btn: React.CSSProperties = { padding: "6px 12px", background: "#1a1a1f", c
 const chip = (on: boolean): React.CSSProperties => ({ padding: "5px 10px", fontSize: 12, borderRadius: 6, cursor: "pointer", background: on ? "#2a2a3e" : "#1a1a1f", color: on ? "#fff" : "#8a8a8e", border: `1px solid ${on ? "#4a4a66" : "#2a2a2f"}` });
 
 /** New or exploding, small, with a pool that can be traded: the coins worth a look rather than the blue chips that trend every day. */
-export const isNewSmall = (p: HotPool) => (p.mcap == null || p.mcap <= 300e6) && ((p.ageH ?? 1e9) <= 720 || (p.ch24 ?? 0) >= 100) && (p.liq ?? 0) >= 10_000 && (p.vol24 ?? 0) >= 10_000;
+export const isNewSmall = (p: HotPool) =>
+  (p.mcap == null || p.mcap <= 300e6) && ((p.ageH ?? 1e9) <= 720 || (p.ch24 ?? 0) >= 100) && (p.liq ?? 0) >= 10_000 && (p.vol24 ?? 0) >= 10_000 && poolRedFlags(p).length === 0;
+
+/** The live red flags (lib/redFlags.ts, docs/RED_FLAGS.md) of a Hot pool, from the numbers the pool list already carries: a coin that has collapsed, is being dumped or has stopped trading is not "new and small", it is a wreck. */
+export const poolRedFlags = (p: HotPool) =>
+  liveRedFlags({ price: 1, mcap: p.mcap, liq: p.liq, h1: p.ch1, h6: p.ch6, h24: p.ch24, buys1h: p.buys1, sells1h: p.sells1, pairAgeMin: p.ageH != null ? p.ageH * 60 : null });;
 
 /** The networks from the hottest down, one line. Tapping one shows what is trending on it. */
 export function HotChainsBar({ hot, selected, onSelect }: { hot: HotClient | null; selected: string | null; onSelect: (id: string) => void }) {
