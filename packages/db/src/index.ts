@@ -87,6 +87,15 @@ function installMeter(pool: pg.Pool): void {
   });
 }
 
+/**
+ * Count what a pool to the HOSTED database receives when the process that holds it is not the site (the laptop's wallet, hot-ranking, exit-alert and phone-sync loops): the bytes go into the same day row as the site's own,
+ * because Supabase counts everything the database sends out, wherever it is read (docs/LIMITS.md, item 14). Only for pools that point at the hosted database: the count is written to the database the pool talks to.
+ */
+export function meterPool(pool: pg.Pool): pg.Pool {
+  installMeter(pool);
+  return pool;
+}
+
 function createPool(connectionString?: string): pg.Pool {
   const cs = connectionString ?? getConfig().env.DATABASE_URL;
   // Serverless (Vercel) instances multiply: keep each pool tiny so the shared pooler is not exhausted.

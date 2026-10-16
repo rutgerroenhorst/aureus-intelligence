@@ -1,4 +1,5 @@
 import { getPool, meterPending } from "@aureus/db";
+import { rollingUse, todaysBudgetMb } from "./egressBudget";
 
 /**
  * Keeps the data fresh without a machine of its own: the site scans the market itself, but only when
@@ -44,12 +45,12 @@ const LAB_RETRY_AFTER_FAILURE_MIN = 30;
 export const CPU_BUDGET_S_PER_DAY = Number(process.env.SCAN_CPU_BUDGET_S_PER_DAY ?? 240);
 const OVER_BUDGET_INTERVAL_FACTOR = 4;
 /**
- * Supabase's free plan allows 5 GB of egress a month: everything the database sends to the site's functions (the pages, the scans and the lab all
- * read from it). The meter in @aureus/db adds up the bytes per UTC day; past this many MB in a day the same brakes apply as for CPU (the scan and the
- * learning tick stretch x4, the lab and the catch-up rounds stop until the next day) and the Radar's bundle is served from memory for longer.
- * 100 MB a day is about 3 GB a month, which leaves room under the 5 GB. 0 switches the brake off.
+ * Supabase's free plan allows 5 GB of egress a month: everything the database sends out (the pages, the scans and the lab on the site, the laptop's own connections, the backups). The allowance is a rolling month
+ * (lib/egressBudget.ts, docs/LIMITS.md item 14): the last 31 days together may add up to 4,500 MB, and today's allowance is what the 30 days before it left of that (at most 200 MB, at least 40 MB), so a quiet day
+ * leaves its share to the days after it. Past today's allowance the same brakes apply as for CPU (the scan and the learning tick stretch x4, the lab and the catch-up rounds stop until the next day) and the Radar's
+ * bundle is served from memory for longer (lib/bundleTtl.ts). EGRESS_BUDGET_MB_PER_DAY in the environment fixes the allowance at that many MB a day instead (it was a flat 100 until 2026-10-16); 0 switches the brake off.
  */
-export const EGRESS_BUDGET_MB_PER_DAY = Number(process.env.EGRESS_BUDGET_MB_PER_DAY ?? 100);
+const EGRESS_FIXED_MB: number | null = process.env.EGRESS_BUDGET_MB_PER_DAY != null && process.env.EGRESS_BUDGET_MB_PER_DAY !== "" ? Number(process.env.EGRESS_BUDGET_MB_PER_DAY) : null;
 const TODAY = `'usage:' || to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD')`;
 
 export type Job = keyof typeof LEASE_TTL_MIN;
@@ -122,22 +123,37 @@ async function databaseMb(): Promise<number> {
   return Number(rows[0]?.mb ?? 0);
 }
 
-let egressMemo: { at: number; mb: number } | null = null;
-/** MB the database has sent to this site's functions today (UTC): the stored count plus what this process has not written down yet. */
-export async function usedEgressMb(): Promise<number> {
+let egressMemo: { at: number; todayMb: number; prevMb: number } | null = null;
+/** What the hosted database has sent out, from the day rows (the site's meter, the laptop's connections, estimates for the days before the meter), kept 30 seconds. */
+async function egressUse(): Promise<{ todayMb: number; prevMb: number }> {
   if (!egressMemo || Date.now() - egressMemo.at > 30_000) {
     try {
-      const { rows } = await query(`SELECT COALESCE((last_result->>'bytes')::bigint, 0) AS b FROM scan_lease WHERE name = 'usage:egress:' || to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD')`);
-      egressMemo = { at: Date.now(), mb: Number(rows[0]?.b ?? 0) / 1048576 };
+      const { rows } = await query(`SELECT name, COALESCE((last_result->>'bytes')::bigint, 0) AS b FROM scan_lease WHERE name LIKE 'usage:egress%'`);
+      const u = rollingUse((rows as Array<{ name: string; b: string | number }>).map((r) => ({ name: r.name, bytes: Number(r.b) })), Date.now());
+      egressMemo = { at: Date.now(), todayMb: u.todayMb, prevMb: u.prevMb };
     } catch {
-      egressMemo = { at: Date.now(), mb: egressMemo?.mb ?? 0 };
+      egressMemo = { at: Date.now(), todayMb: egressMemo?.todayMb ?? 0, prevMb: egressMemo?.prevMb ?? 0 };
     }
   }
-  return egressMemo.mb + meterPending() / 1048576;
+  return egressMemo;
 }
-/** Today's egress allowance is used up. */
+/** MB the database has sent out today (UTC): the stored count plus what this process has not written down yet. */
+export async function usedEgressMb(): Promise<number> {
+  return (await egressUse()).todayMb + meterPending() / 1048576;
+}
+/** Today's allowance in MB: the rolling month's what-is-left (lib/egressBudget.ts), or the fixed number of EGRESS_BUDGET_MB_PER_DAY. 0 = no brake. */
+export async function egressBudgetMb(): Promise<number> {
+  if (EGRESS_FIXED_MB != null) return EGRESS_FIXED_MB;
+  return todaysBudgetMb((await egressUse()).prevMb);
+}
+/** What the last 30 days sent out before today (MB), for the Ops page. */
+export async function egressPreviousDaysMb(): Promise<number> {
+  return (await egressUse()).prevMb;
+}
+/** Today's allowance is used up. */
 export async function egressOver(): Promise<boolean> {
-  return EGRESS_BUDGET_MB_PER_DAY > 0 && (await usedEgressMb()) >= EGRESS_BUDGET_MB_PER_DAY;
+  const budget = await egressBudgetMb();
+  return budget > 0 && (await usedEgressMb()) >= budget;
 }
 
 /** CPU milliseconds the site's scans have used today (UTC). */
@@ -177,7 +193,8 @@ export async function getScanState(): Promise<ScanState> {
     usedEgressMb(),
   ]);
   const scannerAgeS: number | null = hb[0]?.age_s ?? null;
-  const egressIsOver = EGRESS_BUDGET_MB_PER_DAY > 0 && egressMb >= EGRESS_BUDGET_MB_PER_DAY;
+  const egressBudget = await egressBudgetMb();
+  const egressIsOver = egressBudget > 0 && egressMb >= egressBudget;
   const overBudget = used / 1000 >= CPU_BUDGET_S_PER_DAY || egressIsOver;
   const storageFull = storageIsFull(mb);
   const row = (job: Job) => leases.find((l) => l.name === LEASE_NAME[job]);
@@ -196,7 +213,7 @@ export async function getScanState(): Promise<ScanState> {
     scan: state("scan"),
     learning: state("learning"),
     budget: { usedS: Math.round(used / 1000), limitS: CPU_BUDGET_S_PER_DAY, over: used / 1000 >= CPU_BUDGET_S_PER_DAY },
-    egress: { usedMb: Math.round(egressMb), limitMb: EGRESS_BUDGET_MB_PER_DAY, over: egressIsOver },
+    egress: { usedMb: Math.round(egressMb), limitMb: egressBudget, over: egressIsOver },
     storage: { usedMb: Math.round(mb), limitMb: STORAGE_LIMIT_MB, full: storageFull },
   };
 }

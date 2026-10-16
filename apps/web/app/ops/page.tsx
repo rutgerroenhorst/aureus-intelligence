@@ -72,7 +72,7 @@ export default function OpsPage() {
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "14px" }}>
                   {[
                     { label: "Database", used: usage.databaseMb, of: usage.plan.dbMb, unit: "MB", note: `pauses scanning at ${usage.budgets.storageStopMb || "—"} MB` },
-                    { label: "Sent out this month", used: usage.month.egressMb / 1024, of: usage.plan.egressGbMonth, unit: "GB", note: `today's brake at ${usage.budgets.egressMbPerDay} MB a day` },
+                    { label: "Sent out, last 31 days", used: (usage.egress?.windowMb ?? usage.month.egressMb) / 1024, of: usage.plan.egressGbMonth, unit: "GB", note: usage.egress ? `site, laptop and backups; today's allowance ${usage.egress.allowanceTodayMb} MB (what the 30 days before it left of ${Math.round(usage.budgets.egressWindowMb / 100) / 10} GB, at most 200 MB), ${usage.egress.todayMb} MB used so far` : `today's brake at ${usage.budgets.egressMbPerDay} MB a day` },
                     { label: "Scan CPU this month", used: usage.month.cpuS / 3600, of: usage.plan.cpuHoursMonth, unit: "h", note: `today's brake at ${usage.budgets.cpuSPerDay} s a day (scans only)` },
                   ].map((m) => {
                     const pct = Math.min(100, (100 * m.used) / m.of);

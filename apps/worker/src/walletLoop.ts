@@ -5,6 +5,7 @@
  */
 
 import pg from "pg";
+import { meterPool } from "@aureus/db";
 import { pushWalletFlows, pushWalletRows, syncAllWallets } from "../../web/lib/walletSync";
 
 type Log = (msg: string, extra?: Record<string, unknown>) => void;
@@ -27,7 +28,7 @@ export function startWalletLoop(db: Client, log: Log): () => void {
       }
       // with LAB_SYNC_URL set, the hosted journal is kept level too (the phone sees new trades without anyone opening the page first)
       if (process.env.LAB_SYNC_URL) {
-        hosted ??= new pg.Pool({ connectionString: process.env.LAB_SYNC_URL, max: 1, statement_timeout: 60_000, idleTimeoutMillis: 20_000, connectionTimeoutMillis: 15_000 });
+        hosted ??= meterPool(new pg.Pool({ connectionString: process.env.LAB_SYNC_URL, max: 1, statement_timeout: 60_000, idleTimeoutMillis: 20_000, connectionTimeoutMillis: 15_000 }));
         for (const a of (await db.query(`SELECT address FROM wallet_watch`)).rows) {
           const p = await pushWalletRows(db, hosted as unknown as Client, a.address as string);
           if (p) log("wallet pushed to the hosted journal", { txs: p.txs, fills: p.fills, journal: p.journal });

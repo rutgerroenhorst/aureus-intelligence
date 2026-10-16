@@ -11,6 +11,7 @@ import os from "node:os";
 import path from "node:path";
 import pg from "pg";
 import { hostedUrl } from "./lib/hosted.js";
+import { EGRESS_USE_MB, rollingUse, todaysBudgetMb } from "../apps/web/lib/egressBudget";
 
 const HOSTED = hostedUrl();
 const mb = (n: number) => `${(n / 1048576).toFixed(n < 10 * 1048576 ? 1 : 0)} MB`;
@@ -30,7 +31,7 @@ async function hosted() {
     const month = new Date().toISOString().slice(0, 7);
     let egress = 0;
     let cpu = 0;
-    console.log("  day         sent out of the database   scan + exit-check CPU   (budgets: 100 MB and 240 s a day)");
+    console.log("  day         sent out of the database   scan + exit-check CPU   (allowances: a rolling month for the data, 240 s a day for CPU)");
     const days = new Map<string, { e: number; c: number }>();
     for (const r of rows) {
       const m = /^usage:(egress:)?(\d{4}-\d{2}-\d{2})$/.exec(r.name);
@@ -42,7 +43,13 @@ async function hosted() {
     }
     for (const [day, d] of [...days].sort((a, b) => b[0].localeCompare(a[0])).slice(0, 7)) console.log(`  ${day}  ${mb(d.e).padStart(10)}                 ${d.c.toFixed(0).padStart(5)} s`);
     for (const [day, d] of days) if (day.startsWith(month)) { egress += d.e; cpu += d.c; }
-    console.log(`  this month     sent out ${mb(egress)} of 5 GB   ${bar(egress, 5 * 1073741824)}   (meter started with the 2026-10-11 deployment)`);
+    console.log(`  this month     sent out ${mb(egress)} of 5 GB   ${bar(egress, 5 * 1073741824)}   (counted rows only; the meter started with the 2026-10-11 deployment)`);
+    // the rolling month (lib/egressBudget.ts): everything counted plus the estimates for the days before the meter, the last 31 days against 4,500 MB, and today's allowance
+    const all = (await db.query(`SELECT name, COALESCE((last_result->>'bytes')::bigint, 0) AS b FROM scan_lease WHERE name LIKE 'usage:egress%'`)).rows as Array<{ name: string; b: string }>;
+    const roll = rollingUse(all.map((r) => ({ name: r.name, bytes: Number(r.b) })), Date.now());
+    const window = roll.prevMb + roll.todayMb;
+    console.log(`  last 31 days   sent out ${mb(window * 1048576)} of ${EGRESS_USE_MB} MB (90% of 5 GB)   ${bar(window, EGRESS_USE_MB)}   (site, laptop and backups, with estimates for 2026-10-08..10)`);
+    console.log(`  today          ${roll.todayMb.toFixed(0)} MB used of an allowance of ${todaysBudgetMb(roll.prevMb)} MB (what the 30 days before left, at most 200)`);
     console.log(`  this month     counted CPU ${(cpu / 3600).toFixed(2)} h of 4 h   ${bar(cpu, 4 * 3600)}   (scans, the lab and the 24/7 exit check; the pages add a little)`);
     const tg = (await db.query(`SELECT count(*)::int AS n FROM telegram_messages WHERE sent_at > now() - interval '24 hours'`).catch(() => ({ rows: [{ n: "?" }] }))).rows[0].n;
     console.log(`  Telegram messages in the last 24 hours (hosted copy): ${tg}\n`);

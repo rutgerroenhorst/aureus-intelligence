@@ -6,6 +6,7 @@
  */
 
 import pg from "pg";
+import { meterPool } from "@aureus/db";
 import { computeHotChains, saveHotReport, type HotReport } from "../../web/lib/hotChains";
 
 type Log = (msg: string, extra?: Record<string, unknown>) => void;
@@ -35,7 +36,7 @@ export function startHotLoop(local: Client, log: Log): () => void {
       const storedLocal = await saveHotReport(local, r);
       let storedHosted: boolean | null = null;
       if (process.env.LAB_SYNC_URL) {
-        hosted ??= new pg.Pool({ connectionString: process.env.LAB_SYNC_URL, max: 1, statement_timeout: 30_000, idleTimeoutMillis: 20_000, connectionTimeoutMillis: 15_000 });
+        hosted ??= meterPool(new pg.Pool({ connectionString: process.env.LAB_SYNC_URL, max: 1, statement_timeout: 30_000, idleTimeoutMillis: 20_000, connectionTimeoutMillis: 15_000 }));
         storedHosted = await saveHotReport(hosted as unknown as Client, r);
       }
       const top = r.chains[0]?.id ?? "";

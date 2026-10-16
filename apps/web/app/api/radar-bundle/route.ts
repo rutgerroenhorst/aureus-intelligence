@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { internalFetch } from "@/lib/internalFetch";
-import { EGRESS_BUDGET_MB_PER_DAY, usedEgressMb } from "@/lib/cloudScan";
+import { egressBudgetMb, usedEgressMb } from "@/lib/cloudScan";
 import { bundleTtlMs } from "@/lib/bundleTtl";
 
 export const dynamic = "force-dynamic";
@@ -30,7 +30,8 @@ const SOURCES = {
 // Shared by every device that asks within the window, so a second phone or tablet costs no extra CPU. One build reads from the hosted database
 // (what Supabase's free plan counts as egress, 5 GB a month): the base list once per three minutes and the chain's graduations once per feed round
 // (about 60 KB a build, it was 330 to 410 KB), more than 1 MB on the laptop's much bigger one. On the hosted site the answer is kept for a minute, for two
-// when today's egress allowance is used up and for five when a quarter over it (lib/bundleTtl.ts).
+// when today's egress allowance is used up and for five when a quarter over it (lib/bundleTtl.ts); today's allowance is what the 30 days before it left of
+// a rolling 4,500 MB, at most 200 MB (lib/egressBudget.ts).
 const TTL_MS = process.env.VERCEL ? 60_000 : 15_000;
 let memo: { at: number; body: string } | null = null;
 let inflight: Promise<void> | null = null;
@@ -75,7 +76,7 @@ async function build(): Promise<void> {
 }
 
 export async function GET() {
-  const ttl = process.env.VERCEL ? bundleTtlMs(await usedEgressMb().catch(() => 0), EGRESS_BUDGET_MB_PER_DAY) : TTL_MS;
+  const ttl = process.env.VERCEL ? bundleTtlMs(await usedEgressMb().catch(() => 0), await egressBudgetMb().catch(() => 100)) : TTL_MS;
   if (!memo || Date.now() - memo.at > ttl) {
     inflight ??= build().finally(() => {
       inflight = null;

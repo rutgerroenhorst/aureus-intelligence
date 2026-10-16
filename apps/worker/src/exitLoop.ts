@@ -17,6 +17,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import pg from "pg";
+import { meterPool } from "@aureus/db";
 import { logMessage, type LoggedMessage } from "./telegramLog";
 import { MAX_RESCUES, rescuePair } from "../../web/lib/dexPairs";
 import {
@@ -749,7 +750,7 @@ export function startExitLoop(db: Db, log: Log): () => void {
   /** the database that holds the state of the alerts */
   const stateStore = (): Store => {
     if (!hostedUrl) return localStore;
-    hosted ??= new pg.Pool({ connectionString: hostedUrl, max: 1, statement_timeout: 30_000, idleTimeoutMillis: 20_000, connectionTimeoutMillis: 15_000 });
+    hosted ??= meterPool(new pg.Pool({ connectionString: hostedUrl, max: 1, statement_timeout: 30_000, idleTimeoutMillis: 20_000, connectionTimeoutMillis: 15_000 }));
     return pgStore(hosted as unknown as Db);
   };
   const tick = async (): Promise<number> => {
