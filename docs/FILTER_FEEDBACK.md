@@ -1,7 +1,7 @@
 # Feedback on the coins: what to filter, what not, and where the money really goes (2026-10-16)
 
 The owner asked, three days after the alerts were rebuilt: looking at the last days, the coins that were in the system and the coins they entered with the button, is there feedback for the system, coins that should be filtered away more, "purely"?
-This page is the answer with its numbers and its limits; the scripts that make every table are named so that it can be redone (section 7). Like the other reviews it holds counts and totals only, no coin names and no wallet.
+This page is the answer with its numbers and its limits; the scripts that make every table are named so that it can be redone (section 8). Like the other reviews it holds counts and totals only, no coin names and no wallet.
 
 **Data limits, first.** The laptop's lab daemon was down from 2026-10-13 14:52 to 2026-10-16 03:35 (it was restarted today with `scripts/laptop-up.sh --daemon`), so the lab has no readings for those days; every lab number below is from the days before the gap.
 The site itself (alerts, listings, the chain feed) ran the whole time, so the numbers about the messages and the owner's entries are complete up to today.
@@ -43,7 +43,7 @@ Result = the lab's labelled result of the current exit plan from the first look 
 - **Thin pools next to a big market cap crash**; small coins (under about $33K) and deep pools do better. Not a profit: the best groups are still 0.84x to 0.92x, and only the smallest-market-cap group has an interval that reaches 1.0.
 - Four fixed combinations: *not hot* (trades below the top third) 0.84x against 0.64x (+0.19 / +0.21 in the two halves); *not hot and a deep pool* 0.86x against 0.69x (+0.16 / +0.17); adding *market cap below the top third* 0.85x against 0.70x; *quiet only* 0.89x against 0.71x. The doubling chance is the same in
   every group (15% to 17%), so what the filter removes is crashes, not winners. In money: about +0.2 per dollar of stake, four times what the best exit tweak was worth (5 points).
-- Caveat: the cut points are terciles of this sample and the halves are not independent of it. The effect is large and the same in both halves, but only coins first seen after today can confirm it (section 7).
+- Caveat: the cut points are terciles of this sample and the halves are not independent of it. The effect is large and the same in both halves, but only coins first seen after today can confirm it (section 8).
 
 ## 4. Graduations (`scripts/lab-graduate-features.ts`, the sequel of `scripts/lab-graduate-audit.ts`)
 
@@ -77,20 +77,62 @@ two of the twelve bounced above 2x at some point (one of them is the big miss). 
 
 **The owner acted on 5 of the 43 messages** (14 buys and 5 sells in the same 2.5 days): 2 of 7 first-profit, 2 of 9 step, 1 of 15 line and 0 of 12 loss messages were followed by a sale within two hours. The loss message is silent by design; the line message has sound.
 
-## 6. What the data says to do, ranked by how well it is supported
+## 6. The owner's objection: most coins came from the tabs, and they are "slow cookers" (`scripts/entries-by-source.ts`, `scripts/lab-heat-filter.ts`)
+
+The owner answered the first version of this page: most of their coins came from Incubation, Elite and the other tabs; Graduations are their runners; the tab coins "may not have gone hard but still stand at a good cap". Tested instead of argued:
+
+**Where the purchases came from and what they are worth now** (92 coins first bought since 2026-10-09; a coin listed on two tabs counts in both indented rows):
+
+| source | coins | put in | worth now | multiple | at or above 1x |
+| --- | --- | --- | --- | --- | --- |
+| a Radar tab, listed before the buy | 40 | $138 | $42 | **0.30x** | 3 |
+|   Buy Signals / Incubation / Elite / Ultra Momentum / CATE | 38 / 20 / 17 / 18 / 7 | | | 0.30x / 0.36x / 0.37x / 0.20x / 0.15x | |
+| Graduations (the button's journal, or a graduation within a day before the buy) | 35 | $167 | $131 | **0.78x** | 7 |
+| neither | 17 | $84 | $46 | 0.55x | 3 |
+
+The owner is right that most coins came from the tabs (40 coins against 35) and that Graduations are the best source (7 of 35 at or above 1x, against 3 of 40); the tab purchases are the worst source (-70%).
+
+**Do the tab coins stand at a good cap days later?** The market cap now over the market cap at the listing, for the listings of 9 to 13 October (3 to 7 days old; no priced pool = dead = 0):
+
+| group | listings | dead | at or above 0.5x | at or above 1x | median | still at $50K or more |
+| --- | --- | --- | --- | --- | --- | --- |
+| Elite | 92 | 3% | 11% | 7% | 0.06x | 14% |
+| Incubation | 61 | 3% | 11% | 10% | 0.05x | 13% |
+| Buy Signals | 223 | 4% | 14% | 8% | 0.12x | 8% |
+| Ultra Momentum | 81 | 7% | 16% | 7% | 0.11x | 7% |
+| CATE | 95 | 5% | 23% | 8% | 0.23x | 4% |
+| graduations, not born (first pool $5K or more) | 369 | 32% | 12% | 5% | 0.05x | 11% |
+| graduations, born | 405 | 83% | 1% | 1% | 0.00x | 1% |
+
+True: the tab coins almost never die outright (3-7% have no pool left against a third of the visible graduations). Not true that they "stand at a good cap": the typical one is down 77% to 95% from the listing, 7-10% are above it, and only 13-14% of Elite and Incubation still have $50K. They bleed slowly more than they cook.
+The age at the listing does not change this (the tabs list almost only coins of 1 to 24 hours: 531 of 552 listings; 14% / 17% / 11% at or above half for 1-4.5 h, 4.5-24 h, 1-3 days).
+
+**Slow cookers do exist, and they are the quiet coins, not a tab.** The Radar's coins, 72 hours after the first look, by the trades in the last hour at the first look (cuts about 490 and 2,700; n = 1,216):
+
+| third | median price then, over the first look | at or above 0.5x | at or above 1x | at or above 2x |
+| --- | --- | --- | --- | --- |
+| quiet | **0.59x** | 53% | 35% | 7.7% |
+| middle | 0.23x | 30% | 17% | 4.9% |
+| hot | **0.09x** | 16.5% | 8.4% | 3.2% |
+
+The tabs reward activity, so they list many hot coins; those are the bleeders, the quiet ones are the cookers (this is the same effect as in section 3, seen at 72 hours). The truly old and big coins (the lab's runner lane: median age 20 days, median cap $1.1 million) barely crash but rarely run either (7% held 2x in 72 hours, 43 coins);
+the tabs do not list them. **So the right move is not to hide Elite or Incubation but to show which of their coins are quiet and which are hot.**
+
+## 7. What the data says to do, ranked by how well it is supported
 
 1. **Act on the exit messages.** The largest effect in the data and the one thing fully under the owner's control. (Section 5.)
 2. **Do not buy what is hot.** The busiest third of coins by trades or volume returns 0.2x less per dollar, with the same chance of doubling (sections 3 and 4). A fixed rule: skip a Radar coin with more than about 2,800 trades in the last hour, more than about $140K volume in the last hour or more than 7x its pool in an hour.
-3. **Stop treating Elite, Incubation and Buy Signals as picks** (section 2): they lose half within a day 10 to 21 points more often than random coins of the same age.
+3. **Keep the tabs, but tell the quiet coins from the hot ones.** Elite, Incubation and Buy Signals lose half within a day 10 to 21 points more often than random coins of the same age (section 2), the owner's purchases from them returned 0.30x against 0.78x from Graduations (section 6),
+   and the part of them that is quiet is the part that holds (0.59x against 0.09x after 72 hours). A "quiet" / "hot" mark on every card makes the slow cookers findable without hiding anything.
 4. **Fewer, bigger tickets.** An order costs a flat $0.10: a round trip on $2 is 10% of the ticket, on $5 4%. The same budget in fewer, bigger tickets gives back about 6% of it with certainty (the entries are no better or worse for it).
 5. **Keep "born" hidden** (98% down by half after a day) and treat a coin that has already pumped since its graduation as one that has already run (96% to 98% down by half against 73% for a calm one).
 6. **Not supported by the data:** a filter on pool age, buy share, or any entry filter for the graduations that are visible by default.
 
 **Honest ceiling.** The best groups in the lab return 0.85x to 0.92x of the stake with the current exit plan; no combination in the data is clearly above 1.0. Filters and exits move the owner from clearly negative to nearly break-even at best; the profit, when it comes, comes from the one coin in eight that doubles and from not selling it too early.
 
-## 7. Forward test and how to redo it
+## 8. Forward test and how to redo it
 
 - The lab daemon has to run (`scripts/laptop-up.sh --daemon`; it stops when the laptop sleeps or restarts, and every stop costs finished days). After 2026-10-30 rerun `scripts/lab-heat-filter.ts`, `scripts/lab-graduate-features.ts` and `scripts/lab-graduate-audit.ts` **only on coins first seen after 2026-10-16**, with the cut points of section 3.
   A rule counts when the difference keeps the same sign in both halves and stays at 0.15x or more; otherwise it goes.
 - `scripts/alerts-vs-hold.ts` after four weeks of messages (more positions, a different market).
-- Not built from this page (each needs a yes): a "heat" line in the Check and on the Radar cards, the loss message with sound, hiding Elite / Incubation / Buy Signals by default.
+- Not built from this page (each needs a yes): a "quiet" / "hot" mark on the Radar cards and a heat line in the Check, the loss message with sound. (Hiding Elite / Incubation / Buy Signals was proposed first and withdrawn after section 6.)

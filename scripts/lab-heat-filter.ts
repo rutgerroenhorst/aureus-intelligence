@@ -18,7 +18,7 @@ const arg = (k: string, d: string) => {
 };
 const LANE = arg("lane", "fresh");
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL ?? "postgres://aureus:aureus@localhost:5432/aureus", max: 2, statement_timeout: 300_000 });
-interface Coin { t: number; f: Record<string, number | null>; y: { ev: number | null; go2: boolean | null; collapse24: boolean | null } }
+interface Coin { t: number; f: Record<string, number | null>; y: { ev: number | null; go2: boolean | null; collapse24: boolean | null; fwd72?: number | null } }
 const rows: Coin[] = (
   await pool.query(`SELECT EXTRACT(EPOCH FROM first_seen_at)::float8 AS t, snaps->0->'f' AS f, snaps->0->'y' AS y FROM lab_coins WHERE lane = $1 AND snaps->0->'y'->>'ev' IS NOT NULL`, [LANE])
 ).rows;
@@ -92,4 +92,19 @@ for (const [name, fn] of RULES) {
     return p.length >= 20 && f.length >= 20 ? `${(mean(ev(p)) - mean(ev(f))).toFixed(2).replace(/^(\d)/, "+$1")}x (n ${p.length}/${f.length})` : "thin";
   };
   console.log(`   pass minus fail: earlier half ${d((r) => r.t < tMid)}   later half ${d((r) => r.t >= tMid)}`);
+}
+
+// The "slow cooker" question (the owner, 2026-10-16: the coins of the Elite and Incubation tabs "may not have gone hard, but they still stand at a good cap"): 72 hours after the first look, what do the quiet, the middle and the hot
+// third (by trades in the last hour) stand at? fwd72 = the price 72 hours later over the price at the first look (a dead coin is about 0).
+const fwdRows = rows.filter((r) => r.y.fwd72 != null && r.f.trades_h1 != null);
+if (fwdRows.length >= 150) {
+  const vs = fwdRows.map((r) => r.f.trades_h1!).sort((a, b) => a - b);
+  const q1 = vs[Math.floor(vs.length / 3)]!, q2 = vs[Math.floor((2 * vs.length) / 3)]!;
+  const med = (a: number[]) => [...a].sort((x, y) => x - y)[Math.floor(a.length / 2)]!;
+  console.log(`\n== 72 hours later, by trades in the last hour at the first look (cuts ${q1.toPrecision(3)} / ${q2.toPrecision(3)}; n=${fwdRows.length}): price then over price at the first look`);
+  for (const [name, sel] of [["quiet third", (v: number) => v < q1], ["middle third", (v: number) => v >= q1 && v < q2], ["hot third", (v: number) => v >= q2]] as Array<[string, (v: number) => boolean]>) {
+    const g = fwdRows.filter((r) => sel(r.f.trades_h1!)).map((r) => r.y.fwd72!);
+    const p = (th: number) => `${((100 * g.filter((x) => x >= th).length) / g.length).toFixed(1)}%`;
+    console.log(`   ${name.padEnd(13)} n=${g.length}  median ${med(g).toFixed(2)}x  at or above 0.5x ${p(0.5)}  at or above 1x ${p(1)}  at or above 2x ${p(2)}`);
+  }
 }
