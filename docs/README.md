@@ -29,6 +29,7 @@ Supabase (the database and the clock), with the laptop as an optional extra. **I
 | [`EXIT_PRACTICE.md`](EXIT_PRACTICE.md) | the exit and entry rules used in practice for pump.fun / PumpSwap memecoins (guides, a vendor, two papers), graded and tested on the lab's coins: none beats the current advice; the entry moment matters as much; includes the correction of the "decided window" bias |
 | [`HOT_NETWORKS.md`](HOT_NETWORKS.md) | the ranking of networks at the top of the Radar and the Hot tab |
 | [`WALLET.md`](WALLET.md), [`WALLET_REVIEW.md`](WALLET_REVIEW.md), [`WALLET_REVIEW_2.md`](WALLET_REVIEW_2.md) | the followed wallet: the decoder, the journal merge, what it showed (second review: 200 coins since August, 78% never sold, the 88 payments the review cannot see) |
+| [`FILTER_FEEDBACK.md`](FILTER_FEEDBACK.md) | 2026-10-16 feedback on the coins and the owner's entries: the tabs add nothing (three crash more than random coins), busy coins return 0.2x less per dollar, no entry filter for visible graduations yet, following the messages would have doubled the result; forward test |
 | [`GRADUATION_AUDIT.md`](GRADUATION_AUDIT.md) | why $VEIL never showed (DexScreener's batch endpoint hands back a dead bonding-curve pair), the fix, and whether the Graduations tab's default view hides the coins that run |
 | [`KENNIS.md`](KENNIS.md) | the Kennis tab: the written knowledge base, how it searches, how to add to it |
 | [`BRAND.md`](BRAND.md) | the Auriga name, mark, colours, icons |

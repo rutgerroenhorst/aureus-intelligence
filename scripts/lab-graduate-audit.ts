@@ -25,6 +25,14 @@ const num = (x: unknown): number | null => {
   return Number.isFinite(n) ? n : null;
 };
 
+/** The lab's daemon stops now and then (the laptop sleeps, restarts): a window is over only if the readings were running throughout it. A gap of more than 6 hours in everybody's readings ends the horizon for coins that started before it. */
+function horizonFor(allTimes: number[], latest: number): (t0: number) => number {
+  const ts = [...allTimes].sort((a, b) => a - b);
+  const gaps: number[] = [];
+  for (let i = 1; i < ts.length; i++) if (ts[i]! - ts[i - 1]! > 6 * 3600) gaps.push(ts[i - 1]!);
+  return (t0) => gaps.find((g) => g >= t0) ?? latest;
+}
+
 async function main() {
   const grads = (
     await pool.query(
@@ -86,9 +94,10 @@ async function main() {
   }
   // the window must be over: keep coins whose readings reach at least 23 hours after the first reading, or that show a drained pool (nothing more can happen)
   const latest = Math.max(...[...reads.values()].map((a) => a[a.length - 1]!.t));
+  const horizon = horizonFor([...reads.values()].flatMap((a) => a.map((r) => r.t)), latest);
   const done = recs.filter((r) => {
     const rs = reads.get(r.mint)!;
-    return rs[0]!.t + 25 * HOUR <= latest;
+    return rs[0]!.t + 25 * HOUR <= horizon(rs[0]!.t);
   });
   console.log(`${neverRead} graduations had fewer than 3 readings (never priced: like $VEIL), ${recs.length - done.length} too young, ${done.length} analysed`);
 

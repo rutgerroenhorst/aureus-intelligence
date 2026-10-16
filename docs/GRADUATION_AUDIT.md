@@ -40,34 +40,34 @@ and a rescue case in the Check, the exit loop and the lab tests. A live Check of
 
 ## 2. Does the default view hide the coins that run?
 
-`scripts/lab-graduate-audit.ts` (written down before looking): every graduation the laptop's stream recorded (10 to 12 October, **872** of them, at least 26 hours old so that 24 hours after the first reading are over for every coin), the tab's own rule applied to the
-**first hour's** readings only (what a person looking at the tab an hour after the graduation would have seen), and what the coin did: the highest level the price **held** (half an hour, several readings) within 24 hours of the first reading, as a multiple of the first reading.
+`scripts/lab-graduate-audit.ts` (written down before looking): every graduation the laptop's stream recorded (10 to 12 October), the tab's own rule applied to the **first hour's** readings only (what a person looking at the tab an hour after the
+graduation would have seen), and what the coin did: the highest level the price **held** (half an hour, several readings) within 24 hours of the first reading, as a multiple of the first reading.
+**Corrected 2026-10-16:** the first version (867 coins) called a window "over" when the latest reading of any coin was 25 hours past the first reading; the laptop sleeps and the lab daemon stops for hours, so coins whose readings had a hole in their day
+were counted. A coin now counts only if the readings ran throughout its 25 hours (a gap of more than 6 hours in everybody's readings ends the horizon): **300 of the 1,258 graduations**. The conclusions did not change; the intervals are wider.
 
 | group (what the default view said after the first hour) | coins | held 2x | held 5x | held 10x | median multiple |
 | --- | --- | --- | --- | --- | --- |
-| all | 867 | 9% (79) | 2% (16) | 1% (7) | 0.46x |
-| **shown** | 168 | 15% (26) | 3% (5) | 1% (1) | **1.00x** |
-| born (graduated within 2 minutes of launch with a creator buy of 50 SOL or more) | 289 | 11% (31) | 1% (3) | 0% | **0.01x** |
-| Mayhem Mode | 63 | 6% (4) | 3% (2) | 3% (2) | 0.48x |
-| empty (first pool reading under $1,000) | 171 | 10% (17) | 3% (5) | 2% (4) | 0.54x |
-| drained | 13 | 8% (1) | 8% (1) | 0% | 0.03x |
-| small (pool under $5K) | 163 | 0% | 0% | 0% | 0.17x |
+| all | 300 | 8% (24) | 2% (7) | 1% (3) | 0.36x |
+| **shown** | 47 | 13% (6) | 4% (2) | 2% (1) | **0.99x** |
+| born (graduated within 2 minutes of launch with a creator buy of 50 SOL or more) | 105 | 12% (13) | 2% (2) | 0% | **0.01x** |
+| Mayhem Mode | 31 | 3% (1) | 3% (1) | 3% (1) | 0.27x |
+| empty (first pool reading under $1,000) | 67 | 6% (4) | 3% (2) | 1% (1) | 0.46x |
+| drained | 3 | 0% | 0% | 0% | 0.05x |
+| small (pool under $5K) | 47 | 0% | 0% | 0% | 0.13x |
 
-(5 more graduations had fewer than three readings: never priced, like VEIL. The tab's own "waiting" group was empty.)
-
-**Read this table with care.** The "empty" and "Mayhem" rows hold the biggest "runners" (1,183x, 82x, 62x, 22x, 19x): every one of the six biggest started from a pool of $0 to $105, a base price that is not a price anyone could pay. Nobody could have bought those. Restricted to coins whose first pool reading was
-at least $5,000 (545 of the 867, the runs a person could actually have bought):
+**Read this table with care.** The "empty" and "Mayhem" rows hold the biggest "runners" (22x, 19x, 8x): every one of them started from a pool of $10 to $26, a base price that is not a price anyone could pay. Nobody could have bought those. Restricted to coins whose first pool reading was
+at least $5,000 (175 of the 300, the runs a person could actually have bought):
 
 | group | coins | held 2x | held 5x | held 10x | median multiple |
 | --- | --- | --- | --- | --- | --- |
-| all | 545 | 10% (54) | 1% (7) | 0% (1) | 0.22x |
-| shown | 159 | 14% (23) | 3% (4) | 1% (1) | 1.00x |
-| born | 284 | 11% (31) | 1% (3) | 0% | 0.01x |
-| drained / small | 11 / 91 | 0% / 0% | 0% / 0% | 0% / 0% | 0.03x / 0.08x |
+| all | 175 | 10% (18) | 2% (4) | 1% (1) | 0.13x |
+| shown | 44 | 11% (5) | 5% (2) | 2% (1) | 0.99x |
+| born | 104 | 13% (13) | 2% (2) | 0% | 0.01x |
+| drained / small | 3 / 24 | 0% / 0% | 0% / 0% | 0% / 0% | 0.05x / 0.08x |
 
-- Of the 54 buyable coins that held 2x, **31 (57%) were hidden** by the default view, all of them "born"; of the 7 that held 5x, 3 were hidden (all born); the only 10x was shown.
-- The hiding is **justified on average** (the median born graduation ends at 0.01x of its first reading, the median shown one at 1.00x), **but one in nine born graduations did double** in the first day.
-- For a buyer one hour later the picture changes: 105 born graduations were still alive an hour after their first reading (and were followed for another day), and **none** of them doubled again (0 of 105); the shown group still doubled 10% of the time (11 of 113).
+- Of the 18 buyable coins that held 2x, **13 (72%) were hidden** by the default view, all of them "born"; of the 4 that held 5x, 2 were hidden (both born); the only 10x was shown.
+- The hiding is **justified on average** (the median born graduation ends at 0.01x of its first reading, the median shown one at 0.99x), **but about one in eight born graduations did double** in the first day.
+- For a buyer one hour later the picture changes: 62 born graduations were still alive an hour after their first reading (and were followed for another day), and **none** of them doubled again (0 of 62); the shown group still doubled 13% of the time (4 of 31).
 
 So the rule "hide the kinds that mostly drain" costs the runs of the first hour for a few born coins, and nothing for a buyer an hour later. The Graduations tab now has a yellow strip, **"Hidden, but running now"** (a hidden coin that has doubled or more since it was first seen, with a pool of
 $20K or more, at most 12 hours old, at most five of them, with what it was hidden for), so a run in a hidden kind is visible without switching the hiding off. It is not a signal: look, then Check.

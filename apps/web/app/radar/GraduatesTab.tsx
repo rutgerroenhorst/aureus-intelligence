@@ -211,7 +211,7 @@ export function GraduatesTab({ coins, lab, meta, entered, failedMints, onEnter, 
             </div>
           ))}
           <div style={{ color: "#a89a70", marginTop: 3 }}>
-            Most coins of these kinds end in a drain. In the lab's data (10 to 12 October, 867 graduations) one in nine born graduations doubled in the first day, but none of the 105 that were still alive an hour later doubled again. A rare one does run for days. Nothing here is a signal: look, then decide with the Check.
+            Most coins of these kinds end in a drain. In the lab's data (10 to 12 October, 300 graduations followed for a whole day) about one in eight born graduations doubled in the first day, but none of the 62 that were still alive an hour later doubled again. A rare one does run for days. Nothing here is a signal: look, then decide with the Check.
           </div>
         </div>
       )}
