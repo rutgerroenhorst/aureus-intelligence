@@ -14,10 +14,17 @@
  *   - blown off: up 300% in a day and down 40% in the last hour (a pump that has turned);
  *   - dumping: sellers at least three times the buyers (30 trades or more) while the price is falling;
  *   - no trading: fewer than 5 trades in the last hour for a coin that is not brand new.
- * The flags that are only stories about who holds a coin (one wallet at 24%, linked wallets, a serial creator, a pool that is not locked) are NOT used here: the owner's best graduation had
- * two of them, and among graduations that were not "born" the coins carrying them did no worse than the rest (docs/FILTER_FEEDBACK.md).
+ * Holders and wallets (the owner, 2026-10-16: "a coin with insider networks holding 99% I do not want at all"; `holderRedFlags` below): who holds a coin is a flag on its own, whatever the chart does.
+ *   - linked insider wallets (RugCheck's insider networks) hold 20% of the supply or more; one wallet holds 20% or more; the ten largest wallets hold 60% or more; the creator still holds 20% or more;
+ *   - RugCheck marks the coin as rugged, or the creator has rugged coins before.
+ * A "wallet" is an address somebody can sign for (lib/solanaKeys.ts): the coin's own pump.fun bonding curve, a pool and other program accounts are not counted. On 2026-10-16 the largest holder of 30 of the 35
+ * coins on the tabs with a "one wallet holds 20% or more" flag was such an account (22 bonding curves, 4 pools, 4 other programs), so the old card line was mostly a false alarm.
+ * Evidence: of the 13 graduations (not "born", lab's 264, first look) whose insider networks held 20% or more NONE held 2x (0 of 13, against 10% of the rest), although RugCheck's insider figure is noisy (for half of
+ * the coins that carry it the figure is more than the other holders leave of the supply: it double counts). The lab's largest-wallet and top-ten figures counted program accounts, so there is no evidence for the wallet
+ * rules; their thresholds are the Check's own. The launch stories (graduated within 2 minutes, creator bought 5 SOL or more, serial creator) are NOT hiding flags: those coins held 2x about as often as the rest
+ * (15%, 10% and 10% against 10%) and they are 24%, 12% and 35% of the graduations that were not "born".
  *
- * Pure: no network, no database. lib/liveQuotes.ts fetches the numbers, lib/liveGate.ts applies this to a list.
+ * Pure: no network, no database. lib/liveQuotes.ts fetches the market numbers, lib/holderFacts.ts the holder shares, lib/liveGate.ts applies this to a list.
  */
 
 /** What a coin looks like now (percent changes as DexScreener gives them: -50 is half). null = not known. */
@@ -44,7 +51,9 @@ export interface FlagContext {
   rowMcap?: number | null;
 }
 
-export type FlagCode = "no_pool" | "drained" | "tiny_cap" | "collapsed" | "blowoff" | "dumping" | "dead_flow";
+export type LiveFlagCode = "no_pool" | "drained" | "tiny_cap" | "collapsed" | "blowoff" | "dumping" | "dead_flow";
+export type HolderFlagCode = "rugged" | "insiders" | "one_wallet" | "top10" | "creator_holds" | "creator_rugged";
+export type FlagCode = LiveFlagCode | HolderFlagCode;
 export interface RedFlag {
   code: FlagCode;
   text: string;
@@ -69,6 +78,32 @@ export const LIMITS = {
   DEAD_TRADES: 5,
   /** a pool younger than this has not had an hour to show trades in */
   DEAD_MIN_POOL_AGE_MIN: 15,
+} as const;
+
+/** Who holds a coin, as RugCheck's report reads it (lib/lab/rugcheck.ts rugSnapshot: the pool's and the burn accounts are left out of the holders). Shares are fractions 0..1 of the supply; null = not known. */
+export interface HolderState {
+  /** the largest wallet */
+  top1: number | null;
+  /** the ten largest wallets */
+  top10: number | null;
+  /** wallets linked to each other (RugCheck's insider networks) */
+  insPct: number | null;
+  /** the creator's own wallet */
+  creatorPct: number | null;
+  rugged: boolean;
+  /** RugCheck lists "creator history of rugged tokens" among its risks */
+  creatorRugged: boolean;
+}
+
+export const HOLDER_LIMITS = {
+  /** the Graduations card has warned from here since the tab began ("insider networks hold N%") */
+  INSIDERS: 0.2,
+  /** ... and "one wallet holds N%" */
+  ONE_WALLET: 0.2,
+  /** the Check's own line for the ten largest holders (60%) */
+  TOP10: 0.6,
+  /** the Check's own line for a creator who still holds the coin (20%) */
+  CREATOR_HOLDS: 0.2,
 } as const;
 
 const usd = (v: number) => (v >= 1e6 ? `$${(v / 1e6).toFixed(1)}M` : v >= 1e3 ? `$${(v / 1e3).toFixed(1)}K` : `$${Math.round(v)}`);
@@ -110,6 +145,24 @@ export function liveRedFlags(live: LiveState | null, ctx: FlagContext = {}): Red
   return out;
 }
 
+const share = (x: number) => `${Math.round(x * 100)}%`;
+
+/**
+ * The holder and wallet flags of a coin (docs/RED_FLAGS.md). `null` / undefined means the holder shares could not be read: that is not a flag (the caller keeps the coin, failing open).
+ * The words are the ones the Graduations card and the Check already use.
+ */
+export function holderRedFlags(h: HolderState | null | undefined): RedFlag[] {
+  if (!h) return [];
+  const out: RedFlag[] = [];
+  if (h.rugged) out.push({ code: "rugged", text: "RugCheck marks it as rugged" });
+  if (fin(h.insPct) && h.insPct >= HOLDER_LIMITS.INSIDERS) out.push({ code: "insiders", text: `insider networks hold ${share(h.insPct)}` });
+  if (fin(h.top1) && h.top1 >= HOLDER_LIMITS.ONE_WALLET) out.push({ code: "one_wallet", text: `one wallet holds ${share(h.top1)}` });
+  if (fin(h.top10) && h.top10 >= HOLDER_LIMITS.TOP10) out.push({ code: "top10", text: `the 10 largest wallets hold ${share(h.top10)}` });
+  if (fin(h.creatorPct) && h.creatorPct >= HOLDER_LIMITS.CREATOR_HOLDS) out.push({ code: "creator_holds", text: `the creator still holds ${share(h.creatorPct)}` });
+  if (h.creatorRugged) out.push({ code: "creator_rugged", text: "the creator has rugged before" });
+  return out;
+}
+
 /** Short word for the "hidden" line of a tab. */
 export const FLAG_WORD: Record<FlagCode, string> = {
   no_pool: "no pool",
@@ -119,4 +172,10 @@ export const FLAG_WORD: Record<FlagCode, string> = {
   blowoff: "pump turned",
   dumping: "dumped",
   dead_flow: "no trading",
+  rugged: "rugged",
+  insiders: "insider wallets",
+  one_wallet: "one big wallet",
+  top10: "top 10 hold most",
+  creator_holds: "creator holds a lot",
+  creator_rugged: "creator rugged before",
 };

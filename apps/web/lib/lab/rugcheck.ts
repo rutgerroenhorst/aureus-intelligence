@@ -12,6 +12,7 @@
 
 import { fin, insertRows } from "./collectors";
 import type { Queryable } from "./builder";
+import { isProgramAddress } from "../solanaKeys";
 
 export interface RugRow {
   /** epoch seconds the snapshot was taken */
@@ -31,6 +32,14 @@ export interface RugRow {
   top1: number | null;
   top5: number | null;
   top10: number | null;
+  /** the creator's own balance as a share of the supply (0..1); absent in snapshots taken before 2026-10-16 */
+  creatorPct?: number | null;
+  /**
+   * The largest wallet and the ten largest wallets counting only addresses somebody can sign for: accounts a program controls (a pump.fun bonding curve, a pool, a vault) are left out (lib/solanaKeys.ts).
+   * `top1` and `top10` above keep counting them, so the lab's history stays comparable; absent in snapshots taken before 2026-10-16.
+   */
+  top1w?: number | null;
+  top10w?: number | null;
   risks: string[];
   mintOff: boolean | null;
   freezeOff: boolean | null;
@@ -57,10 +66,9 @@ export function rugSnapshot(r: any, nowS: number): RugRow | null {
   const markets = (Array.isArray(r.markets) ? r.markets : []) as Array<{ pubkey?: string; liquidityA?: string; liquidityB?: string; lp?: { lpLockedPct?: number } }>;
   const pool = new Set<string>(BURN);
   for (const m of markets) for (const a of [m.pubkey, m.liquidityA, m.liquidityB]) if (typeof a === "string") pool.add(a);
-  const holders = (r.topHolders as Array<{ address?: string; owner?: string; pct?: number }>)
-    .filter((h) => !(h.address && pool.has(h.address)) && !(h.owner && pool.has(h.owner)))
-    .map((h) => (fin(h.pct) ?? 0) / 100)
-    .sort((a, b) => b - a);
+  const listed = (r.topHolders as Array<{ address?: string; owner?: string; pct?: number }>).filter((h) => !(h.address && pool.has(h.address)) && !(h.owner && pool.has(h.owner)));
+  const holders = listed.map((h) => (fin(h.pct) ?? 0) / 100).sort((a, b) => b - a);
+  const wallets = listed.filter((h) => !(h.owner && isProgramAddress(h.owner))).map((h) => (fin(h.pct) ?? 0) / 100).sort((a, b) => b - a);
   const sum = (xs: number[]) => xs.reduce((a, x) => a + x, 0);
   const supply = fin(r.token?.supply);
   const nets = ((Array.isArray(r.insiderNetworks) ? r.insiderNetworks : []) as Array<{ currentHolding?: number }>).reduce((a, n) => a + (fin(n.currentHolding) ?? 0), 0);
@@ -77,6 +85,9 @@ export function rugSnapshot(r: any, nowS: number): RugRow | null {
     top1: holders.length ? holders[0]! : null,
     top5: holders.length ? sum(holders.slice(0, 5)) : null,
     top10: holders.length ? sum(holders.slice(0, 10)) : null,
+    top1w: holders.length ? (wallets[0] ?? 0) : null,
+    top10w: holders.length ? sum(wallets.slice(0, 10)) : null,
+    creatorPct: supply && supply > 0 && fin(r.creatorBalance) != null ? Math.min(1, Math.max(0, fin(r.creatorBalance)! / supply)) : null,
     risks: ((Array.isArray(r.risks) ? r.risks : []) as Array<{ name?: string }>).map((x) => String(x.name ?? "risk")).slice(0, 12),
     mintOff: r.mintAuthority === undefined ? null : r.mintAuthority == null,
     freezeOff: r.freezeAuthority === undefined ? null : r.freezeAuthority == null,

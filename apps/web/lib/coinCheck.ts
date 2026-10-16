@@ -360,15 +360,17 @@ export function judgeCoin(fresh: Fresh | null | "error", ctx: { tab: string }, e
     // who holds it
     if (rug && (rug.top1 != null || rug.insPct != null)) {
       let bad = false;
-      if (rug.top1 != null && rug.top1 >= ONE_WALLET) {
-        add("top1", "warn", `One wallet holds ${pct(rug.top1)}`, `one wallet holds ${pct(rug.top1)}`);
+      // the largest WALLET: a snapshot that counted the coin's own bonding curve or a pool as the biggest holder (20 to 25% of many pump.fun graduates) would warn about an account nobody can sell from (lib/solanaKeys.ts)
+      const top1 = rug.top1w !== undefined ? rug.top1w : rug.top1;
+      if (top1 != null && top1 >= ONE_WALLET) {
+        add("top1", "warn", `One wallet holds ${pct(top1)}`, `one wallet holds ${pct(top1)}`);
         bad = true;
       }
       if (rug.insPct != null && rug.insPct >= INSIDERS) {
         add("insiders", "warn", `Linked insider wallets hold ${pct(rug.insPct)}`, `insider networks hold ${pct(rug.insPct)}`);
         bad = true;
       }
-      if (!bad) add("holders", "ok", `Largest wallet ${rug.top1 == null ? "?" : pct(rug.top1)}, linked insider wallets ${rug.insPct == null ? "?" : pct(rug.insPct)}`);
+      if (!bad) add("holders", "ok", `Largest wallet ${top1 == null ? "?" : pct(top1)}, linked insider wallets ${rug.insPct == null ? "?" : pct(rug.insPct)}`);
     } else if (jup?.audit?.topHoldersPercentage != null) {
       const top = jup.audit.topHoldersPercentage;
       if (top >= TOP10_PCT) add("top10", "warn", `The 10 largest holders hold ${Math.round(top)}%`, `top 10 hold ${Math.round(top)}%`);

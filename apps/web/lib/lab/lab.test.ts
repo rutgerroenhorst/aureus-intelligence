@@ -583,6 +583,26 @@ describe("RugCheck holder snapshots", () => {
     expect(r.mintOff).toBe(true);
     expect(r.risks).toEqual(["High holder concentration", "Low Liquidity"]);
   });
+  it("also reads the wallets only: an account a program controls (a bonding curve, a pool) is not a wallet, and the creator's balance is a share of the supply", () => {
+    const withCurve = {
+      ...report,
+      creatorBalance: 150_000,
+      topHolders: [
+        { address: "CURVEACC", owner: "5R5rRjwV4d3VB9xfSpNRvxxUeLMvcrAozGMAofQUuJKB", pct: 21 },
+        { address: "W1", owner: "DgyKfPKr9QW6crYy3MaKhVBLRom1eZPnpu3LZLUW1AuQ", pct: 4 },
+        { address: "W2", owner: "Akjewo4wZopMSQ3fKkGkvLiGpfkcunrWk4nDb9MabpXz", pct: 3 },
+      ],
+    };
+    const r = rugSnapshot(withCurve, 1_000)!;
+    // the lab's own figures keep counting the curve (the history stays comparable)
+    expect(r.top1).toBeCloseTo(0.21, 6);
+    expect(r.top10).toBeCloseTo(0.28, 6);
+    // the wallet figures do not
+    expect(r.top1w).toBeCloseTo(0.04, 6);
+    expect(r.top10w).toBeCloseTo(0.07, 6);
+    expect(r.creatorPct).toBeCloseTo(0.15, 6);
+    expect(rugSnapshot({ ...report, creatorBalance: undefined }, 1)!.creatorPct).toBeNull();
+  });
   it("refuses an answer that is not a report", () => {
     expect(rugSnapshot(null, 1)).toBeNull();
     expect(rugSnapshot({ error: "not found" }, 1)).toBeNull();

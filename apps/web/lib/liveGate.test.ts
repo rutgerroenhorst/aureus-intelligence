@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { fetchLive, liveStateOf, resetLiveCache } from "./liveQuotes";
 import { flaggedPayload, gateLive } from "./liveGate";
+import { resetHolderCache, type RugFetch } from "./holderFacts";
 
 const M = (n: number) => `Mint${n}`.padEnd(44, "x");
 const pair = (n: number, over: Record<string, unknown> = {}) => ({
@@ -28,7 +29,10 @@ const dex = (pairs: unknown[] | null, all: Record<string, unknown[]> = {}) => {
   return Object.assign(fn, { calls });
 };
 
-beforeEach(() => resetLiveCache());
+beforeEach(() => {
+  resetLiveCache();
+  resetHolderCache();
+});
 
 describe("live quotes", () => {
   it("reads price, cap, pool, the three changes, the hour's trades and the pool's age", () => {
@@ -138,5 +142,67 @@ describe("the live gate", () => {
     const g = await gateLive([] as Array<{ mint: string }>, { mintOf: (x) => x.mint, getJson: d as never });
     expect(g).toEqual({ kept: [], flaggedOut: [], checked: 0, unknown: 0 });
     expect(d.calls).toHaveLength(0);
+  });
+});
+
+describe("the holder step of the gate: who holds the coins that stand (the owner, 2026-10-16)", () => {
+  const items = [1, 2, 3, 4].map((n) => ({ mint: M(n), symbol: `C${n}` }));
+  const goodMarket = () => dex([1, 2, 3, 4].map((n) => pair(n))) as never;
+  /** RugCheck's report with the given shares: the creator's share, insider networks and the two largest wallets (percent) */
+  const rugReport = (o: { ins?: number; top1?: number; creator?: number } = {}) => ({
+    score_normalised: 10, rugged: false, totalHolders: 900, token: { supply: 1_000_000 }, creatorBalance: (o.creator ?? 0) * 1_000_000, risks: [], insiderNetworks: o.ins ? [{ currentHolding: o.ins * 1_000_000 }] : [],
+    markets: [{ pubkey: "POOL", liquidityA: "PA", liquidityB: "PB", lp: { lpLockedPct: 100 } }],
+    topHolders: [{ address: "PA", owner: "POOL", pct: 30 }, { address: "W1", owner: "O1", pct: (o.top1 ?? 0.05) * 100 }, { address: "W2", owner: "O2", pct: 3 }],
+  });
+  const rug = (answers: Record<string, unknown>) => {
+    const asked: string[] = [];
+    const fn: RugFetch = async (mint) => {
+      asked.push(mint);
+      const a = answers[mint];
+      return a === "miss" ? { status: "miss" } : { status: "ok", json: a ?? rugReport() };
+    };
+    return Object.assign(fn, { asked });
+  };
+
+  it("takes out a coin whose insider networks hold 99% even though its market numbers are fine, and says why", async () => {
+    const f = rug({ [M(2)]: rugReport({ ins: 0.99 }), [M(3)]: rugReport({ top1: 0.32 }) });
+    const g = await gateLive(items, { mintOf: (x) => x.mint, getJson: goodMarket(), holders: { fetchReport: f, store: null, gapMs: 0 } });
+    expect(g.kept.map((x) => x.symbol)).toEqual(["C1", "C4"]);
+    expect(g.flaggedOut.map((x) => [x.item.symbol, x.flags.map((y) => y.text)])).toEqual([
+      ["C2", ["insider networks hold 99%"]],
+      ["C3", ["one wallet holds 32%"]],
+    ]);
+    expect(g.holders).toEqual({ checked: 4, unknown: 0 });
+    expect(flaggedPayload(g).flagCheck).toEqual({ checked: 4, unknown: 0, holders: { checked: 4, unknown: 0 } });
+  });
+  it("only the coins that passed the market rules are looked up (a rugged coin needs no second reason)", async () => {
+    const pairs = [pair(1), pair(2, { marketCap: 3_400, liquidity: { usd: 500 } }), pair(3), pair(4)];
+    const f = rug({});
+    const g = await gateLive(items, { mintOf: (x) => x.mint, getJson: dex(pairs) as never, holders: { fetchReport: f, store: null, gapMs: 0 } });
+    expect(f.asked).not.toContain(M(2));
+    expect(f.asked.sort()).toEqual([M(1), M(3), M(4)].sort());
+    expect(g.flaggedOut.map((x) => x.item.symbol)).toEqual(["C2"]);
+  });
+  it("a coin whose holders have not been read is kept (failing open), and counted as unknown", async () => {
+    const f = rug({ [M(1)]: "miss", [M(2)]: rugReport({ ins: 0.5 }) });
+    const g = await gateLive(items.slice(0, 2), { mintOf: (x) => x.mint, getJson: goodMarket(), holders: { fetchReport: f, store: null, gapMs: 0 } });
+    expect(g.kept.map((x) => x.symbol)).toEqual(["C1"]);
+    expect(g.holders).toEqual({ checked: 1, unknown: 1 });
+  });
+  it("the creator holding a fifth of the coin, or the ten largest wallets at 60%, also take a coin out", async () => {
+    const f = rug({ [M(1)]: rugReport({ creator: 0.25 }), [M(2)]: { ...rugReport(), topHolders: [{ address: "PA", owner: "POOL", pct: 30 }, ...Array.from({ length: 10 }, (_, i) => ({ address: `W${i}`, owner: `O${i}`, pct: 6.5 }))] } });
+    const g = await gateLive(items.slice(0, 3), { mintOf: (x) => x.mint, getJson: goodMarket(), holders: { fetchReport: f, store: null, gapMs: 0 } });
+    expect(g.flaggedOut.map((x) => [x.item.symbol, x.flags.map((y) => y.code)])).toEqual([["C1", ["creator_holds"]], ["C2", ["top10"]]]);
+    expect(g.kept.map((x) => x.symbol)).toEqual(["C3"]);
+  });
+  it("`holders: false` and the off switch ask nobody", async () => {
+    const f = rug({ [M(1)]: rugReport({ ins: 0.99 }) });
+    const off = await gateLive(items.slice(0, 1), { mintOf: (x) => x.mint, getJson: goodMarket(), holders: false });
+    expect(off.kept).toHaveLength(1);
+    expect(off.holders).toBeUndefined();
+    // no `holders` option at all: the tests' environment has HOLDER_FLAGS_LIVE=0
+    const none = await gateLive(items.slice(0, 1), { mintOf: (x) => x.mint, getJson: goodMarket() });
+    expect(none.kept).toHaveLength(1);
+    expect(f.asked).toHaveLength(0);
   });
 });

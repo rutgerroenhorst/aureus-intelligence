@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { liveRedFlags, LIMITS, type LiveState } from "./redFlags";
+import { holderRedFlags, HOLDER_LIMITS, liveRedFlags, LIMITS, type HolderState, type LiveState } from "./redFlags";
 
 const ok: LiveState = { price: 0.0001, mcap: 80_000, liq: 25_000, h1: 5, h6: 20, h24: 40, buys1h: 120, sells1h: 90, pairAgeMin: 300 };
 const codes = (l: LiveState | null, c = {}) => liveRedFlags(l, c).map((f) => f.code);
@@ -68,5 +68,39 @@ describe("live red flags: nobody is trading", () => {
   it("the flags come with words the owner can read", () => {
     const f = liveRedFlags({ ...ok, mcap: 3_400, liq: 600, h1: -60, buys1h: 1, sells1h: 0 });
     expect(f.map((x) => x.text).join(" | ")).toMatch(/pool drained: \$600 left.*market cap only \$3\.4K.*down 60% in the last hour.*no trading: 1 trade in the last hour/);
+  });
+});
+
+const holders: HolderState = { top1: 0.06, top10: 0.25, insPct: 0.02, creatorPct: 0, rugged: false, creatorRugged: false };
+const hcodes = (h: Partial<HolderState> | null) => holderRedFlags(h == null ? null : { ...holders, ...h }).map((f) => f.code);
+
+describe("holder red flags: who holds the coin (the owner, 2026-10-16: insider networks at 99%, I do not want that coin at all)", () => {
+  it("a coin with a spread-out crowd has none, and holders that could not be read are not a flag", () => {
+    expect(holderRedFlags(holders)).toEqual([]);
+    expect(holderRedFlags(null)).toEqual([]);
+    expect(holderRedFlags(undefined)).toEqual([]);
+    expect(holderRedFlags({ top1: null, top10: null, insPct: null, creatorPct: null, rugged: false, creatorRugged: false })).toEqual([]);
+  });
+  it("insider networks at 99% of the supply: gone, in the card's own words", () => {
+    const f = holderRedFlags({ ...holders, insPct: 0.99 });
+    expect(f).toEqual([{ code: "insiders", text: "insider networks hold 99%" }]);
+  });
+  it("the thresholds are exact: 20% of insiders, 20% in one wallet, 60% in the top ten, 20% with the creator are in; just under is out", () => {
+    expect(hcodes({ insPct: HOLDER_LIMITS.INSIDERS })).toEqual(["insiders"]);
+    expect(hcodes({ insPct: HOLDER_LIMITS.INSIDERS - 0.001 })).toEqual([]);
+    expect(hcodes({ top1: HOLDER_LIMITS.ONE_WALLET })).toEqual(["one_wallet"]);
+    expect(hcodes({ top1: HOLDER_LIMITS.ONE_WALLET - 0.001 })).toEqual([]);
+    expect(hcodes({ top10: HOLDER_LIMITS.TOP10 })).toEqual(["top10"]);
+    expect(hcodes({ top10: HOLDER_LIMITS.TOP10 - 0.001 })).toEqual([]);
+    expect(hcodes({ creatorPct: HOLDER_LIMITS.CREATOR_HOLDS })).toEqual(["creator_holds"]);
+    expect(hcodes({ creatorPct: HOLDER_LIMITS.CREATOR_HOLDS - 0.001 })).toEqual([]);
+  });
+  it("a coin RugCheck calls rugged, or whose creator has rugged before", () => {
+    expect(hcodes({ rugged: true })).toEqual(["rugged"]);
+    expect(hcodes({ creatorRugged: true })).toEqual(["creator_rugged"]);
+  });
+  it("every flag a coin carries is listed, with the figures", () => {
+    const f = holderRedFlags({ top1: 0.67, top10: 0.87, insPct: 0.16, creatorPct: 0.31, rugged: false, creatorRugged: true });
+    expect(f.map((x) => x.text)).toEqual(["one wallet holds 67%", "the 10 largest wallets hold 87%", "the creator still holds 31%", "the creator has rugged before"]);
   });
 });

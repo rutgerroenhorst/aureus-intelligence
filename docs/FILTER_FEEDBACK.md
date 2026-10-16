@@ -60,6 +60,24 @@ Result = the lab's labelled result of the current exit plan from the first look 
 Every one of these has the same sign in both halves, but they are mostly **one thing seen from different sides: the "born" coin** (the creator and linked wallets bought the curve themselves), which the default view already hides. Inside the 71 graduations that are *not* born (the ones a person sees)
 7% held 2x (5 coins) and 72% were down by half after a day, and no feature separates the winners from the rest with that many coins (a social link 64% against 79%, 25 against 38 coins: plausible, not established). **There is no entry filter for the visible graduations yet**; the lab needs a few weeks more of finished days.
 
+**The holder and launch flags one by one (2026-10-16, the owner's second request: hide every coin with a red flag on holders or wallets, `docs/RED_FLAGS.md`).** The first answer the same day lumped all of them together ("flagged coins did no worse"); one by one they differ.
+The 264 graduations that were not "born" (183 of them with a RugCheck snapshot at the first look; the figures are the first look's, `scripts/lab-graduate-features.ts` data):
+
+| flag at the first look | coins | held 2x |
+| --- | --- | --- |
+| insider networks hold 20% or more | 13 | **0** |
+| the largest holder 20% or more (this figure counts program accounts) | 23 | 0 |
+| the ten largest holders 60% or more (counts program accounts) | 21 | 0 |
+| liquidity not locked | 4 | 0 |
+| graduated within 2 minutes | 62 | 9 (15%) |
+| the creator bought 5 SOL or more | 31 | 3 (10%) |
+| the creator launched coins in the last 72 hours | 93 | 9 (10%) |
+| none of the first three flags | 231 | 23 (10%) |
+
+The coins with one of the first three flags (33) fell by half in a day less often (45% against 74%) and stood at a median 1.0x of their first price after a day against 0.47x: **they go nowhere rather than crash.** The launch stories are about as likely to double as the rest, and they are 24%, 12% and 35% of all of them.
+The lab's largest-wallet and top-ten figures count the coin's own bonding curve and pools (`lib/solanaKeys.ts`; 30 of the 35 largest "holders" on the live tabs on 2026-10-16 were program accounts), so only the insider-network row is evidence for what the gate now hides; the wallet rules are the Check's own thresholds on wallets only.
+The gate hides the holder flags and not the launch stories.
+
 ## 5. The messages against holding (`scripts/alerts-vs-hold.ts`, 2026-10-13 15:54 to 2026-10-16 morning)
 
 43 messages on 25 positions (7 first profit, 9 quiet steps, 15 line, 12 loss; some positions got several). If every green message had been followed by selling half, every red and orange message by selling the rest, with $0.10 per sale and the fill **five minutes after the message** where the pool still had candles

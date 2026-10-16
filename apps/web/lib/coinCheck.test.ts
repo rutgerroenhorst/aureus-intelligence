@@ -410,3 +410,12 @@ describe("the age of the pool (a note with what the lab measured, counted for no
     expect(withNote.lines).toEqual(old.lines);
   });
 });
+
+describe("the largest WALLET, not the largest account (2026-10-16: a coin's own bonding curve held 20 to 25% of many graduates)", () => {
+  it("a snapshot with wallet figures judges those: 22% in the bonding curve and 5% in the biggest wallet is no 'one wallet' warning", () => {
+    expect(verdict({ ...solid, rug: rug({ top1: 0.22, top1w: 0.05 }) }).flags).toEqual([]);
+  });
+  it("and a real wallet of 30% is one", () => {
+    expect(verdict({ ...solid, rug: rug({ top1: 0.3, top1w: 0.3 }) }).flags).toEqual(["one wallet holds 30%"]);
+  });
+});

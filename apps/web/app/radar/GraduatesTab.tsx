@@ -25,7 +25,7 @@ export interface Graduate {
   flags: string[];
   kind?: "born" | "mayhem" | "organic" | "unknown";
   healthy?: boolean;
-  hiddenWhy?: "drained" | "empty" | "born" | "mayhem" | "gone" | "small" | "waiting" | "collapsed" | "dead" | null;
+  hiddenWhy?: "drained" | "empty" | "born" | "mayhem" | "gone" | "small" | "waiting" | "collapsed" | "dead" | "holders" | null;
   empty?: boolean;
   drained?: boolean;
   peakMultiple?: number | null;
@@ -72,7 +72,7 @@ const btn: React.CSSProperties = { padding: "6px 12px", background: "#1a1a1f", c
 const chip = (on: boolean): React.CSSProperties => ({ padding: "5px 10px", fontSize: 12, borderRadius: 6, cursor: "pointer", background: on ? "#2a2a3e" : "#1a1a1f", color: on ? "#fff" : "#8a8a8e", border: `1px solid ${on ? "#4a4a66" : "#2a2a2f"}` });
 
 /** The warnings worth a place on the card: a pool that is gone or never was, the kinds measured to end in a drain, and heavy concentration. */
-const SHOW = /drained|empty|born|Mayhem|insider networks hold ([2-9]\d|100)%|one wallet holds|within 2 minutes|down more than half|no longer listed|collapsed|market cap only|no trading|dumped|pump that turned|no live pool/;
+const SHOW = /drained|empty|born|Mayhem|insider networks hold ([2-9]\d|100)%|one wallet holds|largest wallets hold|creator still holds|rugged|within 2 minutes|down more than half|no longer listed|collapsed|market cap only|no trading|dumped|pump that turned|no live pool/;
 
 /** One graduation: its own component because the Check button keeps state per coin. */
 function GraduateCard({ c, entered, failed, onEnter, note }: { c: Graduate; entered: boolean; failed: boolean; onEnter: (c: Graduate) => void; note?: CheckNote }) {
@@ -117,7 +117,7 @@ export function GraduatesTab({ coins, lab, meta, entered, failedMints, onEnter, 
   // older snapshots (before the kinds existed) have no verdict: show everything then
   const judged = coins.some((c) => c.healthy !== undefined);
   const hidden = useMemo(() => {
-    const h = { born: 0, mayhem: 0, empty: 0, drained: 0, gone: 0, small: 0, waiting: 0, collapsed: 0, dead: 0, total: 0 };
+    const h = { born: 0, mayhem: 0, empty: 0, drained: 0, gone: 0, small: 0, waiting: 0, collapsed: 0, dead: 0, holders: 0, total: 0 };
     for (const c of coins) {
       if (!judged || c.healthy) continue;
       h.total++;
@@ -139,13 +139,14 @@ export function GraduatesTab({ coins, lab, meta, entered, failedMints, onEnter, 
   const running = useMemo(
     () =>
       coins
-        .filter((c) => judged && !c.healthy && !c.drained && !c.empty && c.hiddenWhy !== "gone" && (c.sinceFirst ?? 0) >= 2 && (c.liq ?? 0) >= 20_000 && c.ageMin <= 720)
+        // only the kinds this panel was made for: a coin hidden for a red flag (a collapse, no trading, who holds it) stays out
+        .filter((c) => judged && !c.healthy && !c.drained && !c.empty && (c.hiddenWhy == null || ["born", "mayhem", "small", "waiting"].includes(c.hiddenWhy)) && (c.sinceFirst ?? 0) >= 2 && (c.liq ?? 0) >= 20_000 && c.ageMin <= 720)
         .sort((a, b) => (b.sinceFirst ?? 0) - (a.sinceFirst ?? 0))
         .slice(0, 5),
     [coins, judged],
   );
   const { ageMin: snapAge, stale, source: feed } = gradSnapshot(meta, Date.now());
-  const hiddenText = [hidden.born && `${hidden.born} born graduated`, hidden.mayhem && `${hidden.mayhem} Mayhem Mode`, hidden.empty && `${hidden.empty} empty pools`, hidden.drained && `${hidden.drained} drained`, hidden.collapsed && `${hidden.collapsed} collapsed since the first hour`, hidden.dead && `${hidden.dead} with no trading`, hidden.small && `${hidden.small} pools under $5K`, hidden.gone && `${hidden.gone} no longer listed`, hidden.waiting && `${hidden.waiting} without a reading yet`].filter(Boolean).join(", ");
+  const hiddenText = [hidden.born && `${hidden.born} born graduated`, hidden.mayhem && `${hidden.mayhem} Mayhem Mode`, hidden.empty && `${hidden.empty} empty pools`, hidden.drained && `${hidden.drained} drained`, hidden.collapsed && `${hidden.collapsed} collapsed since the first hour`, hidden.dead && `${hidden.dead} with no trading`, hidden.holders && `${hidden.holders} with red flags on who holds them`, hidden.small && `${hidden.small} pools under $5K`, hidden.gone && `${hidden.gone} no longer listed`, hidden.waiting && `${hidden.waiting} without a reading yet`].filter(Boolean).join(", ");
   return (
     <div style={{ padding: 16 }}>
       <TabIntro
@@ -153,7 +154,7 @@ export function GraduatesTab({ coins, lab, meta, entered, failedMints, onEnter, 
         color="#ff9f0a"
         aside={snapAge != null && !stale ? `Updated ${gradAgeText(snapAge)} ago` : undefined}
       >
-        Coins that just graduated from pump.fun (Solana only; the network bar belongs to the Hot tab), from their first minute. Most give everything back in the first hour: only the ones with a real, standing pool are shown.
+        Coins that just graduated from pump.fun (Solana only; the network bar belongs to the Hot tab), from their first minute. Most give everything back in the first hour: only the ones with a real, standing pool are shown, and not the ones where insider networks, one wallet, the ten largest wallets or the creator hold a large share (judged on how they stand now).
         {snapAge != null && !stale && feed === "chain" && " Read from the chain every 3 minutes by the site itself (no laptop needed), the last 6 hours."}
       </TabIntro>
       {stale && snapAge != null && (

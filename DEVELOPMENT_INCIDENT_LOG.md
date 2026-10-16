@@ -112,3 +112,23 @@ This incident serves as a record that:
 ### Lesson
 
 - Everything built on "the wallet's buys" (alerts, reviews, journal) inherits the decoder's blind spots; a screenshot of the owner's own app is the cheapest independent check. A silent fall-through to "unpriced transfer" is a data hole: count what falls through (82 transactions had an "in" row; 17 of them were real purchases).
+
+## Rugged And Held-By-Insiders Coins Stayed On The Tabs: 2026-10-16
+
+### What happened
+
+- The owner kept seeing coins that had rugged ("it stands at $3 or $4K and is still there"), collapsed, or stopped trading, and later coins whose card said "insider networks hold 99%". Every tab judged a coin once, when it qualified: a graduation was "healthy" after a good first hour for good, a signal stayed a signal until the next scan, a runner kept a minute-old reading.
+  An independent live check (`scripts/redflag-audit.ts`) found **37 of the 154 coins shown by default** carrying a severe flag at that moment (Graduations 14 of 23).
+- A second cause: DexScreener's batch answer holds one pair per coin, and for a graduated coin it can be the old bonding-curve pair, frozen at the curve's last price with no liquidity figure; two graduations showed $43K while their live pool stood at $2.3K.
+- The holder flags were warnings on a card, and the first count of them on the tabs was wrong: the "largest wallet" of 30 of the 35 coins with a 20% flag was a program account (22 pump.fun bonding curves, 4 pools, 4 others), so the old card line "one wallet holds N%" had been a false alarm for most coins since it was written.
+
+### Corrective action
+
+- `lib/redFlags.ts` (the rules), `lib/liveQuotes.ts` + `lib/liveGate.ts` (every list judged on the coin as it is now, failing open), `lib/dexPairs.ts` `needsRescue` (the stale curve pair, in seven places), `lib/holderFacts.ts` + `lib/solanaKeys.ts` (RugCheck's holder shares, program accounts left out by the ed25519 curve test, kept 30 minutes in memory and in one database row),
+  the Graduations tab's new hidden reasons, `scripts/redflag-audit.ts` (independent check: market and holders). 37 of 154 became 0 of 130 on the market rules; the holder rules hide the coins the audit reports. Details: `docs/RED_FLAGS.md`.
+
+### Lesson
+
+- A judgement made once at qualification is a stale judgement: re-judge on what the coin looks like when it is shown, and keep an independent audit that does not use the gate's own data path.
+- A warning that has never been checked against ground truth can be wrong for most of the coins that carry it. Before turning a warning into a block, count what it fires on (here: the largest "wallet" was usually the coin's own bonding curve) and keep the evidence next to the rule.
+

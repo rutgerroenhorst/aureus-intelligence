@@ -7,7 +7,8 @@
 import { gradFate, gradFlags, gradKind, isHealthy, summarizeFates, type GradFate, type GradKind, type KindSummary, type Reading } from "./lab/pump";
 import { readingsOf, type FeedLog } from "./graduateFeed";
 import { fetchLive } from "./liveQuotes";
-import { liveRedFlags, type FlagCode } from "./redFlags";
+import { fetchHolders, type HolderDeps } from "./holderFacts";
+import { holderRedFlags, liveRedFlags, type FlagCode, type HolderState } from "./redFlags";
 import type { GetJson } from "./dexPairs";
 
 interface Queryable {
@@ -38,7 +39,7 @@ export interface GraduateRow {
   /** a real pool that is still standing and is not one of the kinds measured to end in a drain: what is shown by default */
   healthy: boolean;
   /** why a coin is not shown by default (null when it is) */
-  hiddenWhy: null | "drained" | "empty" | "born" | "mayhem" | "gone" | "small" | "waiting" | "collapsed" | "dead";
+  hiddenWhy: null | "drained" | "empty" | "born" | "mayhem" | "gone" | "small" | "waiting" | "collapsed" | "dead" | "holders";
   empty: boolean;
   drained: boolean;
   mcap: number | null;
@@ -213,7 +214,10 @@ export async function loadPushedGraduates(db: Queryable): Promise<GraduatesRepor
 }
 
 /** Why a coin the live gate took off the default view is hidden, in the words of the tab's own "Hidden" line. */
-const WHY: Record<FlagCode, NonNullable<GraduateRow["hiddenWhy"]>> = { no_pool: "gone", drained: "drained", tiny_cap: "drained", collapsed: "collapsed", blowoff: "collapsed", dumping: "collapsed", dead_flow: "dead" };
+const WHY: Record<FlagCode, NonNullable<GraduateRow["hiddenWhy"]>> = {
+  no_pool: "gone", drained: "drained", tiny_cap: "drained", collapsed: "collapsed", blowoff: "collapsed", dumping: "collapsed", dead_flow: "dead",
+  rugged: "holders", insiders: "holders", one_wallet: "holders", top10: "holders", creator_holds: "holders", creator_rugged: "holders",
+};
 const WHY_ORDER: FlagCode[] = ["no_pool", "drained", "tiny_cap", "collapsed", "blowoff", "dumping", "dead_flow"];
 
 /**
@@ -221,8 +225,7 @@ const WHY_ORDER: FlagCode[] = ["no_pool", "drained", "tiny_cap", "collapsed", "b
  * two hours later kept its place (on 2026-10-16 13 of the 23 coins shown by default carried a severe flag: down 70% in six hours, a pool under $5K, a market cap under $10K). Every coin shown by default is looked up live,
  * the numbers on its card are replaced by the live ones, and a coin with a severe flag is moved to the hidden ones with the flag's words on its card ("show all" still lists it). A coin that could not be read stays as it was.
  */
-export async function liveGateGraduates(report: GraduatesReport, getJson?: GetJson): Promise<GraduatesReport> {
-  if (process.env.RED_FLAGS_LIVE === "0" && !getJson) return report;
+async function marketGate(report: GraduatesReport, getJson?: GetJson): Promise<GraduatesReport> {
   const shown = report.candidates.filter((c) => c.healthy);
   if (!shown.length) return report;
   const live = await fetchLive(shown.map((c) => c.mint), getJson).catch(() => null);
@@ -239,6 +242,45 @@ export async function liveGateGraduates(report: GraduatesReport, getJson?: GetJs
     return { ...c, ...fresh, healthy: false, hiddenWhy: WHY[first], drained: c.drained || flags.some((f) => f.code === "drained" || f.code === "tiny_cap"), flags: [...flags.map((f) => f.text), ...c.flags] };
   });
   return { ...report, candidates };
+}
+
+/**
+ * What RugCheck said about a graduation's holders shortly after the lab first saw it, as far as the holder rules can use it until a fresher read exists: the insider networks and the creator's history. The largest
+ * wallet and the top ten of that snapshot count program accounts too (the coin's own bonding curve holds 20 to 25% of many graduates, lib/solanaKeys.ts), so they say nothing about wallets and are left out.
+ */
+const rowHolders = (c: GraduateRow): HolderState | null =>
+  c.rc ? { top1: null, top10: null, insPct: c.rc.insPct, creatorPct: null, rugged: false, creatorRugged: (c.rc.risks ?? []).some((x) => /creator history/i.test(x)) } : null;
+
+/** The card's own "one wallet holds N%" came from that snapshot and counts the bonding curve; once the coin has been read again and passes, the line is dropped rather than left to say something untrue. */
+const ONE_WALLET_LINE = /^one wallet holds \d+%$/;
+
+/**
+ * Who holds the coins of the default view (docs/RED_FLAGS.md, "Holders and wallets"). The owner, 2026-10-16: "a coin where it says insider networks hold 99%, I do not want it at all". Every coin shown by default is
+ * judged on RugCheck's holder shares as they stand now (lib/holderFacts.ts: kept 30 minutes, in the database across cold starts); a coin that has not been read yet is judged on the lab's snapshot of it on the row
+ * (`rc`), when there is one. A coin with insider networks, one wallet, the ten largest wallets or the creator holding a large share, or one RugCheck calls rugged, moves to the hidden ones with the flag's words on its card.
+ */
+async function holderGate(report: GraduatesReport, deps: HolderDeps): Promise<GraduatesReport> {
+  const shown = report.candidates.filter((c) => c.healthy);
+  if (!shown.length) return report;
+  const facts = await fetchHolders(shown.map((c) => c.mint), deps).catch(() => new Map<string, HolderState>());
+  const candidates = report.candidates.map((c) => {
+    if (!c.healthy) return c;
+    const flags = holderRedFlags(facts.get(c.mint) ?? rowHolders(c));
+    if (!flags.length) return facts.has(c.mint) && c.flags.some((f) => ONE_WALLET_LINE.test(f)) ? { ...c, flags: c.flags.filter((f) => !ONE_WALLET_LINE.test(f)) } : c;
+    const texts = flags.map((f) => f.text);
+    return { ...c, healthy: false, hiddenWhy: "holders" as const, flags: [...texts, ...c.flags.filter((f) => !texts.includes(f))] };
+  });
+  return { ...report, candidates };
+}
+
+/**
+ * The default view judged on what the coins look like NOW: the market first (a rug, a collapse, a dead pool), then who holds them. `holders` false switches the second step off, an object hands it fake dependencies (tests);
+ * otherwise it runs unless HOLDER_FLAGS_LIVE=0. RED_FLAGS_LIVE=0 switches the first step off (unless a fake exchange is handed in).
+ */
+export async function liveGateGraduates(report: GraduatesReport, getJson?: GetJson, holders?: false | HolderDeps): Promise<GraduatesReport> {
+  const afterMarket = process.env.RED_FLAGS_LIVE === "0" && !getJson ? report : await marketGate(report, getJson);
+  const holdersOn = holders !== false && (holders != null || process.env.HOLDER_FLAGS_LIVE !== "0");
+  return holdersOn ? holderGate(afterMarket, typeof holders === "object" ? holders : {}) : afterMarket;
 }
 
 let memo: { at: number; body: GraduatesReport } | null = null;

@@ -68,7 +68,7 @@ export default function HomePage() {
   const recent = (grads ?? []).filter((g) => g.ageMin <= 90);
   const fresh = recent.filter((g) => g.healthy !== false && (g.sinceFirst == null || g.sinceFirst >= 0.7)).slice(0, 5);
   const skipped = recent.filter((g) => g.healthy === false);
-  const label: Record<string, string> = { drained: "drained", empty: "empty pools", born: "born graduated", mayhem: "Mayhem Mode", gone: "no longer listed", small: "pools under $5K", waiting: "without a reading yet" };
+  const label: Record<string, string> = { drained: "drained", empty: "empty pools", born: "born graduated", mayhem: "Mayhem Mode", gone: "no longer listed", small: "pools under $5K", waiting: "without a reading yet", collapsed: "collapsed", dead: "with no trading", holders: "with red flags on who holds them" };
   const skippedWhy = Object.entries(skipped.reduce<Record<string, number>>((a, g) => ((a[g.hiddenWhy ?? "small"] = (a[g.hiddenWhy ?? "small"] ?? 0) + 1), a), {})).map(([k, n]) => `${n} ${label[k] ?? k}`).join(", ");
   const gradAge = gradAsOf ? Math.max(0, Math.round((Date.now() - new Date(gradAsOf).getTime()) / 60_000)) : null;
   const link = (href: string, text: string) => <a href={href} style={{ color: brand.blueText, fontSize: 12, fontWeight: 600, textDecoration: "none" }}>{text}</a>;
