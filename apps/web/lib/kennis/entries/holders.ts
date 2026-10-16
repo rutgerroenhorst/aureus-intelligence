@@ -24,11 +24,11 @@ export const holders: Entry[] = [
     short: "Als een paar wallets het grootste deel bezitten, kunnen zij de prijs in één keer breken door te verkopen. De Check waarschuwt bij één wallet met 25% of meer, of een top 10 met 60% of meer.",
     body: [
       "Concentratie is het belangrijkste on-chain risico bij memecoins. Verkoopt een wallet met 25% van de supply, dan is dat vaak genoeg om de pool leeg te trekken. Zie ook *exit-liquiditeit*.",
-      "De getallen om op te letten: de grootste wallet, de top 10 samen en de som van wallets die aan elkaar gekoppeld blijken (*insider-wallets*). Let op dat de pool zelf (de liquiditeit) en bekende adressen zoals burn-adressen meestal als 'holder' meetellen: tools als RugCheck filteren dat al deels uit.",
+      "De getallen om op te letten: de grootste wallet, de top 10 samen en de som van wallets die aan elkaar gekoppeld blijken (*insider-wallets*). Let op dat de pool zelf (de liquiditeit), de bonding curve van een pump.fun-coin (daar blijft vaak 20 tot 25% van de supply in staan) en bekende adressen zoals burn-adressen meestal als 'holder' meetellen: dat zijn programma's, geen wallets die kunnen verkopen. Auriga telt alleen adressen waar iemand mee kan tekenen (technisch: adressen op de ed25519-curve) en laat coins weg waar één zo'n wallet 20% of meer heeft, of de tien grootste 60% of meer (*rode-vlaggen-weggelaten*).",
       "Er is geen vaste veilige grens, maar op een jonge memecoin is een top 10 van 20 tot 30% normaal, boven 60% riskant, en één wallet boven 25% een duidelijke waarschuwing.",
     ],
     todo: ["Kijk naar de grootste wallet én de top 10.", "Zijn die wallets aan elkaar gekoppeld? (insiders)", "Daalt hun aandeel terwijl de prijs stijgt? Dan verkopen ze aan jou."],
-    see: ["insider-wallets", "bundles-clusters", "dev-wallet", "check-lijnen"],
+    see: ["insider-wallets", "bundles-clusters", "dev-wallet", "check-lijnen", "rode-vlaggen-weggelaten"],
   },
   {
     id: "insider-wallets",
@@ -40,7 +40,7 @@ export const holders: Entry[] = [
     body: [
       "Een slimme maker verspreidt zijn supply over tientallen wallets zodat de lijst met holders gezond lijkt. Analysetools bekijken hoe die wallets aan elkaar hangen: wie heeft ze van SOL voorzien, wie heeft op hetzelfde moment gekocht. Wat zo samen blijkt te horen noemen ze een *insider network*.",
       "Een groot percentage in zulke handen is een van de duidelijkste signalen dat de coin gedumpt kan worden. Het is geen zekerheid: soms zijn het gewoon vrienden of een community die samen kocht.",
-      "Auriga's Check toont 'linked insider wallets hold X%' (van RugCheck). Boven 20% waarschuwt hij; dat was een kalibratie op de coins van de Radar, geen natuurwet.",
+      "Auriga's Check toont 'linked insider wallets hold X%' (van RugCheck). Boven 20% waarschuwt hij, en de lijsten laten zo'n coin weg (*rode-vlaggen-weggelaten*); dat is een kalibratie op de coins van de Radar, geen natuurwet. Het getal van RugCheck is ruw: soms hoger dan mogelijk, vooral bij grote airdrop-achtige netwerken.",
     ],
     see: ["bundles-clusters", "snipers-bundlers", "top-holders", "bubblemaps"],
   },

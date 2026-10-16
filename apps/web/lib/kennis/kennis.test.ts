@@ -207,6 +207,8 @@ describe("answering a question", () => {
 
 /** Questions written after the first release, in other words than the entries' own: they found nothing or the wrong thing at first, and are the reason for the matching rules below. */
 const FRESH: Array<[string, string | string[], number?]> = [
+  ["waarom is die coin weg van de lijst", "rode-vlaggen-weggelaten", 3],
+  ["wat betekent coins left out for red flags", "rode-vlaggen-weggelaten", 1],
   ["ik heb een coin gekocht en hij daalt, wat nu", ["bijkopen-verlies", "waarom-daalt-snel", "uitstapplan-eerst", "verlies-accepteren"]],
   ["wanneer moet ik verkopen", "winst-nemen-basis", 1],
   ["hoe voorkom ik dat ik mijn geld kwijtraak", "risico-basis", 1],
