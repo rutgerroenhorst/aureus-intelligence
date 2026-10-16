@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { internalFetch } from "@/lib/internalFetch";
-import { egressOver } from "@/lib/cloudScan";
+import { EGRESS_BUDGET_MB_PER_DAY, usedEgressMb } from "@/lib/cloudScan";
+import { bundleTtlMs } from "@/lib/bundleTtl";
 
 export const dynamic = "force-dynamic";
 // the live red-flag gate asks DexScreener about every coin it is about to show (lib/liveGate.ts); a slow exchange ends in "kept", but the call must be allowed the time
@@ -26,11 +27,11 @@ const SOURCES = {
   checks: "/api/coin-checks",
 } as const;
 
-// Shared by every device that asks within the window, so a second phone or tablet costs no extra CPU. One build reads about 200 KB from the
-// hosted database (more than 1 MB on the laptop's much bigger one), and that is what Supabase's free plan counts as egress (5 GB a month), so
-// on the hosted site the answer is kept for a minute, and for five when today's egress allowance is used up.
+// Shared by every device that asks within the window, so a second phone or tablet costs no extra CPU. One build reads from the hosted database
+// (what Supabase's free plan counts as egress, 5 GB a month): the base list once per three minutes and the chain's graduations once per feed round
+// (about 60 KB a build, it was 330 to 410 KB), more than 1 MB on the laptop's much bigger one. On the hosted site the answer is kept for a minute, for two
+// when today's egress allowance is used up and for five when a quarter over it (lib/bundleTtl.ts).
 const TTL_MS = process.env.VERCEL ? 60_000 : 15_000;
-const TTL_OVER_BUDGET_MS = 5 * 60_000;
 let memo: { at: number; body: string } | null = null;
 let inflight: Promise<void> | null = null;
 
@@ -74,7 +75,7 @@ async function build(): Promise<void> {
 }
 
 export async function GET() {
-  const ttl = process.env.VERCEL && (await egressOver().catch(() => false)) ? TTL_OVER_BUDGET_MS : TTL_MS;
+  const ttl = process.env.VERCEL ? bundleTtlMs(await usedEgressMb().catch(() => 0), EGRESS_BUDGET_MB_PER_DAY) : TTL_MS;
   if (!memo || Date.now() - memo.at > ttl) {
     inflight ??= build().finally(() => {
       inflight = null;

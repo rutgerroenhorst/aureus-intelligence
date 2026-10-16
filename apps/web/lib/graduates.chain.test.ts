@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it } from "vitest";
-import { buildGraduates, currentGraduates, pushGraduates, resetGraduatesMemo } from "./graduates";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { buildGraduates, currentGraduates, loadPushedGraduates, pushGraduates, resetGraduatesMemo } from "./graduates";
 import type { FeedLog } from "./graduateFeed";
 
 const NOW_S = Math.floor(Date.now() / 1000);
@@ -168,5 +168,71 @@ describe("the laptop's push", () => {
     expect(await pushGraduates(fakeDb([fast]), hosted)).toEqual({ coins: 1 });
     expect(writes).toHaveLength(1);
     expect((await buildGraduates(fakeDb([fast]))).degraded).toBeUndefined();
+  });
+});
+
+describe("what a Radar build reads from the hosted database (2026-10-16: the day's egress allowance was used up by the afternoon and the Radar fell back to its five-minute brake)", () => {
+  beforeEach(() => resetGraduatesMemo());
+  afterEach(() => vi.useRealTimers());
+  const chainRows = [row({ mint: mint("B"), create_to_migrate_min: 1.6, initial_buy_sol: 9.9, facts: { f: rd(1, 1, 8_000), l: last(5, 1, 8_000, [1, 1, 1, 1], 5, 5) } })];
+  /** a database that counts what is asked of it */
+  const counting = (rows: Row[], extra: { pushed?: { payload: unknown; computed_at: string } | null; finished?: string | null }) => {
+    const db = fakeDb(rows, extra);
+    const asked = { chainRows: 0, snapshotPayload: 0, snapshotTime: 0, feedTime: 0 };
+    return {
+      asked,
+      db: {
+        query: async (text: string, params?: unknown[]) => {
+          if (/FROM pump_graduates g/.test(text)) asked.chainRows++;
+          if (/kind = 'gradlist'/.test(text)) (/SELECT payload/.test(text) ? asked.snapshotPayload++ : asked.snapshotTime++);
+          if (/FROM scan_lease WHERE name = 'grad-feed'/.test(text)) asked.feedTime++;
+          return db.query(text, params);
+        },
+      },
+    };
+  };
+  const snap = (min: number) => ({ payload: { at: "x", candidates: [{ mint: "PUSHED", symbol: "PUSH", ageMin: 5, readingAgeMin: 1, flags: [] }], summary: [], lab: null, source: "laptop" }, computed_at: new Date(Date.now() - min * 60_000).toISOString() });
+
+  it("the laptop's snapshot is read once per push: its time is asked for every time (a few bytes), its payload only when the time has changed", async () => {
+    const pushed = snap(2);
+    const a = counting([], { pushed });
+    const first = await loadPushedGraduates(a.db);
+    const second = await loadPushedGraduates(a.db);
+    expect(a.asked.snapshotTime).toBe(2);
+    expect(a.asked.snapshotPayload).toBe(1);
+    expect(second!.candidates[0]!.mint).toBe("PUSHED");
+    // ages are moved forward to now in both answers
+    expect(first!.candidates[0]!.ageMin).toBeGreaterThanOrEqual(7);
+    // a new push (a new time) is read in full
+    const next = snap(0);
+    const b = counting([], { pushed: next });
+    await loadPushedGraduates(b.db);
+    expect(b.asked.snapshotPayload).toBe(1);
+  });
+  it("the chain rows (the biggest read) are read again only when the chain feed has finished a new round, or after ten minutes", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-16T16:00:00Z"));
+    const extra = { finished: "2026-10-16T15:59:00.000Z" as string | null, pushed: null as { payload: unknown; computed_at: string } | null };
+    const c = counting(chainRows, extra);
+    const first = await currentGraduates(c.db);
+    expect(c.asked.chainRows).toBe(1);
+    // 61 seconds later the shared answer (kept a minute) has expired, but the feed has not run again: the rows are not read again, and the ages are moved forward
+    vi.setSystemTime(new Date("2026-10-16T16:01:01Z"));
+    const again = await currentGraduates(c.db);
+    expect(c.asked.chainRows).toBe(1);
+    expect(again.source).toBe("chain");
+    expect(again.candidates[0]!.ageMin - first.candidates[0]!.ageMin).toBeCloseTo(61 / 60, 1);
+    // the feed finished a new round: read again
+    vi.setSystemTime(new Date("2026-10-16T16:03:05Z"));
+    extra.finished = "2026-10-16T16:02:30.000Z";
+    await currentGraduates(c.db);
+    expect(c.asked.chainRows).toBe(2);
+    vi.setSystemTime(new Date("2026-10-16T16:04:10Z"));
+    await currentGraduates(c.db);
+    expect(c.asked.chainRows).toBe(2);
+    // and after ten minutes even without a new round (a feed that has stopped must not freeze the list)
+    vi.setSystemTime(new Date("2026-10-16T16:14:30Z"));
+    await currentGraduates(c.db);
+    expect(c.asked.chainRows).toBe(3);
   });
 });

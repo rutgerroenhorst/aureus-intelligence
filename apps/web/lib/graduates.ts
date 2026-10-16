@@ -201,13 +201,28 @@ export async function pushGraduates(local: Queryable, hosted: Queryable): Promis
   return { coins: slim.candidates.length };
 }
 
+/**
+ * The laptop's snapshot as it was last read: the row is replaced every 3 minutes while the laptop is awake and not at all while it sleeps, so the 14 KB payload is only read again when the row's time has changed
+ * (the question "when" costs a few bytes). Every Radar build used to read it: 20 MB of the hosted database's day when a screen stays open (2026-10-16, docs/LIMITS.md).
+ */
+let pushedMemo: { at: number; payload: GraduatesReport } | null = null;
+
 /** What the hosted site shows when its own database has no stream: the laptop's last snapshot, if there is one. */
 export async function loadPushedGraduates(db: Queryable): Promise<GraduatesReport | null> {
-  const r = await db.query(`SELECT payload, computed_at FROM lab_reports WHERE kind = 'gradlist'`).catch(() => ({ rows: [] as any[] }));
-  const row = r.rows[0];
-  if (!row?.payload) return null;
-  const p = row.payload as GraduatesReport;
-  const snapAt = new Date(row.computed_at).getTime();
+  const head = await db.query(`SELECT computed_at FROM lab_reports WHERE kind = 'gradlist'`).catch(() => ({ rows: [] as any[] }));
+  const when = head.rows[0]?.computed_at;
+  if (!when) return null;
+  let snapAt = new Date(when).getTime();
+  let p: GraduatesReport;
+  if (pushedMemo && pushedMemo.at === snapAt) p = pushedMemo.payload;
+  else {
+    const r = await db.query(`SELECT payload, computed_at FROM lab_reports WHERE kind = 'gradlist'`).catch(() => ({ rows: [] as any[] }));
+    const row = r.rows[0];
+    if (!row?.payload) return null;
+    p = row.payload as GraduatesReport;
+    snapAt = new Date(row.computed_at).getTime();
+    pushedMemo = { at: snapAt, payload: p };
+  }
   // ages in the snapshot were measured when it was taken: move them forward to now
   const lateMin = Math.max(0, (Date.now() - snapAt) / 60_000);
   return { ...p, candidates: (p.candidates ?? []).map((c) => ({ ...c, ageMin: c.ageMin + lateMin, readingAgeMin: c.readingAgeMin == null ? null : Math.round(c.readingAgeMin + lateMin) })), source: "laptop", asOf: new Date(snapAt).toISOString() };
@@ -284,10 +299,35 @@ export async function liveGateGraduates(report: GraduatesReport, getJson?: GetJs
 }
 
 let memo: { at: number; body: GraduatesReport } | null = null;
-/** For tests: forget the shared answer. */
+/**
+ * The chain rows as they were last read, for the hosted site while the laptop sleeps: the biggest read of a Radar build (about 190 KB for the last 6 hours: 228 coins at 850 bytes). They only change when the chain feed
+ * has run (every 3 minutes), so they are read again when the feed's finish time has changed (a few bytes to ask) and at the latest after 10 minutes; a minute-old answer is shared in between with its ages moved forward.
+ * The coins' live numbers and the red-flag gate are applied to it at every call, so the list stays as live as before.
+ */
+let baseMemo: { feedAt: string; at: number; body: GraduatesReport } | null = null;
+const BASE_MAX_AGE_MS = 10 * 60_000;
+/** For tests: forget the shared answers. */
 export const resetGraduatesMemo = () => {
   memo = null;
+  pushedMemo = null;
+  baseMemo = null;
 };
+
+async function buildGraduatesShared(db: Queryable, chain: boolean): Promise<GraduatesReport> {
+  if (!chain) return buildGraduates(db, { chain: false });
+  const feedAt = await db
+    .query(`SELECT last_finished FROM scan_lease WHERE name = 'grad-feed'`)
+    .then((x) => (x.rows[0]?.last_finished ? new Date(x.rows[0].last_finished).toISOString() : null))
+    .catch(() => null);
+  if (feedAt && baseMemo && baseMemo.feedAt === feedAt && Date.now() - baseMemo.at < BASE_MAX_AGE_MS) {
+    const late = (Date.now() - baseMemo.at) / 60_000;
+    return { ...baseMemo.body, candidates: baseMemo.body.candidates.map((c) => ({ ...c, ageMin: c.ageMin + late, readingAgeMin: c.readingAgeMin == null ? null : Math.round(c.readingAgeMin + late) })) };
+  }
+  const body = await buildGraduates(db, { chain: true });
+  // a list built from readings that could not be read must not be kept
+  if (feedAt && !body.degraded && body.candidates.length > 0) baseMemo = { feedAt, at: Date.now(), body };
+  return body;
+}
 
 /**
  * The laptop's pushed snapshot counts as live while it is younger than this: it pushes every 3 minutes while it is awake, so a snapshot older than two missed pushes means the laptop is
@@ -313,7 +353,7 @@ export async function currentGraduates(db: Queryable): Promise<GraduatesReport> 
   // A fresh snapshot in which nothing is worth a look and ten or more coins are still "waiting for a reading" was not read (the laptop's query timed out): the site's own list may know better.
   const pushedUnread = pushedFresh && !pushed!.candidates.some((c) => c.healthy) && pushed!.candidates.filter((c) => c.hiddenWhy === "waiting").length >= UNREAD_WAITING;
   // while the laptop's snapshot is fresh and read it wins anyway: do not read the chain rows at all
-  const local = await buildGraduates(db, { chain: !pushedFresh || pushedUnread });
+  const local = await buildGraduatesShared(db, !pushedFresh || pushedUnread);
   const chainBetter = pushedUnread && local.source === "chain" && local.candidates.some((c) => c.healthy);
   const body =
     local.candidates.length > 0 && local.source !== "chain" ? local : pushed && pushedFresh && !chainBetter ? pushed : local.candidates.length > 0 ? local : pushed ?? local;

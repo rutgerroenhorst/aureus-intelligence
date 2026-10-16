@@ -169,8 +169,10 @@ export default function RadarPageElite() {
     }
   };
 
-  // every 30 s while in use (the hosted site keeps the answer for a minute anyway); idle and long-idle screens ask less, see usePolling
-  usePolling(fetchAll, 30_000);
+  // every 30 s while in use (the hosted site keeps the answer for a minute anyway); idle and long-idle screens ask less, see usePolling.
+  // A trader WATCHES this screen without touching it (a phone on a stand, a second monitor): with the library's defaults it fell to one refresh in five minutes after 15 minutes of watching, and stopped after two hours,
+  // which looked like lists that never changed (2026-10-16). A build reads far less now (about 60 KB, it was 330 to 410 KB), so the screen stays at a minute for 45 minutes and at three minutes until three hours.
+  usePolling(fetchAll, 30_000, { idleAfterMs: 10 * 60_000, deepIdleAfterMs: 45 * 60_000, deepIdleIntervalMs: 3 * 60_000, stopAfterMs: 3 * 60 * 60_000 });
   usePolling(async () => {
     try {
       const res = await fetch("/api/hot-chains", { cache: "no-store" });
