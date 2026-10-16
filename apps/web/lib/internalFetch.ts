@@ -29,6 +29,8 @@ const routes: Record<string, () => Promise<RouteModule>> = {
   "/api/runners": () => import("@/app/api/runners/route"),
   "/api/lab-odds": () => import("@/app/api/lab-odds/route"),
   "/api/graduates": () => import("@/app/api/graduates/route"),
+  // the Check notes of the Radar bundle: without an entry here the call went out as a real request, which the site's lock (2026-10-13) turns away, and the bundle reported "checks" as failed on every refresh
+  "/api/coin-checks": () => import("@/app/api/coin-checks/route"),
 };
 
 /**
